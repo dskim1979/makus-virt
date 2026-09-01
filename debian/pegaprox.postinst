@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+#DEBHELPER#
+if [ "$1" = "configure" ]; then
+
+    if ! id "pegaprox" &>/dev/null; then
+        useradd --system --home /usr/lib/pegaprox --create-home --shell /usr/sbin/nologin --group nogroup pegaprox
+        echo "User 'pegaprox' created."
+    else
+        echo "User 'pegaprox' already exists, skipping creation."
+    fi
+
+    if [ ! -d /var/lib/pegaprox ]; then
+        mkdir -p /var/lib/pegaprox
+    fi
+
+    chown pegaprox:pegaprox /var/lib/pegaprox
+    chmod 750 /var/lib/pegaprox
+    chown pegaprox:pegaprox /usr/lib/pegaprox/pegaprox/api/.ssh_ws_server.py
+    chmod +x /usr/lib/pegaprox/pegaprox/api/.ssh_ws_server.py
+
+    systemctl enable pegaprox.service
+    systemctl restart pegaprox.service || true
+
+fi

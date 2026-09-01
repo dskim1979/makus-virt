@@ -1,0 +1,2481 @@
+# -*- coding: utf-8 -*-
+"""cluster CRUD, HA & maintenance routes - split from monolith dec 2025, NS"""
+
+import json
+import logging
+import threading
+import uuid
+from flask import Blueprint, jsonify, request
+
+from pegaprox.constants import *
+from pegaprox.globals import *
+from pegaprox.models.permissions import *
+from pegaprox.models.tasks import PegaProxConfig
+from pegaprox.core.db import get_db
+
+from pegaprox.utils.auth import require_auth, load_users
+from pegaprox.utils.audit import log_audit
+from pegaprox.utils.sanitization import sanitize_log_message as _sl  # CWE-117
+from pegaprox.utils.rbac import (
+    has_permission, get_user_clusters, filter_clusters_for_user,
+    user_can_access_vm, invalidate_pool_cache, get_vm_acls,
+)
+from pegaprox.utils.realtime import broadcast_sse, broadcast_update, push_immediate_update
+from pegaprox.core.config import load_config, save_config
+from pegaprox.core.manager import PegaProxManager
+from pegaprox.core.xcpng import XcpngManager, XENAPI_AVAILABLE
+from pegaprox.api.helpers import load_server_settings, get_connected_manager, check_cluster_access, safe_error
+
+# MK: this used to be 200 lines down in the monolith, good luck finding anything there
+bp = Blueprint('clusters', __name__)
+
+@bp.route('/api/clusters', methods=['GET'])
+@require_auth()
+def get_clusters():
+    """Get all configured clusters (filtered by tenant + VM ACLs)
+
+    NS: Clusters are now sorted by sort_order, then by name for consistent ordering
+    LW: Apr 2026 - users with VM ACLs can see their clusters without cluster.view (#248)
+    """
+    # get user's allowed clusters
+    users = load_users()
+    user = users.get(request.session['user'], {})
+    user['username'] = request.session['user']
+    allowed = get_user_clusters(user)
+    has_cluster_view = has_permission(user, 'cluster.view')
+
+    # #248: users without cluster.view can still see clusters where they have VM ACLs
+    acl_cluster_ids = set()
+    if not has_cluster_view:
+        from pegaprox.utils.rbac import load_vm_acls
+        all_acls = load_vm_acls()
+        for cid, vm_acls in all_acls.items():
+            for vmid, acl in vm_acls.items():
+                if user['username'] in acl.get('users', []) or '*' in acl.get('users', []):
+                    acl_cluster_ids.add(cid)
+                    break
+        # #555: also surface clusters where the user holds pool perms
+        try:
+            for cid in get_db().get_user_pool_clusters(user['username'], user.get('groups', [])):
+                acl_cluster_ids.add(cid)
+        except Exception:
+            pass
+        if not acl_cluster_ids:
+            return jsonify([])
+
+    # Get cluster metadata from database (display_name, group_id, sort_order)
+    db = get_db()
+    cluster_meta = {}
+    try:
+        meta_rows = db.query('SELECT id, display_name, group_id, sort_order FROM clusters')
+        for row in meta_rows:
+            cluster_meta[row['id']] = {
+                'display_name': row['display_name'],
+                'group_id': row['group_id'],
+                'sort_order': row['sort_order'] if row['sort_order'] is not None else 0
+            }
+    except:
+        pass
+
+    clusters = []
+    for cluster_id, mgr in cluster_managers.items():
+        # filter by tenant
+        if allowed is not None and cluster_id not in allowed:
+            # fallback: allow if user has VM ACLs in this cluster
+            if cluster_id not in acl_cluster_ids:
+                continue
+        # without cluster.view, only show clusters with VM ACLs
+        if not has_cluster_view and cluster_id not in acl_cluster_ids:
+            continue
+
+        meta = cluster_meta.get(cluster_id, {})
+        display_name = meta.get('display_name') or ''
+
+        # ACL-only users get minimal info (no admin settings)
+        if not has_cluster_view:
+            clusters.append({
+                'id': cluster_id,
+                'name': mgr.config.name,
+                'display_name': display_name,
+                'group_id': meta.get('group_id'),
+                'sort_order': meta.get('sort_order', 0),
+                'status': 'running' if mgr.running else 'stopped',
+                'connected': mgr.is_connected,
+                'cluster_type': getattr(mgr, 'cluster_type', 'proxmox'),
+            })
+        else:
+            clusters.append({
+                'id': cluster_id,
+                'name': mgr.config.name,
+                'display_name': display_name,
+                'group_id': meta.get('group_id'),
+                'sort_order': meta.get('sort_order', 0),
+                'host': mgr.config.host,
+                'status': 'running' if mgr.running else 'stopped',
+                'connected': mgr.is_connected,
+                'connection_error': mgr.connection_error,
+                'migration_threshold': mgr.config.migration_threshold,
+                'migration_tolerance': getattr(mgr.config, 'migration_tolerance', 10),
+                'check_interval': mgr.config.check_interval,
+                'auto_migrate': mgr.config.auto_migrate,
+                'balance_containers': getattr(mgr.config, 'balance_containers', False),
+                'balance_local_disks': getattr(mgr.config, 'balance_local_disks', False),
+                'proxlb_tags_enabled': getattr(mgr.config, 'proxlb_tags_enabled', False),  # #628 — was missing from GET, made the UI toggle revert on refresh
+                'dry_run': mgr.config.dry_run,
+                'predictive_balancing': getattr(mgr.config, 'predictive_balancing', False),
+                'predictive_threshold': getattr(mgr.config, 'predictive_threshold', 75),
+                'balance_cpu_weight': getattr(mgr.config, 'balance_cpu_weight', 1.0),
+                'balance_mem_weight': getattr(mgr.config, 'balance_mem_weight', 1.0),
+                'balance_io_weight': getattr(mgr.config, 'balance_io_weight', 0.0),
+                'cpu_baseline': getattr(mgr.config, 'cpu_baseline', None),
+                'enabled': mgr.config.enabled,
+                'ha_enabled': mgr.config.ha_enabled,
+                'fallback_hosts': mgr.config.fallback_hosts,
+                'excluded_nodes': getattr(mgr.config, 'excluded_nodes', []),
+                'current_host': getattr(mgr, '_original_host', None) or getattr(mgr, 'current_host', None),
+                'last_run': mgr.last_run.isoformat() if mgr.last_run else None,
+                'api_token_active': bool(getattr(mgr, '_using_api_token', False)),
+                'cluster_type': getattr(mgr, 'cluster_type', 'proxmox'),
+                # MK May 2026 — worldmap location (per-cluster). None when not set.
+                'latitude': getattr(mgr.config, 'latitude', None),
+                'longitude': getattr(mgr.config, 'longitude', None),
+                'location_label': getattr(mgr.config, 'location_label', '') or '',
+            })
+
+    # MK: Sort clusters by sort_order first, then by name for consistent ordering
+    clusters.sort(key=lambda c: (c.get('sort_order', 0), c.get('name', '').lower()))
+
+    return jsonify(clusters)
+
+
+@bp.route('/api/clusters', methods=['POST'])
+@require_auth(perms=['cluster.add'])
+def add_cluster():
+    """Add a new cluster"""
+    data = request.json
+
+    # Validate required fields
+    required = ['name', 'host', 'user']
+    for field in required:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+
+    # password or ssh key - need at least one
+    if not data.get('pass') and not data.get('ssh_key'):
+        return jsonify({'error': 'Password or SSH key is required'}), 400
+    if 'pass' not in data:
+        data['pass'] = ''
+
+    # Generate unique ID
+    cluster_id = str(uuid.uuid4())[:8]
+    cluster_type = data.get('cluster_type', 'proxmox')
+
+    # Create config
+    config = PegaProxConfig(data)
+
+    # MK Mar 2026: dispatch to correct manager based on cluster type
+    if cluster_type == 'xcpng':
+        if not XENAPI_AVAILABLE:
+            return jsonify({'error': 'XenAPI library not installed. Run: pip install XenAPI'}), 400
+        manager = XcpngManager(cluster_id, config)
+        if not manager.connect():
+            error_detail = manager.connection_error or 'Failed to connect to XCP-ng pool'
+            return jsonify({'error': f'Failed to connect: {error_detail}'}), 400
+    else:
+        manager = PegaProxManager(cluster_id, config)
+        # Test connection - MK: return actual error instead of generic message (#88)
+        if not manager.connect_to_proxmox():
+            error_detail = manager.connection_error or 'Failed to connect to Proxmox cluster'
+            return jsonify({'error': f'Failed to connect: {error_detail}'}), 400
+
+    manager.start()
+    cluster_managers[cluster_id] = manager
+
+    # Save configuration - also store cluster_type in db
+    save_config()
+    if cluster_type != 'proxmox':
+        db = get_db()
+        db.update_cluster(cluster_id, {'cluster_type': cluster_type})
+
+    # Audit log
+    type_label = 'XCP-ng' if cluster_type == 'xcpng' else 'Proxmox'
+    log_audit(request.session['user'], 'cluster.added', f"Added {type_label} cluster: {data.get('name')} ({data.get('host')})")
+
+    result = {'id': cluster_id, 'message': 'Cluster added successfully'}
+    # NS: let frontend know if we auto-created an API token (#110)
+    if getattr(manager, '_token_auto_created', False):
+        result['api_token_created'] = True
+    return jsonify(result), 201
+
+
+@bp.route('/api/clusters/<cluster_id>/config/export', methods=['GET'])
+@require_auth(perms=['cluster.config'])
+def export_cluster_config(cluster_id):
+    """Export cluster config WITHOUT secrets — for re-configure pre-fill (#256)"""
+    # NS Jul 2026 (CodeAnt re-scan auth-bypass/IDOR) — cluster-scoped route was missing the tenant gate
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    mgr = cluster_managers[cluster_id]
+    c = mgr.config
+    return jsonify({
+        'name': c.name, 'host': c.host, 'user': c.user,
+        'ssl_verification': c.ssl_verification,
+        'migration_threshold': c.migration_threshold,
+        'migration_tolerance': getattr(c, 'migration_tolerance', 10),
+        'check_interval': c.check_interval,
+        'auto_migrate': c.auto_migrate,
+        'balance_containers': getattr(c, 'balance_containers', False),
+        'balance_local_disks': getattr(c, 'balance_local_disks', False),
+        'proxlb_tags_enabled': getattr(c, 'proxlb_tags_enabled', False),  # #628
+        'dry_run': c.dry_run,
+        'cluster_type': getattr(mgr, 'cluster_type', 'proxmox'),
+        'vnc_tunnel': bool(getattr(c, 'vnc_tunnel', False)),  # MK Apr 2026
+        # secrets intentionally omitted: pass, ssh_key, api_token_secret
+    })
+
+
+# MK May 2026 (PVE 9.2) — rotate the auto-created API token without dropping
+# its ACL entries. The classic delete+recreate path resets all permissions;
+# the new /access/users/{user}/token/{id} POST in 9.2 regenerates the secret
+# in place. On pre-9.2 we fall back to delete+create + warn that ACLs reset.
+@bp.route('/api/clusters/<cluster_id>/api-token/rotate', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def rotate_cluster_api_token(cluster_id):
+    # NS Jul 2026 (CodeAnt re-scan auth-bypass/IDOR) — cluster-scoped route was missing the tenant gate
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    mgr = cluster_managers[cluster_id]
+    if not getattr(mgr.config, 'api_token_user', ''):
+        return jsonify({'error': 'No API token configured for this cluster'}), 400
+
+    try:
+        token_user = mgr.config.api_token_user
+        user_part, token_id = token_user.split('!', 1)
+        base = f"https://{mgr.host}:{mgr.api_port}/api2/json/access/users/{user_part}/token/{token_id}"
+
+        pve_ver = mgr.get_pve_version_tuple()
+        new_secret = None
+        # NS May 2026 — only try the 9.2 in-place regenerate when we KNOW the
+        # cluster is 9.2+. Pre-9.2 PVE doesn't reject POST on an existing
+        # token cleanly — it hangs / times out on some 9.1 builds. Falling
+        # back is cheaper than waiting for a 10s read timeout per attempt.
+        if pve_ver is not None and pve_ver >= (9, 2):
+            try:
+                resp = mgr._api_post(base, data={}, timeout=8)
+                if resp.status_code == 200:
+                    data = resp.json().get('data') or {}
+                    new_secret = data.get('value') or data.get('secret')
+                    preserved = True
+                elif resp.status_code in (404, 405, 501):
+                    preserved = False  # fall through to delete+create
+                else:
+                    return jsonify({'error': parse_pve_error(resp.text)}), resp.status_code
+            except Exception as probe_err:
+                mgr.logger.warning(f"[token-rotate] in-place regenerate probe failed ({probe_err}); falling back")
+                preserved = False
+        else:
+            preserved = False
+
+        if new_secret is None:
+            # Legacy path: delete + recreate. Warn caller ACLs are lost.
+            mgr._create_session().delete(base, timeout=10)
+            create_resp = mgr._api_post(base, data={})
+            if create_resp.status_code != 200:
+                return jsonify({'error': parse_pve_error(create_resp.text)}), create_resp.status_code
+            data = create_resp.json().get('data') or {}
+            new_secret = data.get('value') or data.get('secret')
+            preserved = False
+
+        if not new_secret:
+            return jsonify({'error': 'Token regenerated but PVE did not return a secret'}), 502
+
+        # Persist the new secret in our DB so subsequent connects use it
+        mgr.config.api_token_secret = new_secret
+        save_config()
+
+        user = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(user, 'cluster.api_token_rotated',
+                  f"Rotated API token {token_user} (ACLs preserved={preserved})",
+                  cluster=mgr.config.name)
+        return jsonify({
+            'success': True,
+            'acls_preserved': preserved,
+            'message': 'Token rotated; ACLs preserved' if preserved
+                       else 'Token rotated via delete+recreate; ACL entries on this token were lost (pre-PVE-9.2 cluster)',
+        })
+    except Exception as e:
+        return jsonify({'error': safe_error(e, 'Token rotation failed')}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/reconfigure', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def reconfigure_cluster(cluster_id):
+    """Re-configure cluster credentials. Requires re-authentication. (#256)
+    Keeps same cluster_id so VM ACLs, replication jobs etc. stay intact.
+    """
+    # NS Jul 2026 (CodeAnt re-scan auth-bypass/IDOR) — cluster-scoped route was missing the tenant gate
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    data = request.json or {}
+
+    # Re-auth: user must verify their own password
+    from pegaprox.utils.auth import verify_password
+    current_password = data.pop('current_password', '')
+    username = request.session['user']
+    users = load_users()
+    user = users.get(username, {})
+
+    auth_source = user.get('auth_source', 'local')
+    if auth_source == 'local':
+        if not current_password or not user.get('password_hash') or not verify_password(current_password, user.get('password_salt', ''), user['password_hash']):
+            return jsonify({'error': 'Invalid password'}), 401
+    elif auth_source == 'ldap':
+        # LDAP user: verify against LDAP server
+        from pegaprox.utils.ldap import ldap_authenticate
+        ldap_result = ldap_authenticate(username, current_password) if current_password else {}
+        if not current_password or 'error' in ldap_result:
+            return jsonify({'error': 'Invalid LDAP password'}), 401
+    else:
+        return jsonify({'error': 'Re-authentication not supported for this account type. Use a local admin account.'}), 400
+
+    # Validate required fields (same as add_cluster)
+    for field in ['name', 'host', 'user']:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    if not data.get('pass') and not data.get('ssh_key'):
+        return jsonify({'error': 'Password or SSH key is required'}), 400
+    if 'pass' not in data:
+        data['pass'] = ''
+
+    cluster_type = data.get('cluster_type', getattr(cluster_managers[cluster_id], 'cluster_type', 'proxmox'))
+
+    # Create new config + manager, test connection
+    new_config = PegaProxConfig(data)
+    if cluster_type == 'xcpng':
+        if not XENAPI_AVAILABLE:
+            return jsonify({'error': 'XenAPI library not installed'}), 400
+        new_mgr = XcpngManager(cluster_id, new_config)
+        if not new_mgr.connect():
+            return jsonify({'error': f'Connection failed: {new_mgr.connection_error or "unknown"}'}), 400
+    else:
+        new_mgr = PegaProxManager(cluster_id, new_config)
+        if not new_mgr.connect_to_proxmox():
+            return jsonify({'error': f'Connection failed: {new_mgr.connection_error or "unknown"}'}), 400
+
+    # Stop old manager, swap in new one
+    old_mgr = cluster_managers[cluster_id]
+    try:
+        old_mgr.stop()
+    except Exception:
+        pass
+
+    new_mgr.start()
+    cluster_managers[cluster_id] = new_mgr
+    save_config()
+
+    log_audit(username, 'cluster.reconfigured', f"Re-configured cluster: {data.get('name')} ({data.get('host')})")
+
+    result = {'success': True, 'message': 'Cluster re-configured successfully'}
+    if getattr(new_mgr, '_token_auto_created', False):
+        result['api_token_created'] = True
+    return jsonify(result)
+
+
+@bp.route('/api/clusters/<cluster_id>/nodes', methods=['GET'])
+@require_auth(perms=['node.view'])
+def get_cluster_nodes(cluster_id):
+    """Get list of nodes in a cluster
+    
+    NS: Made more resilient - returns cached/last known nodes if connection fails
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    manager = cluster_managers[cluster_id]
+
+    # MK: XCP-ng clusters use their own get_nodes()
+    if getattr(manager, 'cluster_type', 'proxmox') == 'xcpng':
+        try:
+            nodes = manager.get_nodes()
+            return jsonify(nodes)
+        except Exception as e:
+            logging.debug(f"XCP-ng get_nodes failed for {cluster_id}: {e}")
+            return jsonify({'error': 'Connection temporarily unavailable', 'nodes': [], 'offline': True}), 503
+
+    # Try to get live data
+    try:
+        host, port = manager.host, manager.api_port
+        url = f"https://{host}:{port}/api2/json/nodes"
+        r = manager._create_session().get(url, timeout=10)
+
+        if r.status_code == 200:
+            nodes = r.json().get('data', [])
+            # MK May 2026 (#415 KowMangler): the cross-cluster-migration target-
+            # node dropdown wants per-node "CPU: X% RAM: Y%" strings, but raw
+            # /api2/json/nodes returns `cpu` as a 0..1 fraction and `mem`/`maxmem`
+            # as bytes. Frontend was reading `.cpu_percent`/`.mem_percent` which
+            # didn't exist → empty text. Cheaper to compute it here once than
+            # to teach every consumer the conversion.
+            for n in nodes:
+                if not isinstance(n, dict):
+                    continue
+                cpu = n.get('cpu')
+                if isinstance(cpu, (int, float)):
+                    n['cpu_percent'] = round(cpu * 100, 2)
+                mem = n.get('mem')
+                maxmem = n.get('maxmem')
+                if isinstance(mem, (int, float)) and isinstance(maxmem, (int, float)) and maxmem > 0:
+                    n['mem_percent'] = round((mem / maxmem) * 100, 2)
+            # Cache the nodes data
+            manager._cached_nodes = nodes
+            return jsonify(nodes)
+    except Exception as e:
+        logging.debug(f"Failed to get nodes for {cluster_id}: {e}")
+
+    # If live data failed, return cached data with offline status
+    if hasattr(manager, '_cached_nodes') and manager._cached_nodes:
+        cached = manager._cached_nodes
+        # Mark all as potentially stale
+        for node in cached:
+            if 'connection_status' not in node:
+                node['connection_status'] = 'stale'
+        return jsonify(cached)
+
+    # If HA is tracking nodes, return those
+    if manager.ha_node_status:
+        nodes = []
+        for name, data in manager.ha_node_status.items():
+            nodes.append({
+                'node': name,
+                'status': data.get('status', 'unknown'),
+                'connection_status': 'from_ha_cache'
+            })
+        return jsonify(nodes)
+    
+    # Last resort - return empty but with error info
+    return jsonify({
+        'error': 'Connection temporarily unavailable',
+        'nodes': [],
+        'offline': not manager.is_connected
+    }), 503
+
+
+@bp.route('/api/clusters/<cluster_id>', methods=['DELETE'])
+@require_auth(perms=['cluster.delete'])
+def delete_cluster(cluster_id):
+    """Delete a cluster"""
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    # Check cluster-scoped authorization (tenant/VM-ACL access)
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    
+    mgr = cluster_managers[cluster_id]
+    cluster_name = mgr.config.name
+
+    # NS: revoke auto-created API token on PVE before removing cluster (#110)
+    if getattr(mgr.config, 'api_token_user', '') and mgr.is_connected:
+        try:
+            token_user = mgr.config.api_token_user  # e.g. root@pam!pegaprox
+            user_part, token_id = token_user.split('!', 1)
+            url = f"https://{mgr.host}:{mgr.api_port}/api2/json/access/users/{user_part}/token/{token_id}"
+            resp = mgr._create_session().delete(url, timeout=10)
+            if resp.status_code == 200:
+                logging.info(f"Revoked API token {token_user} on PVE")
+            else:
+                logging.warning(f"Could not revoke API token {token_user}: HTTP {resp.status_code}")
+        except Exception as e:
+            logging.debug(f"Token revocation failed (non-critical): {e}")
+
+    # Clean up pinned SSH host keys for this cluster's hosts BEFORE stopping the
+    # manager (so re-adding a node that was reinstalled meanwhile works via TOFU
+    # rather than tripping reject-on-change on the stale key).
+    try:
+        from pegaprox.utils.ssh_security import remove_host_keys
+        from pegaprox.utils.ssh import _node_ip_cache
+        hosts_to_clean = set()
+        for attr in ('host',):
+            v = getattr(mgr, attr, None) or getattr(mgr.config, attr, None)
+            if v:
+                hosts_to_clean.add(v)
+        for (cid, _node), val in list(_node_ip_cache.items()):
+            if cid == cluster_id and val and val[0]:
+                hosts_to_clean.add(val[0])
+        try:
+            for n in (mgr.get_nodes() or []):
+                ip = (n or {}).get('ip') or (n or {}).get('host')
+                if ip:
+                    hosts_to_clean.add(ip)
+        except Exception:
+            pass
+        n_removed = remove_host_keys(hosts_to_clean)
+        if n_removed:
+            logging.info(f"Removed {n_removed} SSH host-key pin(s) for deleted cluster {cluster_id}")
+    except Exception as e:
+        logging.debug(f"known_hosts cleanup on cluster delete failed (non-critical): {e}")
+
+    mgr.stop()
+    del cluster_managers[cluster_id]
+
+    # MK: Delete cluster and all related data from database
+    try:
+        db = get_db()
+        cursor = db.conn.cursor()
+        
+        # Delete cluster
+        db.delete_cluster(cluster_id)
+        
+        # Clean up related tables
+        cursor.execute('DELETE FROM vm_acls WHERE cluster_id = ?', (cluster_id,))
+        cursor.execute('DELETE FROM affinity_rules WHERE cluster_id = ?', (cluster_id,))
+        cursor.execute('DELETE FROM cluster_alerts WHERE cluster_id = ?', (cluster_id,))
+        db.conn.commit()
+        
+        logging.info(f"Deleted cluster {cluster_id} and related data from database")
+    except Exception as e:
+        logging.error(f"Failed to delete cluster from database: {e}")
+    
+    log_audit(request.session['user'], 'cluster.deleted', f"Deleted cluster: {cluster_name}")
+    
+    return jsonify({'message': 'Cluster deleted successfully'})
+
+
+@bp.route('/api/clusters/reorder', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def reorder_clusters():
+    """Update cluster sort order for sidebar display
+    
+    NS: Allows admins to reorder clusters via drag-and-drop in UI
+    Request body: { "order": ["cluster_id_1", "cluster_id_2", ...] }
+    """
+    data = request.get_json()
+    order = data.get('order', [])
+    
+    if not order:
+        return jsonify({'error': 'No order provided'}), 400
+    
+    db = get_db()
+    cursor = db.conn.cursor()
+    
+    try:
+        for idx, cluster_id in enumerate(order):
+            cursor.execute(
+                'UPDATE clusters SET sort_order = ? WHERE id = ?',
+                (idx, cluster_id)
+            )
+        db.conn.commit()
+        
+        log_audit(request.session['user'], 'cluster.reordered', f"Reordered {len(order)} clusters")
+        
+        return jsonify({'message': 'Cluster order updated', 'order': order})
+    except Exception as e:
+        logging.error(f"Failed to reorder clusters: {e}")
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/sort-order', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def update_cluster_sort_order(cluster_id):
+    """Update a single cluster's sort order
+
+    Request body: { "sort_order": 5 }
+    """
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    data = request.get_json()
+    sort_order = data.get('sort_order', 0)
+
+    db = get_db()
+    cursor = db.conn.cursor()
+
+    try:
+        cursor.execute(
+            'UPDATE clusters SET sort_order = ? WHERE id = ?',
+            (sort_order, cluster_id)
+        )
+        db.conn.commit()
+
+        return jsonify({'message': 'Sort order updated', 'sort_order': sort_order})
+    except Exception as e:
+        logging.error(f"Failed to update sort order: {e}")
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+# MK May 2026 — Worldmap location (per-cluster).
+# Body: { "latitude": 50.1109, "longitude": 8.6821, "location_label": "Frankfurt DC1" }
+# Pass `null` for lat+lon to remove the dot from the map.
+#
+# MK May 2026 — light per-IP+per-cluster rate limit. Authenticated users with
+# cluster.config could otherwise hammer this endpoint to flood the HMAC-signed
+# audit log (each location update writes one entry). 30 updates/min is way more
+# than any legitimate UI flow needs — operators set lat/lon once and move on.
+_location_put_attempts = {}  # (ip, cluster_id) → list[ts]
+
+
+@bp.route('/api/clusters/<cluster_id>/location', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def update_cluster_location(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    # rate-limit per (IP, cluster) — 30 updates / 60s window
+    from pegaprox.utils.audit import get_client_ip
+    import time as _t
+    client_ip = get_client_ip()
+    key = (client_ip, cluster_id)
+    now = _t.time()
+    window = [t for t in _location_put_attempts.get(key, []) if now - t < 60]
+    if len(window) >= 30:
+        logging.warning(f"[CLUSTER-LOC] rate-limited update on {cluster_id} from {client_ip}")
+        return jsonify({'error': 'Too many location updates — slow down'}), 429
+    window.append(now)
+    _location_put_attempts[key] = window
+
+    data = request.get_json() or {}
+    lat = data.get('latitude')
+    lon = data.get('longitude')
+
+    # MK May 2026 — strict type check before float() cast. Python's bool subclasses
+    # int, so `float(True)` is 1.0 — would pass range check and silently set lat=1.
+    # Also reject dict / list / bytes which could slip through some serializers.
+    if lat is not None and (isinstance(lat, bool) or not isinstance(lat, (int, float))):
+        return jsonify({'error': 'latitude must be a number'}), 400
+    if lon is not None and (isinstance(lon, bool) or not isinstance(lon, (int, float))):
+        return jsonify({'error': 'longitude must be a number'}), 400
+
+    # MK May 2026 — label sanitisation: strip control chars + collapse internal
+    # whitespace + cap length. Newlines/CR in audit-log details would let an
+    # operator forge multi-line audit entries that look like separate events
+    # to a naive log reader. Defense-in-depth.
+    raw_label = data.get('location_label') or ''
+    if not isinstance(raw_label, str):
+        return jsonify({'error': 'location_label must be a string'}), 400
+    # remove ASCII control chars (0x00-0x1F + 0x7F) including \n \r \t \0
+    label = ''.join(ch for ch in raw_label if ord(ch) >= 0x20 and ord(ch) != 0x7F)
+    label = label.strip()[:120]
+
+    # both lat+lon must be set together, OR both null to clear the dot
+    if (lat is None) != (lon is None):
+        return jsonify({'error': 'latitude and longitude must be set together (or both null)'}), 400
+    if lat is not None:
+        try:
+            lat = float(lat)
+            lon = float(lon)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'latitude/longitude must be numeric'}), 400
+        # also catches NaN/Inf since the comparison returns False for those
+        if not (-90.0 <= lat <= 90.0):
+            return jsonify({'error': 'latitude must be between -90 and 90'}), 400
+        if not (-180.0 <= lon <= 180.0):
+            return jsonify({'error': 'longitude must be between -180 and 180'}), 400
+
+    db = get_db()
+    cursor = db.conn.cursor()
+    try:
+        from datetime import datetime as _dt
+        cursor.execute(
+            'UPDATE clusters SET latitude = ?, longitude = ?, location_label = ?, updated_at = ? WHERE id = ?',
+            (lat, lon, label, _dt.now().isoformat(), cluster_id)
+        )
+        db.conn.commit()
+        # mirror into in-memory config so the next /api/clusters GET reflects it
+        mgr = cluster_managers[cluster_id]
+        mgr.config.latitude = lat
+        mgr.config.longitude = lon
+        mgr.config.location_label = label
+
+        usr = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(usr, 'cluster.location_updated',
+                  f"Cluster '{mgr.config.name}' location set to {lat},{lon} ({label or '—'})")
+        return jsonify({'message': 'Location updated',
+                        'latitude': lat, 'longitude': lon, 'location_label': label})
+    except Exception as e:
+        logging.error(f"Failed to update cluster location: {e}")
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/metrics', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_cluster_metrics(cluster_id):
+    """Get cluster node metrics
+    
+    NS: Made more resilient - returns cached/HA data if connection fails
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    # Try to get live metrics
+    if mgr.is_connected:
+        try:
+            metrics = mgr.get_node_status()
+            if metrics:
+                # Cache the metrics
+                mgr._cached_metrics = metrics
+                return jsonify(metrics)
+        except Exception as e:
+            logging.debug(f"Error getting metrics for {cluster_id}: {e}")
+    
+    # If live data failed, try cached data
+    if hasattr(mgr, '_cached_metrics') and mgr._cached_metrics:
+        return jsonify(mgr._cached_metrics)
+    
+    # If HA is tracking nodes, build metrics from HA data
+    if mgr.ha_node_status:
+        ha_metrics = {}
+        for name, data in mgr.ha_node_status.items():
+            ha_metrics[name] = {
+                'status': data.get('status', 'unknown'),
+                'cpu': 0,
+                'memory': {'used': 0, 'total': 0},
+                'disk': {'used': 0, 'total': 0},
+                'from_ha_cache': True
+            }
+        return jsonify(ha_metrics)
+    
+    # Return error with empty metrics - frontend will keep old data
+    return jsonify({'error': 'Connection temporarily unavailable', 'offline': True}), 503
+
+
+# NS May 2026 — single-number cluster health score (0-100). Inputs are cheap-to-compute
+# stuff we already pull elsewhere: node status, per-node storages, replication, backup-SLA.
+# The drill-down list lets the user see what dragged the score down.
+@bp.route('/api/clusters/<cluster_id>/health', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_cluster_health(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    mgr = cluster_managers[cluster_id]
+    score = 100
+    factors = []
+    issues = []
+
+    # Connectivity gate — if API isn't reachable, everything else is moot
+    if not mgr.is_connected:
+        return jsonify({
+            'score': 0,
+            'band': 'critical',
+            'factors': [{'key': 'api', 'label': 'API connectivity', 'value': 'disconnected', 'delta': -100}],
+            'issues': ['Cluster API not reachable'],
+            'computed_at': None,
+        })
+
+    # 1) Nodes online
+    try:
+        ns = mgr.get_node_status() or {}
+    except Exception:
+        ns = {}
+    total_nodes = len(ns)
+    online_nodes = sum(1 for n in ns.values() if (n.get('status') in ('online', 'running') or not n.get('offline')))
+    if total_nodes:
+        offline = total_nodes - online_nodes
+        delta = -25 * offline
+        score += delta
+        factors.append({
+            'key': 'nodes', 'label': 'Nodes online',
+            'value': f'{online_nodes}/{total_nodes}', 'delta': delta,
+            'severity': 'critical' if offline else 'ok',
+        })
+        if offline:
+            offline_names = [name for name, d in ns.items()
+                             if d.get('status') == 'offline' or d.get('offline')]
+            issues.append(f'{offline} node(s) offline: {", ".join(offline_names) or "?"}')
+
+    # 2) Storage pressure — worst-offender across all nodes
+    # MK 2026-05-31 (F1a) — parallelise the per-node get_storage_list fanout.
+    # Was sequential: N nodes × ~200ms = up to 1.2s for a 6-node cluster, and
+    # one slow node could push past 5s. /health is dashboard-polled every
+    # ~10-20s, so this used to chew gevent workers. run_concurrent_dict skips
+    # the broken `if GEVENT_POOL` truthy check in the older inline callsites.
+    worst_pct = 0.0
+    worst_label = None
+    try:
+        from pegaprox.utils.concurrent import run_concurrent_dict
+        # Only scan ONLINE nodes — a dead node's storage call would otherwise
+        # park the whole parallel batch at the 10s gevent-pool timeout (we'd
+        # be waiting for joinall to finish). Sequential code masked this
+        # because the connection failed fast, but parallel waits the full
+        # timeout. Net: post-parallelise /health was SLOWER on degraded
+        # clusters until this filter went in.
+        # MK 2026-05-31 (D2) — also drop any node-name that doesn't pass the
+        # RFC-1035-ish check. PVE controls these but if PVE itself were ever
+        # compromised, a crafted name like `../foo` would be interpolated
+        # into the storage-list URL. Belt-and-suspenders.
+        import re as _re
+        _SAFE_NODE = _re.compile(r'^[a-zA-Z][a-zA-Z0-9.\-]{0,62}$')
+        online_node_names = [
+            name for name, d in ns.items()
+            if (d.get('status') in ('online', 'running') or not d.get('offline'))
+            and name and _SAFE_NODE.match(name)
+        ]
+        if online_node_names:
+            tasks = {n: (lambda nn=n: mgr.get_storage_list(nn) or []) for n in online_node_names}
+            per_node_stors = run_concurrent_dict(tasks, timeout=8)
+        else:
+            per_node_stors = {}
+        for node_name, stors in per_node_stors.items():
+            for s in (stors or []):
+                if not s.get('active'):
+                    continue
+                total = s.get('total') or 0
+                used = s.get('used') or 0
+                if total <= 0:
+                    continue
+                pct = (used / total) * 100.0
+                if pct > worst_pct:
+                    worst_pct = pct
+                    worst_label = f"{s.get('storage', '?')} @ {node_name}"
+    except Exception as e:
+        logging.debug(f"[health] storage scan failed: {e}")
+    if worst_label is not None:
+        if worst_pct >= 95:
+            d = -25
+        elif worst_pct >= 90:
+            d = -15
+        elif worst_pct >= 80:
+            d = -5
+        else:
+            d = 0
+        score += d
+        factors.append({
+            'key': 'storage', 'label': 'Worst storage',
+            'value': f'{worst_label} ({worst_pct:.0f}%)', 'delta': d,
+            'severity': 'critical' if worst_pct >= 95 else 'warning' if worst_pct >= 80 else 'ok',
+        })
+        if worst_pct >= 90:
+            issues.append(f'Storage near full: {worst_label} at {worst_pct:.0f}%')
+
+    # 3) Replication — failed jobs hurt
+    try:
+        repl = mgr.get_replication_status() or []
+    except Exception:
+        repl = []
+    if repl:
+        # PVE flags failures via 'fail_count' or non-zero error
+        failed = sum(1 for r in repl if (r.get('fail_count') or 0) > 0 or r.get('error'))
+        d = max(-20, -5 * failed)
+        score += d
+        factors.append({
+            'key': 'replication', 'label': 'Replication',
+            'value': f'{failed} failing / {len(repl)} jobs',
+            'delta': d,
+            'severity': 'warning' if failed else 'ok',
+        })
+        if failed:
+            issues.append(f'{failed} replication job(s) failing')
+
+    # 4) Backup-SLA — only if admin set a max-age threshold on the cluster
+    try:
+        db = get_db()
+        row = db.conn.cursor().execute(
+            "SELECT backup_sla_max_age_hours FROM clusters WHERE id = ?", (cluster_id,)
+        ).fetchone()
+        max_age = (dict(row).get('backup_sla_max_age_hours') if row else None) or 0
+    except Exception:
+        max_age = 0
+    if max_age and max_age > 0:
+        # Pull the most-recent backup timestamp via cluster/backup-info — cheap call
+        try:
+            import time as _t
+            now = _t.time()
+            url = f"https://{mgr.host}:{mgr.api_port}/api2/json/cluster/backup-info/not-backed-up"
+            r = mgr._api_get(url)
+            stale = 0
+            if r is not None and r.status_code == 200:
+                stale = len(r.json().get('data') or [])
+            d = -10 if stale else 0
+            score += d
+            factors.append({
+                'key': 'backup_sla', 'label': 'Backup SLA',
+                'value': f'{stale} VM(s) past RPO ({max_age}h)' if stale else 'within RPO',
+                'delta': d,
+                'severity': 'warning' if stale else 'ok',
+            })
+            if stale:
+                issues.append(f'{stale} VMs past backup RPO of {max_age}h')
+        except Exception as e:
+            logging.debug(f"[health] backup-sla check failed: {e}")
+
+    # Clamp & band
+    score = max(0, min(100, score))
+    if score >= 90:
+        band = 'excellent'
+    elif score >= 70:
+        band = 'good'
+    elif score >= 50:
+        band = 'warning'
+    elif score >= 30:
+        band = 'degraded'
+    else:
+        band = 'critical'
+
+    import datetime as _dt
+    return jsonify({
+        'score': score,
+        'band': band,
+        'factors': factors,
+        'issues': issues,
+        'computed_at': _dt.datetime.utcnow().isoformat() + 'Z',
+    })
+
+
+# MK May 2026 — API latency dashboard backing endpoint. Reads the deque the
+# manager populates on every Proxmox API roundtrip. Cheap: in-memory only.
+@bp.route('/api/clusters/<cluster_id>/api-latency', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_cluster_api_latency(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    mgr = cluster_managers[cluster_id]
+    samples = list(getattr(mgr, '_api_latency', []) or [])
+    if not samples:
+        return jsonify({
+            'samples': 0,
+            'p50': 0, 'p95': 0, 'p99': 0, 'avg': 0, 'max': 0,
+            'error_rate': 0,
+            'recent': [],
+            'by_endpoint': [],
+        })
+
+    # window: only consider last 5 min for headline stats; recent for sparkline
+    import time as _t
+    now = _t.time()
+    window = [s for s in samples if (now - s.get('ts', 0)) <= 300]
+    if not window:
+        window = samples[-50:]
+
+    durations = sorted(s['duration_ms'] for s in window)
+    n = len(durations)
+    def pct(q):
+        idx = max(0, min(n - 1, int(n * q)))
+        return round(durations[idx], 1)
+    avg = round(sum(durations) / n, 1)
+    mx = round(durations[-1], 1)
+    errs = sum(1 for s in window if (s.get('status') or 0) >= 400 or s.get('status') == 0)
+
+    by_ep = {}
+    for s in window:
+        ep = s.get('endpoint') or '?'
+        e = by_ep.setdefault(ep, {'endpoint': ep, 'count': 0, 'total_ms': 0.0,
+                                   'max_ms': 0.0, 'errors': 0})
+        d = float(s.get('duration_ms') or 0)
+        e['count'] += 1
+        e['total_ms'] += d
+        if d > e['max_ms']:
+            e['max_ms'] = d
+        if (s.get('status') or 0) >= 400 or s.get('status') == 0:
+            e['errors'] += 1
+    by_ep_list = sorted(by_ep.values(), key=lambda x: -x['total_ms'])[:12]
+    for e in by_ep_list:
+        e['avg_ms'] = round(e['total_ms'] / e['count'], 1)
+        e['max_ms'] = round(e['max_ms'], 1)
+        e['total_ms'] = round(e['total_ms'], 1)
+
+    # last ~30 samples for sparkline
+    recent = [{'ts': s['ts'], 'duration_ms': round(s['duration_ms'], 1),
+               'status': s.get('status', 0), 'method': s.get('method', '?')}
+              for s in samples[-30:]]
+
+    return jsonify({
+        'samples': n,
+        'window_seconds': 300,
+        'p50': pct(0.5), 'p95': pct(0.95), 'p99': pct(0.99),
+        'avg': avg, 'max': mx,
+        'error_rate': round((errs / n) * 100.0, 1) if n else 0,
+        'recent': recent,
+        'by_endpoint': by_ep_list,
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/resources', methods=['GET'])
+@require_auth()
+def get_cluster_resources(cluster_id):
+    """Get cluster VM resources - filtered by VM ACLs
+    
+    NS: Dec 2025 - Now filters based on VM-specific ACLs
+    Admin sees all VMs, others see only VMs they have access to
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    if not mgr.is_connected:
+        return jsonify({'error': 'Cluster not connected', 'offline': True}), 503
+    
+    # get all resources — NS Jul 2026 (SSE-perf): reuse the 1s broadcast loop's
+    # fresh snapshot (max_age) instead of firing another /cluster/resources walk;
+    # this endpoint is polled 15s (selected) + 30s (overview) + per expanded sidebar
+    # cluster, so the same heavy walk was happening 2-3x per window per cluster.
+    all_resources = mgr.get_vm_resources(max_age=6)
+
+    # check if user is admin - admin sees everything
+    users = load_users()
+    user = users.get(request.session['user'], {})
+    user['username'] = request.session['user']
+
+    # NOTE (RBAC 2026-06-10): intentional admin data-scoping fast-path, NOT a gate to
+    # swap for a permission — vm.view / cluster.view are held by viewer+user too, so a
+    # perm check here would leak ALL VMs past the per-VM ACL filter below. Stays role-scoped.
+    if user.get('role') == ROLE_ADMIN:
+        return jsonify(all_resources)
+    
+    # LW: Filter VMs based on ACLs - only show VMs user can access
+    acls = get_vm_acls()
+    cluster_acls = acls.get(cluster_id, {})
+    
+    # if no ACLs defined for this cluster, check if user has general vm.view permission
+    if not cluster_acls:
+        if has_permission(user, 'vm.view'):
+            return jsonify(all_resources)
+        else:
+            return jsonify([])  # no vm.view permission and no ACLs
+    
+    # filter resources - show VMs user has ACL access to OR general vm.view permission
+    filtered = []
+    has_general_view = has_permission(user, 'vm.view')
+    
+    for vm in all_resources:
+        vmid = str(vm.get('vmid', ''))
+        vm_acl = cluster_acls.get(vmid, {})
+        
+        if vm_acl:
+            # VM has specific ACL - check if user is in whitelist
+            allowed_users = vm_acl.get('users', [])
+            if user['username'] in allowed_users or '*' in allowed_users:
+                filtered.append(vm)
+        elif has_general_view:
+            # No specific ACL but user has general view permission
+            filtered.append(vm)
+    
+    return jsonify(filtered)
+
+# NS: Feb 2026 - SECURITY: explicit allowlist prevents mass assignment attacks
+# Password/key changes must go through dedicated endpoints with their own auth
+# MK: also keeps 'sort_order' out because that was causing issues with drag-and-drop
+ALLOWED_CONFIG_FIELDS = {
+    'name', 'host', 'user', 'ssl_verification', 'migration_threshold', 'migration_tolerance',
+    'check_interval', 'auto_migrate', 'balance_containers', 'balance_local_disks',
+    'dry_run', 'enabled', 'ha_enabled', 'fallback_hosts', 'ssh_user', 'ssh_port',
+    'ha_settings', 'excluded_nodes',
+    'predictive_balancing', 'predictive_threshold',
+    'balance_cpu_weight', 'balance_mem_weight', 'balance_io_weight',
+    'cpu_baseline',
+    'vnc_tunnel',  # MK Apr 2026 — SSH-tunnel-mode for VNC console
+    'proxlb_tags_enabled',  # MK Jul 2026 (#426) — derive placement from ProxLB VM tags
+}
+
+@bp.route('/api/clusters/<cluster_id>', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def update_cluster_config(cluster_id):
+    """Update cluster configuration"""
+    # NS Jul 2026 (CodeAnt re-scan auth-bypass/IDOR) — cluster-scoped route was missing the tenant gate
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    data = request.json
+    mgr = cluster_managers[cluster_id]
+
+    # update config - only allowed fields
+    updated = []
+    for key, value in data.items():
+        if key in ALLOWED_CONFIG_FIELDS and hasattr(mgr.config, key):
+            old = getattr(mgr.config, key)
+            setattr(mgr.config, key, value)
+            updated.append(key)
+
+    save_config()
+
+    usr = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(usr, 'cluster.config_changed', f"Cluster {mgr.config.name} config updated: {', '.join(updated)}")
+
+    return jsonify({'message': 'Configuration updated successfully', 'updated_fields': updated})
+
+@bp.route('/api/clusters/<cluster_id>/config', methods=['PATCH'])
+@require_auth(perms=['cluster.config'])
+def update_cluster_config_live(cluster_id):
+    """Update cluster configuration without restart"""
+    # NS Jul 2026 (CodeAnt re-scan auth-bypass/IDOR) — cluster-scoped route was missing the tenant gate
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    data = request.json
+    mgr = cluster_managers[cluster_id]
+
+    updated = []
+    for key, value in data.items():
+        if key in ALLOWED_CONFIG_FIELDS and hasattr(mgr.config, key):
+            setattr(mgr.config, key, value)
+            updated.append(key)
+
+    save_config()
+
+    return jsonify({'message': 'Configuration updated successfully', 'updated_fields': updated})
+
+
+@bp.route('/api/clusters/<cluster_id>/cpu-compatibility', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_cpu_compatibility(cluster_id):
+    """CPU compatibility matrix for EVC-like migration safety"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    mgr = cluster_managers[cluster_id]
+    try:
+        matrix = mgr._get_cpu_compatibility_matrix()
+        return jsonify(matrix)
+    except Exception as e:
+        return jsonify({'error': safe_error(e)}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/predictive-analysis', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_predictive_analysis(cluster_id):
+    """Get predictive load analysis for all nodes"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    mgr = cluster_managers[cluster_id]
+    result = mgr.get_predictive_analysis()
+    return jsonify({
+        'nodes': result,
+        'enabled': getattr(mgr.config, 'predictive_balancing', False),
+        'threshold': getattr(mgr.config, 'predictive_threshold', 75),
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-nodes', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_excluded_nodes(cluster_id):
+    """Get list of nodes excluded from balancing
+    
+    NS: Feature request - allow excluding specific nodes from VM balancing
+    Similar to ProxLB's exclude hosts feature
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    excluded = getattr(mgr.config, 'excluded_nodes', []) or []
+    
+    return jsonify({
+        'excluded_nodes': excluded,
+        'cluster_id': cluster_id
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-nodes', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def set_excluded_nodes(cluster_id):
+    """Set list of nodes excluded from balancing
+    
+    NS: Feature request - allow excluding specific nodes from VM balancing
+    Request body: { "excluded_nodes": ["node1", "node2"] }
+    
+    Excluded nodes will:
+    - NOT be targets for automatic VM balancing
+    - NOT be targets for balancing-related live migrations
+    - NOT be included in balancing score calculations
+    
+    Note: Manual migrations TO excluded nodes are still allowed
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    data = request.get_json() or {}
+    excluded_nodes = data.get('excluded_nodes', [])
+    
+    # Validate it's a list of strings
+    if not isinstance(excluded_nodes, list):
+        return jsonify({'error': 'excluded_nodes must be a list'}), 400
+    
+    excluded_nodes = [str(n) for n in excluded_nodes]  # Ensure strings
+    
+    mgr = cluster_managers[cluster_id]
+    mgr.config.excluded_nodes = excluded_nodes
+    
+    # Save to database
+    try:
+        db = get_db()
+        cursor = db.conn.cursor()
+        cursor.execute(
+            'UPDATE clusters SET excluded_nodes = ? WHERE id = ?',
+            (json.dumps(excluded_nodes), cluster_id)
+        )
+        db.conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to save excluded_nodes: {e}")
+        return jsonify({'error': safe_error(e, 'Database operation failed')}), 500
+    
+    log_audit(request.session['user'], 'cluster.excluded_nodes_changed', 
+              f"Cluster {mgr.config.name}: excluded nodes set to {excluded_nodes}")
+    
+    return jsonify({
+        'success': True,
+        'excluded_nodes': excluded_nodes,
+        'message': f'{len(excluded_nodes)} node(s) excluded from balancing'
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-nodes/<node>', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def add_excluded_node(cluster_id, node):
+    """Add a single node to the exclusion list"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    excluded = getattr(mgr.config, 'excluded_nodes', []) or []
+    
+    if node not in excluded:
+        excluded.append(node)
+        mgr.config.excluded_nodes = excluded
+        
+        # Save to database
+        try:
+            db = get_db()
+            cursor = db.conn.cursor()
+            cursor.execute(
+                'UPDATE clusters SET excluded_nodes = ? WHERE id = ?',
+                (json.dumps(excluded), cluster_id)
+            )
+            db.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to save excluded_nodes: {e}")
+            return jsonify({'error': safe_error(e, 'Database operation failed')}), 500
+        
+        log_audit(request.session['user'], 'cluster.node_excluded', 
+                  f"Node {node} excluded from balancing in cluster {mgr.config.name}")
+    
+    return jsonify({
+        'success': True,
+        'excluded_nodes': excluded,
+        'message': f'Node {node} excluded from balancing'
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-nodes/<node>', methods=['DELETE'])
+@require_auth(perms=['cluster.config'])
+def remove_excluded_node(cluster_id, node):
+    """Remove a node from the exclusion list"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    excluded = getattr(mgr.config, 'excluded_nodes', []) or []
+    
+    if node in excluded:
+        excluded.remove(node)
+        mgr.config.excluded_nodes = excluded
+        
+        # Save to database
+        try:
+            db = get_db()
+            cursor = db.conn.cursor()
+            cursor.execute(
+                'UPDATE clusters SET excluded_nodes = ? WHERE id = ?',
+                (json.dumps(excluded), cluster_id)
+            )
+            db.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to save excluded_nodes: {e}")
+            return jsonify({'error': safe_error(e, 'Database operation failed')}), 500
+        
+        log_audit(request.session['user'], 'cluster.node_included', 
+                  f"Node {node} re-included in balancing for cluster {mgr.config.name}")
+    
+    return jsonify({
+        'success': True,
+        'excluded_nodes': excluded,
+        'message': f'Node {node} re-included in balancing'
+    })
+
+
+# ============================================
+# Excluded VMs from Balancing API
+# MK: VMs that should not be auto-migrated
+# ============================================
+
+@bp.route('/api/clusters/<cluster_id>/excluded-vms', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_excluded_vms(cluster_id):
+    """Get list of VMs excluded from load balancing"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    try:
+        db = get_db()
+        cursor = db.conn.cursor()
+        
+        # MK: Ensure table exists (migration for existing databases)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS balancing_excluded_vms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cluster_id TEXT NOT NULL,
+                vmid INTEGER NOT NULL,
+                reason TEXT,
+                created_by TEXT,
+                created_at TEXT,
+                UNIQUE(cluster_id, vmid)
+            )
+        ''')
+        
+        cursor.execute(
+            'SELECT vmid, reason, created_by, created_at FROM balancing_excluded_vms WHERE cluster_id = ?',
+            (cluster_id,)
+        )
+        excluded = []
+        for row in cursor.fetchall():
+            excluded.append({
+                'vmid': row['vmid'],
+                'reason': row['reason'],
+                'created_by': row['created_by'],
+                'created_at': row['created_at']
+            })
+        
+        # Get VM names for display
+        vms = mgr.get_vm_resources() if mgr.is_connected else []
+        vm_names = {vm['vmid']: vm.get('name', f"VM {vm['vmid']}") for vm in vms if vm.get('vmid')}
+        
+        for ex in excluded:
+            ex['name'] = vm_names.get(ex['vmid'], f"VM {ex['vmid']}")
+        
+        return jsonify({
+            'excluded_vms': excluded,
+            'cluster_id': cluster_id
+        })
+    except Exception as e:
+        logging.error(f"Error getting excluded VMs: {e}")
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-vms/<int:vmid>', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def add_excluded_vm(cluster_id, vmid):
+    """Add a VM to the exclusion list for load balancing"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    data = request.json or {}
+    reason = data.get('reason', 'Manually excluded')
+    user = request.session.get('user', 'system')
+    
+    if mgr.set_vm_balancing_excluded(vmid, True, reason, user):
+        log_audit(user, 'cluster.vm_excluded', 
+                  f"VM {vmid} excluded from balancing for cluster {mgr.config.name} (reason: {reason})")
+        return jsonify({
+            'success': True,
+            'vmid': vmid,
+            'message': f'VM {vmid} excluded from balancing'
+        })
+    else:
+        return jsonify({'error': 'Failed to exclude VM'}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-vms/<int:vmid>', methods=['DELETE'])
+@require_auth(perms=['cluster.config'])
+def remove_excluded_vm(cluster_id, vmid):
+    """Remove a VM from the exclusion list"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    user = request.session.get('user', 'system')
+    
+    if mgr.set_vm_balancing_excluded(vmid, False, user=user):
+        log_audit(user, 'cluster.vm_included', 
+                  f"VM {vmid} re-included in balancing for cluster {mgr.config.name}")
+        return jsonify({
+            'success': True,
+            'vmid': vmid,
+            'message': f'VM {vmid} re-included in balancing'
+        })
+    else:
+        return jsonify({'error': 'Failed to include VM'}), 500
+
+
+# NS: Pool exclusion from auto-balancing
+@bp.route('/api/clusters/<cluster_id>/excluded-pools', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_excluded_pools(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    mgr = cluster_managers.get(cluster_id)
+    if not mgr: return jsonify({'error': 'Cluster not found'}), 404
+    pools = mgr.get_balancing_excluded_pools()
+    # get details from DB
+    db = get_db()
+    rows = db.query('SELECT pool_name, reason, created_by, created_at FROM balancing_excluded_pools WHERE cluster_id = ?', (cluster_id,)) or []
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-pools/<pool_name>', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def exclude_pool(cluster_id, pool_name):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    mgr = cluster_managers.get(cluster_id)
+    if not mgr: return jsonify({'error': 'Cluster not found'}), 404
+    data = request.json or {}
+    user = getattr(request, 'session', {}).get('user', 'system')
+    reason = data.get('reason', 'Manually excluded')
+    if mgr.set_pool_balancing_excluded(pool_name, True, reason, user):
+        log_audit(user, 'cluster.pool_excluded', f"Pool '{pool_name}' excluded from balancing")
+        return jsonify({'success': True, 'message': f"Pool '{pool_name}' excluded"})
+    return jsonify({'error': 'Failed'}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/excluded-pools/<pool_name>', methods=['DELETE'])
+@require_auth(perms=['cluster.config'])
+def include_pool(cluster_id, pool_name):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    mgr = cluster_managers.get(cluster_id)
+    if not mgr: return jsonify({'error': 'Cluster not found'}), 404
+    user = getattr(request, 'session', {}).get('user', 'system')
+    if mgr.set_pool_balancing_excluded(pool_name, False, user=user):
+        log_audit(user, 'cluster.pool_included', f"Pool '{pool_name}' re-included in balancing")
+        return jsonify({'success': True, 'message': f"Pool '{pool_name}' included"})
+    return jsonify({'error': 'Failed'}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/fallback-hosts', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_fallback_hosts(cluster_id):
+    """Get list of fallback hosts for HA"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    fallback = getattr(mgr.config, 'fallback_hosts', []) or []
+    
+    return jsonify({
+        'fallback_hosts': fallback,
+        'cluster_id': cluster_id
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/fallback-hosts', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def set_fallback_hosts(cluster_id):
+    """Set list of fallback hosts for HA
+    
+    Request body: { "fallback_hosts": ["192.168.1.2", "192.168.1.3"] }
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    data = request.get_json() or {}
+    fallback_hosts = data.get('fallback_hosts', [])
+    
+    if not isinstance(fallback_hosts, list):
+        return jsonify({'error': 'fallback_hosts must be a list'}), 400
+    
+    fallback_hosts = [str(h) for h in fallback_hosts if h]
+    
+    mgr = cluster_managers[cluster_id]
+    mgr.config.fallback_hosts = fallback_hosts
+    
+    # Save to database
+    try:
+        db = get_db()
+        cursor = db.conn.cursor()
+        cursor.execute(
+            'UPDATE clusters SET fallback_hosts = ? WHERE id = ?',
+            (json.dumps(fallback_hosts), cluster_id)
+        )
+        db.conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to save fallback_hosts: {e}")
+        return jsonify({'error': safe_error(e, 'Database operation failed')}), 500
+    
+    log_audit(request.session['user'], 'cluster.fallback_hosts_changed', 
+              f"Cluster {mgr.config.name}: fallback hosts set to {fallback_hosts}")
+    
+    return jsonify({
+        'success': True,
+        'fallback_hosts': fallback_hosts,
+        'message': f'{len(fallback_hosts)} fallback host(s) configured'
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/migrations', methods=['GET'])
+@require_auth(perms=['vm.view'])
+def get_migration_log(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    return jsonify(cluster_managers[cluster_id].last_migration_log)
+
+
+@bp.route('/api/clusters/<cluster_id>/tasks', methods=['GET'])
+@require_auth(perms=['cluster.view'])
+def get_cluster_tasks(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    if not mgr.is_connected:
+        return jsonify([])
+    
+    limit = request.args.get('limit', 50, type=int)
+    return jsonify(mgr.get_tasks(limit=limit))
+
+
+# MK May 2026 — Backup SLA tracking. For each VM/CT in the cluster, find the
+# most recent backup across all backup-capable storages (vzdump on local/NFS/etc.
+# + PBS via the matching pbs_managers entry if any). Compare age vs the
+# configured cluster setting `backup_sla_max_age_hours`. Status:
+#   ok        — last backup within 80% of the threshold
+#   warning   — between 80% and 100% (approaching breach)
+#   breached  — past the threshold
+#   no-backup — never backed up
+#   disabled  — SLA tracking is off for this cluster
+@bp.route('/api/clusters/<cluster_id>/backup-sla', methods=['GET'])
+@require_auth(perms=['backup.view'])
+def get_backup_sla(cluster_id):
+    import time
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    mgr = cluster_managers[cluster_id]
+    if not mgr.is_connected:
+        return jsonify({'enabled': False, 'error': 'cluster offline'}), 503
+
+    max_age = int(getattr(mgr.config, 'backup_sla_max_age_hours', 0) or 0)
+    # allow override via query for ad-hoc inspection without saving the setting
+    try:
+        override = int(request.args.get('max_age_hours', 0))
+        if override > 0:
+            max_age = override
+    except (TypeError, ValueError):
+        pass
+
+    now = int(time.time())
+    max_age_seconds = max_age * 3600
+    warn_at = int(max_age_seconds * 0.8) if max_age else 0
+
+    # 1) gather VMs from cluster
+    try:
+        vms = mgr.get_vm_resources() or []
+    except Exception as e:
+        return jsonify({'error': f'failed to enumerate VMs: {e}'}), 502
+
+    # 2) most-recent backup ts per (vmtype, vmid) across local backup storages
+    last_backup = {}  # (type, vmid) -> {'ts': int, 'source': 'local|pbs', 'volid': str}
+    try:
+        host, port = mgr.host, mgr.api_port
+        sess = mgr._create_session()
+        # discover unique nodes
+        nodes_resp = sess.get(f"https://{host}:{port}/api2/json/nodes", timeout=10)
+        nodes = [n['node'] for n in (nodes_resp.json().get('data') or []) if n.get('status') == 'online'] if nodes_resp.status_code == 200 else []
+        seen_storages = set()
+        for node in nodes:
+            try:
+                stor_resp = sess.get(f"https://{host}:{port}/api2/json/nodes/{node}/storage", timeout=10)
+                if stor_resp.status_code != 200:
+                    continue
+                for st in stor_resp.json().get('data') or []:
+                    if 'backup' not in (st.get('content') or ''):
+                        continue
+                    sname = st.get('storage')
+                    if not sname or (node, sname) in seen_storages:
+                        continue
+                    seen_storages.add((node, sname))
+                    try:
+                        c_resp = sess.get(
+                            f"https://{host}:{port}/api2/json/nodes/{node}/storage/{sname}/content",
+                            params={'content': 'backup'}, timeout=(5, 30))
+                    except Exception:
+                        continue
+                    if c_resp.status_code != 200:
+                        continue
+                    for item in c_resp.json().get('data') or []:
+                        ts = int(item.get('ctime') or 0)
+                        if not ts:
+                            continue
+                        vmid = str(item.get('vmid') or '')
+                        if not vmid:
+                            continue
+                        # vmtype from volid prefix: "vzdump-qemu-100..." or "vzdump-lxc-..."
+                        volid = item.get('volid') or ''
+                        if 'qemu' in volid:
+                            vt = 'qemu'
+                        elif 'lxc' in volid or 'openvz' in volid:
+                            vt = 'lxc'
+                        else:
+                            # PBS volids: "<store>:backup/<type>/<id>/<time>"
+                            after = volid.split('backup/', 1)[1] if 'backup/' in volid else ''
+                            vt = 'qemu' if after.startswith('vm/') else 'lxc' if after.startswith('ct/') else ''
+                        if not vt:
+                            continue
+                        key = (vt, vmid)
+                        prev = last_backup.get(key)
+                        if not prev or ts > prev['ts']:
+                            last_backup[key] = {'ts': ts, 'source': 'pbs' if 'pbs' in (st.get('type') or '').lower() else 'local', 'volid': volid}
+            except Exception:
+                continue
+    except Exception as e:
+        logging.warning(f"[BACKUP_SLA] storage scan failed for {cluster_id}: {e}")
+
+    # 3) evaluate per VM
+    out_vms = []
+    counts = {'ok': 0, 'warning': 0, 'breached': 0, 'no_backup': 0, 'disabled': 0}
+    for r in vms:
+        rtype = r.get('type')
+        if rtype not in ('qemu', 'lxc'):
+            continue
+        vmid = str(r.get('vmid', ''))
+        info = last_backup.get((rtype, vmid))
+        ts = info['ts'] if info else 0
+        age_h = round((now - ts) / 3600, 1) if ts else None
+
+        if max_age == 0:
+            status = 'disabled'
+        elif not ts:
+            status = 'no-backup'
+        else:
+            age_s = now - ts
+            if age_s >= max_age_seconds:
+                status = 'breached'
+            elif age_s >= warn_at:
+                status = 'warning'
+            else:
+                status = 'ok'
+        counts[status.replace('-', '_')] = counts.get(status.replace('-', '_'), 0) + 1
+        out_vms.append({
+            'vmid': vmid,
+            'type': 'vm' if rtype == 'qemu' else 'ct',
+            'name': r.get('name', ''),
+            'node': r.get('node', ''),
+            'status': r.get('status', ''),
+            'last_backup_ts': ts,
+            'age_hours': age_h,
+            'sla_status': status,
+            'backup_source': info['source'] if info else None,
+        })
+
+    # sort: breached > no-backup > warning > ok > disabled, then by age desc
+    rank = {'breached': 0, 'no-backup': 1, 'warning': 2, 'ok': 3, 'disabled': 4}
+    out_vms.sort(key=lambda v: (rank.get(v['sla_status'], 5), -(v['age_hours'] or 0)))
+
+    total = len(out_vms)
+    measurable = total - counts.get('disabled', 0)
+    pct = round(100 * counts.get('ok', 0) / measurable, 1) if measurable else None
+
+    return jsonify({
+        'enabled': max_age > 0,
+        'max_age_hours': max_age,
+        'now': now,
+        'cluster_id': cluster_id,
+        'summary': {
+            'total': total,
+            'ok': counts.get('ok', 0),
+            'warning': counts.get('warning', 0),
+            'breached': counts.get('breached', 0),
+            'no_backup': counts.get('no_backup', 0),
+            'disabled': counts.get('disabled', 0),
+            'compliance_pct': pct,
+        },
+        'vms': out_vms,
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/backup-sla/config', methods=['PUT'])
+@require_auth(perms=['cluster.config'])
+def set_backup_sla_config(cluster_id):
+    """Update the cluster-level Backup SLA target. Body: {max_age_hours: int}."""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        v = int(data.get('max_age_hours', 0) or 0)
+        if v < 0 or v > 24 * 365:
+            return jsonify({'error': 'max_age_hours must be 0..8760'}), 400
+    except (TypeError, ValueError):
+        return jsonify({'error': 'max_age_hours must be int'}), 400
+    mgr = cluster_managers[cluster_id]
+    mgr.config.backup_sla_max_age_hours = v
+    try:
+        from pegaprox.core.config import save_config
+        save_config()
+    except Exception as e:
+        return jsonify({'error': f'persist failed: {e}'}), 500
+    log_audit(request.session.get('user', 'admin'),
+              'cluster.backup_sla_set',
+              f'cluster={cluster_id} max_age_hours={v}')
+    return jsonify({'ok': True, 'max_age_hours': v})
+
+
+@bp.route('/api/clusters/<cluster_id>/nodes/<node>/tasks/<path:upid>', methods=['DELETE'])
+@require_auth(perms=['vm.stop'])  # cancelling task is like stopping
+def cancel_task(cluster_id, node, upid):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    try:
+        result = mgr.stop_task(node, upid)
+        if result:
+            # Log the action
+            log_audit(
+                request.session.get('user', 'system'),
+                'task.cancelled',
+                f'Task {upid} on {node}',
+                request.remote_addr,
+                cluster=mgr.config.name
+            )
+            return jsonify({'success': True, 'message': 'Task cancelled'})
+        else:
+            return jsonify({'error': 'Failed to cancel task'}), 500
+    except Exception as e:
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+
+# High Availability (HA) API Routes
+@bp.route('/api/clusters/<cluster_id>/ha', methods=['GET'])
+@require_auth(perms=['ha.view'])
+def get_ha_status(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    return jsonify(cluster_managers[cluster_id].get_ha_status())
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/status', methods=['GET'])
+@require_auth(perms=['ha.view'])
+def get_ha_status_detailed(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    return jsonify(cluster_managers[cluster_id].get_ha_status())
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/enable', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def enable_ha(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    mgr.start_ha_monitor()
+    mgr.config.ha_enabled = True
+    save_config()
+    
+    usr = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(usr, 'ha.enabled', f"HA enabled for cluster {mgr.config.name}", cluster=mgr.config.name)
+    
+    return jsonify({
+        'message': 'High Availability aktiviert',
+        'status': mgr.get_ha_status()
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/disable', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def disable_ha(cluster_id):
+    # MK 2026-06-03 (Nico-reported HOCHGEFÄHRLICH bug): pre-fix this endpoint
+    # only flipped `ha_enabled = False` and stopped the server-side monitor —
+    # it never ran the SSH-side uninstaller for the agents that were deployed
+    # to every cluster node during `_ha_install_*_on_all_nodes`. Both shapes
+    # of agent (self-fence + node-agent/poison-pill) share `pegaprox-agent.
+    # service` + `/usr/local/bin/pegaprox-agent.sh`, so an orphaned systemd
+    # service kept running on the nodes silently. UI then claimed "HA off",
+    # admin rebooted a node thinking it was safe, the orphan agent on that
+    # node and/or its peers reached their ping-isolation threshold (15s),
+    # called `stop_all_vms` locally, and the cluster lost every running VM.
+    # `disable_ha` now actually tears down the systemd service + binary +
+    # storage-heartbeat dir on every reachable node before flipping the flag.
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    mgr = cluster_managers[cluster_id]
+
+    # Stop the server-side monitor first so it can't queue any
+    # recovery actions while we're tearing down the on-node agents.
+    mgr.stop_ha_monitor()
+
+    # SSH-uninstall on every reachable node. The existing
+    # `_ha_uninstall_self_fence_on_all_nodes` removes both agent shapes
+    # because they share `pegaprox-agent.service` + the binary path.
+    uninstall_results = {}
+    try:
+        uninstall_results = mgr._ha_uninstall_self_fence_on_all_nodes() or {}
+    except Exception as e:
+        logging.error(f"[HA disable] agent teardown failed: {e}")
+
+    # Best-effort cleanup of the storage-heartbeat `.pegaprox` dir so
+    # stale `poison_<node>` / `heartbeat_<node>` files don't survive into
+    # the next HA-enable cycle and trip the node-agent on first install.
+    storage_cleanup = None
+    try:
+        if hasattr(mgr, '_ha_cleanup_storage_heartbeat'):
+            storage_cleanup = mgr._ha_cleanup_storage_heartbeat()
+    except Exception as e:
+        logging.warning(f"[HA disable] storage heartbeat cleanup: {e}")
+
+    # Flip the flag + clear in-memory ha_config bookkeeping last so the
+    # state we report back to the UI matches what's actually on disk.
+    mgr.config.ha_enabled = False
+    if isinstance(mgr.ha_config.get('node_agent_installed'), dict):
+        mgr.ha_config['node_agent_installed'] = {}
+    save_config()
+
+    nodes_ok = sum(1 for v in uninstall_results.values() if v)
+    nodes_total = len(uninstall_results)
+    nodes_failed = sorted([n for n, ok in uninstall_results.items() if not ok])
+
+    user = getattr(request, 'session', {}).get('user', 'system')
+    audit_detail = (f"HA disabled for cluster {mgr.config.name} — "
+                    f"agents removed from {nodes_ok}/{nodes_total} nodes")
+    if nodes_failed:
+        audit_detail += f" (teardown FAILED on: {', '.join(nodes_failed)} — manual cleanup required)"
+    log_audit(user, 'ha.disabled', audit_detail, cluster=mgr.config.name)
+
+    return jsonify({
+        'message': 'HA disabled',
+        'agents_uninstalled': nodes_ok,
+        'agents_total': nodes_total,
+        'agents_failed': nodes_failed,
+        'storage_cleanup': storage_cleanup,
+        'status': mgr.get_ha_status(),
+        'warning': (
+            f"Could not tear down agents on {len(nodes_failed)} node(s): "
+            f"{', '.join(nodes_failed)}. SSH to those nodes manually and run "
+            f"`systemctl disable --now pegaprox-agent.service && "
+            f"rm -f /usr/local/bin/pegaprox-agent.sh "
+            f"/etc/systemd/system/pegaprox-agent.service && systemctl daemon-reload`"
+        ) if nodes_failed else None,
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/config', methods=['PUT'])
+@require_auth(perms=['ha.config'])
+def update_ha_config(cluster_id):
+    """Update HA configuration including split-brain prevention settings"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    manager = cluster_managers[cluster_id]
+    data = request.json or {}
+    
+    # Update HA config
+    if 'quorum_enabled' in data:
+        manager.ha_config['quorum_enabled'] = data['quorum_enabled']
+    if 'quorum_hosts' in data:
+        manager.ha_config['quorum_hosts'] = data['quorum_hosts']
+    if 'quorum_gateway' in data:
+        manager.ha_config['quorum_gateway'] = data['quorum_gateway']
+    if 'quorum_required_votes' in data:
+        manager.ha_config['quorum_required_votes'] = data['quorum_required_votes']
+    if 'self_fence_enabled' in data:
+        manager.ha_config['self_fence_enabled'] = data['self_fence_enabled']
+    if 'watchdog_enabled' in data:
+        manager.ha_config['watchdog_enabled'] = data['watchdog_enabled']
+    if 'verify_network' in data:
+        manager.ha_config['verify_network_before_recovery'] = data['verify_network']
+    if 'recovery_delay' in data:
+        manager.ha_config['recovery_delay'] = data['recovery_delay']
+    if 'failure_threshold' in data:
+        manager.ha_failure_threshold = data['failure_threshold']
+    
+    # 2-Node Cluster Mode - NS Jan 2026
+    if 'two_node_mode' in data:
+        manager.ha_config['two_node_mode'] = data['two_node_mode']
+    if 'force_quorum_on_failure' in data:
+        manager.ha_config['force_quorum_on_failure'] = data['force_quorum_on_failure']
+    
+    # Storage-based Split-Brain Protection - NS Jan 2026
+    if 'storage_heartbeat_enabled' in data:
+        manager.ha_config['storage_heartbeat_enabled'] = data['storage_heartbeat_enabled']
+    
+    if 'storage_heartbeat_path' in data:
+        manager.ha_config['storage_heartbeat_path'] = data['storage_heartbeat_path']
+        
+        # Auto-enable storage heartbeat when path is provided
+        if data['storage_heartbeat_path']:
+            manager.ha_config['storage_heartbeat_enabled'] = True
+            manager.ha_config['dual_network_mode'] = True
+            
+            # Auto-install node agents when storage path is configured
+            def install_agents():
+                try:
+                    manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+                    manager.logger.info("[HA] AUTO-INSTALLING NODE AGENTS FOR STORAGE HEARTBEAT")
+                    manager.logger.info(f"[HA] Storage path: {_sl(data['storage_heartbeat_path'])}")
+                    manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+                    results = manager._ha_install_agents_on_all_nodes()
+                    success_count = sum(1 for v in results.values() if v)
+                    manager.logger.info(f"[HA] ✓ Agent installation complete: {success_count}/{len(results)} nodes")
+                except Exception as e:
+                    manager.logger.error(f"[HA] ✗ Agent installation failed: {e}")
+            
+            threading.Thread(target=install_agents, daemon=True).start()
+    
+    if 'storage_heartbeat_timeout' in data:
+        manager.ha_config['storage_heartbeat_timeout'] = data['storage_heartbeat_timeout']
+    if 'poison_pill_enabled' in data:
+        manager.ha_config['poison_pill_enabled'] = data['poison_pill_enabled']
+    if 'strict_fencing' in data:
+        manager.ha_config['strict_fencing'] = data['strict_fencing']
+
+    # PegaProx VM auto-recovery - LW Mar 2026
+    old_pegaprox_vmid = manager.ha_config.get('pegaprox_vmid', '')
+    if 'pegaprox_vmid' in data:
+        manager.ha_config['pegaprox_vmid'] = data['pegaprox_vmid']
+    
+    # Enable/disable HA if specified
+    if 'enabled' in data:
+        if data['enabled'] and not manager.ha_enabled:
+            manager.start_ha_monitor()
+        elif not data['enabled'] and manager.ha_enabled:
+            manager.stop_ha_monitor()
+    
+    # Save to config
+    # Store HA settings in cluster config for persistence
+    if not hasattr(manager.config, 'ha_settings'):
+        manager.config.ha_settings = {}
+    
+    manager.config.ha_settings = {
+        'quorum_enabled': manager.ha_config.get('quorum_enabled', True),
+        'quorum_hosts': manager.ha_config.get('quorum_hosts', []),
+        'quorum_gateway': manager.ha_config.get('quorum_gateway', ''),
+        'quorum_required_votes': manager.ha_config.get('quorum_required_votes', 2),
+        'self_fence_enabled': manager.ha_config.get('self_fence_enabled', True),
+        'watchdog_enabled': manager.ha_config.get('watchdog_enabled', False),
+        'verify_network': manager.ha_config.get('verify_network_before_recovery', True),
+        'recovery_delay': manager.ha_config.get('recovery_delay', 30),
+        'failure_threshold': manager.ha_failure_threshold,
+        # 2-Node Cluster Mode
+        'two_node_mode': manager.ha_config.get('two_node_mode', False),
+        'force_quorum_on_failure': manager.ha_config.get('force_quorum_on_failure', False),
+        # Storage-based Split-Brain Protection - NS Jan 2026
+        'storage_heartbeat_enabled': manager.ha_config.get('storage_heartbeat_enabled', False),
+        'storage_heartbeat_path': manager.ha_config.get('storage_heartbeat_path', ''),
+        'storage_heartbeat_timeout': manager.ha_config.get('storage_heartbeat_timeout', 30),
+        'poison_pill_enabled': manager.ha_config.get('poison_pill_enabled', True),
+        'strict_fencing': manager.ha_config.get('strict_fencing', False),
+        'pegaprox_vmid': manager.ha_config.get('pegaprox_vmid', ''),
+    }
+    
+    save_config()
+
+    # re-deploy self-fence agents if pegaprox_vmid changed
+    new_pegaprox_vmid = manager.ha_config.get('pegaprox_vmid', '')
+    if 'pegaprox_vmid' in data and str(old_pegaprox_vmid) != str(new_pegaprox_vmid) and manager.ha_config.get('self_fence_installed'):
+        def _reinstall():
+            try:
+                manager.logger.info(f"[HA] pegaprox_vmid changed ({old_pegaprox_vmid} -> {new_pegaprox_vmid}), re-deploying agents")
+                results = manager._ha_install_self_fence_on_all_nodes()
+                ok = sum(1 for v in results.values() if v)
+                manager.logger.info(f"[HA] agent redeploy: {ok}/{len(results)} nodes")
+                manager.ha_config['self_fence_nodes'] = [k for k, v in results.items() if v]
+                _save_ha_config_to_db(cluster_id, manager)
+            except Exception as e:
+                manager.logger.error(f"[HA] agent redeploy failed: {e}")
+        # MK May 2026 (#371) — removed local `import threading`, the module-level
+        # one at top of file is enough. Local re-import made `threading` a local
+        # for the whole function and broke the earlier ref in the storage-heartbeat
+        # branch with UnboundLocalError before save_config could even run.
+        threading.Thread(target=_reinstall, daemon=True).start()
+
+    user = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(user, 'ha.config_updated', f"HA configuration updated for cluster {manager.config.name}", cluster=manager.config.name)
+
+    return jsonify({
+        'message': 'HA-Konfiguration gespeichert',
+        'status': manager.get_ha_status()
+    })
+
+
+def _save_ha_config_to_db(cluster_id: str, manager):
+    """Helper to persist ha_config changes to database
+    
+    NS: Called after self-fence install/uninstall so status survives restart
+    """
+    try:
+        db = get_db()
+        cluster = db.get_cluster(cluster_id)
+        if cluster:
+            # Update ha_settings with current ha_config
+            ha_settings = cluster.get('ha_settings', {})
+            ha_settings['self_fence_installed'] = manager.ha_config.get('self_fence_installed', False)
+            ha_settings['self_fence_nodes'] = manager.ha_config.get('self_fence_nodes', [])
+            ha_settings['node_agent_installed'] = manager.ha_config.get('node_agent_installed', {})
+            ha_settings['pegaprox_vmid'] = manager.ha_config.get('pegaprox_vmid', '')
+            cluster['ha_settings'] = ha_settings
+            db.save_cluster(cluster_id, cluster)
+            logging.info(f"[HA] Persisted ha_config to database for {cluster_id}")
+    except Exception as e:
+        logging.error(f"[HA] Failed to persist ha_config: {e}")
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/install-self-fence', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def install_self_fence_agent(cluster_id):
+    """Install self-fence agent on all cluster nodes"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    manager = cluster_managers[cluster_id]
+    
+    # Run installation in background
+    def do_install():
+        try:
+            manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+            manager.logger.info("[HA] INSTALLING SELF-FENCE AGENTS ON ALL NODES")
+            manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+            results = manager._ha_install_self_fence_on_all_nodes()
+            success_count = sum(1 for v in results.values() if v)
+            manager.logger.info(f"[HA] ✓ Self-fence installation complete: {success_count}/{len(results)} nodes")
+            
+            # Store installation status
+            manager.ha_config['self_fence_installed'] = success_count > 0
+            manager.ha_config['self_fence_nodes'] = [k for k, v in results.items() if v]
+            
+            # NS: Persist to database so it survives restart
+            _save_ha_config_to_db(cluster_id, manager)
+        except Exception as e:
+            manager.logger.error(f"[HA] ✗ Self-fence installation failed: {e}")
+    
+    threading.Thread(target=do_install, daemon=True).start()
+    
+    user = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(user, 'ha.self_fence_install', f"Self-fence agent installation started for cluster {manager.config.name}", cluster=manager.config.name)
+    
+    return jsonify({
+        'message': 'Self-fence agent installation started',
+        'status': 'installing'
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/ha/uninstall-self-fence', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def uninstall_self_fence_agent(cluster_id):
+    """Uninstall self-fence agent from all cluster nodes"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    manager = cluster_managers[cluster_id]
+    
+    # Run uninstallation in background
+    def do_uninstall():
+        try:
+            manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+            manager.logger.info("[HA] UNINSTALLING SELF-FENCE AGENTS FROM ALL NODES")
+            manager.logger.info("[HA] ═══════════════════════════════════════════════════════")
+            results = manager._ha_uninstall_self_fence_on_all_nodes()
+            success_count = sum(1 for v in results.values() if v)
+            manager.logger.info(f"[HA] ✓ Self-fence uninstallation complete: {success_count}/{len(results)} nodes")
+            
+            # Update status
+            manager.ha_config['self_fence_installed'] = False
+            manager.ha_config['self_fence_nodes'] = []
+            
+            # NS: Persist to database
+            _save_ha_config_to_db(cluster_id, manager)
+        except Exception as e:
+            manager.logger.error(f"[HA] ✗ Self-fence uninstallation failed: {e}")
+    
+    threading.Thread(target=do_uninstall, daemon=True).start()
+    
+    user = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(user, 'ha.self_fence_uninstall', f"Self-fence agent uninstallation started for cluster {manager.config.name}", cluster=manager.config.name)
+    
+    return jsonify({
+        'message': 'Self-fence agent uninstallation started',
+        'status': 'uninstalling'
+    })
+
+
+@bp.route('/api/clusters/<cluster_id>/ha', methods=['PUT'])
+@require_auth(perms=['ha.config'])
+def set_ha_status(cluster_id):
+    """Enable or disable HA for a cluster (legacy endpoint)"""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    manager = cluster_managers[cluster_id]
+    data = request.json or {}
+    enable = data.get('enable', True)
+    
+    if enable:
+        manager.start_ha_monitor()
+        manager.config.ha_enabled = True
+        save_config()
+        # Audit log
+        user = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(user, 'ha.enabled', f"High Availability enabled for cluster {manager.config.name}", cluster=manager.config.name)
+        return jsonify({
+            'message': 'High Availability aktiviert',
+            'status': manager.get_ha_status()
+        })
+    else:
+        manager.stop_ha_monitor()
+        manager.config.ha_enabled = False
+        save_config()
+        # Audit log
+        user = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(user, 'ha.disabled', f"High Availability disabled for cluster {manager.config.name}", cluster=manager.config.name)
+        return jsonify({
+            'message': 'High Availability disabled',
+            'status': manager.get_ha_status()
+        })
+
+
+# Proxmox Native HA API Routes
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/resources', methods=['GET'])
+@require_auth(perms=['ha.view'])
+def get_proxmox_ha_resources(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    return jsonify(cluster_managers[cluster_id].get_proxmox_ha_resources())
+
+
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/groups', methods=['GET'])
+@require_auth(perms=['ha.view'])
+def get_proxmox_ha_groups(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    return jsonify(cluster_managers[cluster_id].get_proxmox_ha_groups())
+
+
+# MK: Create HA Group
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/groups', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def create_proxmox_ha_group(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    manager, error = get_connected_manager(cluster_id)
+    if error:
+        return error
+    
+    data = request.json or {}
+    group_name = data.get('group')
+    nodes = data.get('nodes')
+    
+    if not group_name or not nodes:
+        return jsonify({'error': 'group and nodes required'}), 400
+    
+    try:
+        host, port = manager.host, manager.api_port
+        # MK May 2026 — PVE 9.1.x replaced /cluster/ha/groups with /cluster/ha/rules.
+        # Try rules-shape POST first (translated from group fields). On 404/501
+        # fall back to the legacy groups endpoint for PVE 8.x.
+        rules_payload = {
+            'rule': group_name,
+            'type': 'node-affinity',
+            'nodes': nodes,
+            # /rules requires non-empty resources. Caller can specify them
+            # via 'resources' on the request body; otherwise PegaProx passes
+            # whatever the resource picker collected.  If empty PVE will
+            # reject with a clear message, which we surface to the user.
+            'resources': data.get('resources', '') or '',
+        }
+        if data.get('restricted'):
+            rules_payload['strict'] = 1
+        if data.get('comment'):
+            rules_payload['comment'] = data['comment']
+
+        rules_url = f"https://{host}:{port}/api2/json/cluster/ha/rules"
+        resp = manager._api_post(rules_url, data=rules_payload)
+
+        if resp.status_code in (404, 501):
+            # PVE 8.x — legacy groups path
+            legacy_url = f"https://{host}:{port}/api2/json/cluster/ha/groups"
+            legacy_payload = {
+                'group': group_name,
+                'nodes': nodes,
+            }
+            if data.get('restricted'):
+                legacy_payload['restricted'] = 1
+            if data.get('nofailback'):
+                legacy_payload['nofailback'] = 1
+            if data.get('comment'):
+                legacy_payload['comment'] = data['comment']
+            resp = manager._api_post(legacy_url, data=legacy_payload)
+
+        if resp.status_code == 200:
+            usr = getattr(request, 'session', {}).get('user', 'system')
+            log_audit(usr, 'ha.group_created', f"HA group '{group_name}' created", cluster=manager.config.name)
+            return jsonify({'success': True})
+        else:
+            # Pass PVE's own error through — usually informative enough
+            # ("no resources were specified", "duplicate rule name", etc.)
+            return jsonify({'error': resp.text}), 400
+    except Exception as e:
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+# MK: Delete HA Group
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/groups/<group_name>', methods=['DELETE'])
+@require_auth(perms=['ha.config'])
+def delete_proxmox_ha_group(cluster_id, group_name):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+
+    manager, error = get_connected_manager(cluster_id)
+    if error:
+        return error
+
+    try:
+        host, port = manager.host, manager.api_port
+        # MK May 2026 — same rules-first/groups-fallback as the create path.
+        rules_url = f"https://{host}:{port}/api2/json/cluster/ha/rules/{group_name}"
+        resp = manager._api_delete(rules_url)
+        if resp.status_code in (404, 501) or (resp.status_code == 500 and 'no such ha rule' in (resp.text or '').lower()):
+            legacy_url = f"https://{host}:{port}/api2/json/cluster/ha/groups/{group_name}"
+            resp = manager._api_delete(legacy_url)
+
+        if resp.status_code == 200:
+            usr = getattr(request, 'session', {}).get('user', 'system')
+            log_audit(usr, 'ha.group_deleted', f"HA group '{group_name}' deleted", cluster=manager.config.name)
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': resp.text}), 400
+    except Exception as e:
+        return jsonify({'error': safe_error(e, 'Operation failed')}), 500
+
+
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/resources', methods=['POST'])
+@require_auth(perms=['ha.config'])
+def add_to_proxmox_ha(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    data = request.json or {}
+    
+    logging.debug(f"[HA] Add resource request: {data}")
+    
+    # MK: Support both sid format (vm:100) and separate vmid/type
+    sid = data.get('sid', '').strip()
+    if sid and ':' in sid:
+        parts = sid.split(':')
+        vm_type = parts[0]  # vm or ct
+        vmid = parts[1]
+    else:
+        vmid = data.get('vmid')
+        vm_type = data.get('type', 'vm')
+    
+    group = data.get('group')
+    max_restart = data.get('max_restart', 1)
+    max_relocate = data.get('max_relocate', 1)
+    state = data.get('state', 'started')
+    comment = data.get('comment', '')
+    # MK May 2026 (PVE 9.2) — per-resource auto-rebalance opt-out. None means
+    # caller didn't specify, leave PVE defaults alone; True/False = explicit.
+    auto_rebalance = data.get('auto_rebalance')
+    if auto_rebalance is not None:
+        auto_rebalance = bool(auto_rebalance)
+
+    if not vmid:
+        logging.warning(f"[HA] Add resource failed: no vmid/sid in request data: {_sl(data)}")
+        return jsonify({'error': 'vmid or sid required (format: vm:100 or ct:101)'}), 400
+
+    result = mgr.add_vm_to_proxmox_ha(vmid, vm_type, group, max_restart, max_relocate, state, comment,
+                                       auto_rebalance=auto_rebalance)
+    
+    if result['success']:
+        usr = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(usr, 'ha.vm_added', f"{vm_type.upper()} {vmid} added to HA" + (f" (group: {group})" if group else ""), cluster=mgr.config.name)
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
+
+
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/resources/<vm_type>:<int:vmid>', methods=['DELETE'])
+@require_auth(perms=['ha.config'])
+def remove_from_proxmox_ha(cluster_id, vm_type, vmid):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    result = mgr.remove_vm_from_proxmox_ha(vmid, vm_type)
+    
+    if result['success']:
+        usr = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(usr, 'ha.vm_removed', f"{vm_type.upper()} {vmid} removed from HA", cluster=mgr.config.name)
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
+
+
+# MK: Alternative DELETE endpoint that accepts full sid string like "vm:100"
+@bp.route('/api/clusters/<cluster_id>/proxmox-ha/resources/<sid>', methods=['DELETE'])
+@require_auth(perms=['ha.config'])
+def remove_from_proxmox_ha_by_sid(cluster_id, sid):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    
+    mgr = cluster_managers[cluster_id]
+    
+    # Parse sid (vm:100 or ct:101)
+    if ':' in sid:
+        vm_type, vmid = sid.split(':', 1)
+        try:
+            vmid = int(vmid)
+        except ValueError:
+            return jsonify({'error': f'Invalid VMID in sid: {sid}'}), 400
+    else:
+        return jsonify({'error': f'Invalid sid format: {sid}. Expected vm:VMID or ct:VMID'}), 400
+
+    result = mgr.remove_vm_from_proxmox_ha(vmid, vm_type)
+
+    if result['success']:
+        usr = getattr(request, 'session', {}).get('user', 'system')
+        log_audit(usr, 'ha.vm_removed', f"{vm_type.upper()} {vmid} removed from HA", cluster=mgr.config.name)
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
+
+
+# LW: Mar 2026 - manual balance trigger (#149)
+@bp.route('/api/clusters/<cluster_id>/balance-now', methods=['POST'])
+@require_auth(perms=['cluster.config'])
+def trigger_balance_now(cluster_id):
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+
+    mgr = cluster_managers.get(cluster_id)
+    if not mgr:
+        return jsonify({'error': 'Cluster not found'}), 404
+    if not mgr.is_connected:
+        return jsonify({'error': 'Cluster not connected'}), 503
+
+    import gevent
+    gevent.spawn(mgr.run_balance_check, force=True)
+
+    usr = getattr(request, 'session', {}).get('user', 'system')
+    log_audit(usr, 'balance.manual', f"Manual balance check triggered for {mgr.config.name}", cluster=mgr.config.name)
+
+    return jsonify({'message': 'Balance check started'})

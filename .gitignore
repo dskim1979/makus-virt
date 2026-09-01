@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.egg-info/
+
+# SSL / Secrets
+cert.pem
+key.pem
+ssl/*.key
+ssl/*.crt
+ssl/*.pem
+*.p12
+*.pfx
+
+# Runtime data
+config/
+logs/
+backups/
+*.db
+*.db-journal
+images/login_bg.png
+
+# Build artifacts
+web/Dev/.build/
+web/Dev/config/
+web/Dev/logs/
+archive/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+.zed/
+*.swp
+*.swo
