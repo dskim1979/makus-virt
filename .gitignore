@@ -1,37 +1,18 @@
 # Python
+venv/
 __pycache__/
 *.pyc
-*.pyo
-venv/
 *.egg-info/
 
-# SSL / Secrets
-cert.pem
-key.pem
-ssl/*.key
-ssl/*.crt
-ssl/*.pem
-*.p12
-*.pfx
-
-# Runtime data
-config/
-logs/
-backups/
-*.db
-*.db-journal
-images/login_bg.png
-
-# Build artifacts
+# Frontend build cache
 web/Dev/.build/
-web/Dev/config/
-web/Dev/logs/
-archive/
 
-# OS / IDE
+# Runtime data - never commit
+logs/
+config/*.db
+config/*.key
+config/.pegaprox.key
+config/branding/
+
+# OS
 .DS_Store
-.vscode/
-.idea/
-.zed/
-*.swp
-*.swo
