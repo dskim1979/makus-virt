@@ -3824,6 +3824,121 @@
             );
         }
 
+        // GPU / vGPU cluster-wide capacity dashboard — mirrors the Cost/Power
+        // Reports tabs (summary + table), but reads from /gpu-inventory instead
+        // of the metrics-based rollups those use, since GPU allocation is a
+        // live snapshot of VM configs rather than a time-series estimate.
+        function GpuInventoryTab({ clusterId, clusterName, authFetch, addToast, t }) {
+            const [inventory, setInventory] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+
+            const fetchInventory = async () => {
+                if (!clusterId) return;
+                setLoading(true);
+                try {
+                    const res = await authFetch(`${API_URL}/clusters/${clusterId}/gpu-inventory`);
+                    if (res?.ok) {
+                        setInventory(await res.json());
+                    } else if (res) {
+                        addToast('GPU 현황을 불러오지 못했습니다', 'error');
+                    }
+                } catch (e) {
+                    addToast('연결 오류', 'error');
+                }
+                setLoading(false);
+            };
+
+            React.useEffect(() => { fetchInventory(); }, [clusterId]);
+
+            if (!clusterId) {
+                return <div className="text-center py-12 text-gray-500">클러스터를 선택하세요</div>;
+            }
+            if (loading && !inventory) {
+                return <div className="text-center py-12 text-gray-500">GPU 현황을 불러오는 중...</div>;
+            }
+            if (!inventory || inventory.gpus.length === 0) {
+                return (
+                    <div className="text-center py-12 text-gray-500">
+                        <Icons.Cpu className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                        이 클러스터에서 감지된 GPU가 없습니다
+                    </div>
+                );
+            }
+
+            const { summary, gpus } = inventory;
+
+            return (
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-white font-medium">GPU / vGPU 현황 — {clusterName}</h3>
+                        <button onClick={fetchInventory} className="text-xs px-3 py-1.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-gray-400 hover:text-white">
+                            새로고침
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3">
+                        <div className="bg-proxmox-dark border border-proxmox-border rounded-lg p-3">
+                            <div className="text-xs text-gray-500">전체 GPU</div>
+                            <div className="text-xl font-semibold text-white">{summary.total_gpus}</div>
+                        </div>
+                        <div className="bg-proxmox-dark border border-proxmox-border rounded-lg p-3">
+                            <div className="text-xs text-gray-500">할당됨</div>
+                            <div className="text-xl font-semibold text-orange-400">{summary.allocated}</div>
+                        </div>
+                        <div className="bg-proxmox-dark border border-proxmox-border rounded-lg p-3">
+                            <div className="text-xs text-gray-500">여유</div>
+                            <div className="text-xl font-semibold text-emerald-400">{summary.free}</div>
+                        </div>
+                        <div className="bg-proxmox-dark border border-proxmox-border rounded-lg p-3">
+                            <div className="text-xs text-gray-500">vGPU 지원</div>
+                            <div className="text-xl font-semibold text-white">{summary.vgpu_capable_count}</div>
+                        </div>
+                    </div>
+
+                    <div className="bg-proxmox-dark border border-proxmox-border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-proxmox-border text-gray-400 text-left">
+                                    <th className="p-3">노드</th>
+                                    <th className="p-3">GPU</th>
+                                    <th className="p-3">PCI ID</th>
+                                    <th className="p-3">vGPU</th>
+                                    <th className="p-3">상태</th>
+                                    <th className="p-3">할당된 VM</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {gpus.map((g, idx) => (
+                                    <tr key={idx} className="border-b border-proxmox-border/50">
+                                        <td className="p-3 text-gray-300">{g.node}</td>
+                                        <td className="p-3 text-white">{g.vendor} {g.device_name}</td>
+                                        <td className="p-3 font-mono text-xs text-gray-500">{g.pciid}</td>
+                                        <td className="p-3">
+                                            {g.vgpu_capable
+                                                ? <span className="text-xs px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded">지원</span>
+                                                : <span className="text-xs text-gray-600">—</span>}
+                                        </td>
+                                        <td className="p-3">
+                                            {g.status === 'allocated'
+                                                ? <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-400 rounded">할당됨</span>
+                                                : <span className="text-xs px-2 py-0.5 bg-gray-500/10 text-gray-400 rounded">여유</span>}
+                                        </td>
+                                        <td className="p-3 text-gray-300">
+                                            {g.assignments.length === 0 ? '—' : g.assignments.map((a, i) => (
+                                                <div key={i} className="text-xs">
+                                                    {a.name} (#{a.vmid}){a.mdev ? ` — ${a.mdev}` : ' — 전체 패스스루'}
+                                                </div>
+                                            ))}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
         // MK May 2026 — Power & Carbon Tracking. Same shape as Cost Dashboard
         // (rates editor + summary + per-VM table) but in kWh / kg CO₂.
         function PowerCarbonTab({ clusterId, clusterName, authFetch, addToast, t, isAdmin }) {
@@ -16991,6 +17106,7 @@
                                                         { id: 'insights', label: t('insights') || 'Insights', icon: Icons.Zap },
                                                         { id: 'costs', label: t('costDashboard') || 'Costs', icon: Icons.DollarSign },
                                                         { id: 'power', label: t('powerTitle') || 'Power & Carbon', icon: Icons.Zap },
+                                                        { id: 'gpu', label: 'GPU', icon: Icons.Cpu },
                                                         { id: 'topology', label: t('topologyTitle') || 'Topology', icon: Icons.Network },
                                                         { id: 'api-health', label: t('apiHealth') || 'API Health', icon: Icons.Zap },
                                                     ].map(tab => (
@@ -17700,6 +17816,17 @@
                                                         addToast={addToast}
                                                         t={t}
                                                         isAdmin={isAdmin}
+                                                    />
+                                                )}
+
+                                                {/* GPU / vGPU cluster-wide inventory as Reports sub-tab */}
+                                                {reportSubTab === 'gpu' && (
+                                                    <GpuInventoryTab
+                                                        clusterId={selectedCluster?.id}
+                                                        clusterName={selectedCluster?.name}
+                                                        authFetch={authFetch}
+                                                        addToast={addToast}
+                                                        t={t}
                                                     />
                                                 )}
 

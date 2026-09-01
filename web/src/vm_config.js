@@ -233,6 +233,14 @@
             const [serialType, setSerialType] = useState('socket');
             const [passthroughLoading, setPassthroughLoading] = useState(false);
 
+            // GPU / vGPU states
+            const [showAddGpu, setShowAddGpu] = useState(false);
+            const [availableGpus, setAvailableGpus] = useState([]);
+            const [selectedGpu, setSelectedGpu] = useState(null);
+            const [vgpuProfiles, setVgpuProfiles] = useState([]);
+            const [selectedVgpuProfile, setSelectedVgpuProfile] = useState('');
+            const [gpuLoading, setGpuLoading] = useState(false);
+
             // Firewall states
             const [fwOptions, setFwOptions] = useState({});
             const [fwRules, setFwRules] = useState([]);
@@ -399,6 +407,64 @@
                     addToast(t('connectionError'), 'error');
                 }
                 setPassthroughLoading(false);
+            };
+
+            const fetchAvailableGpus = async () => {
+                setGpuLoading(true);
+                try {
+                    const response = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/gpus`);
+                    if (response && response.ok) {
+                        const data = await response.json();
+                        setAvailableGpus(data.gpus || []);
+                    }
+                } catch (error) {
+                    addToast(t('connectionError'), 'error');
+                }
+                setGpuLoading(false);
+            };
+
+            const fetchVgpuProfiles = async (pciid) => {
+                setVgpuProfiles([]);
+                setSelectedVgpuProfile('');
+                if (!pciid) return;
+                try {
+                    const response = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/gpus/${pciid}/profiles`);
+                    if (response && response.ok) {
+                        const data = await response.json();
+                        setVgpuProfiles(data.profiles || []);
+                    }
+                } catch (error) {
+                    // non-fatal — GPU just won't offer vGPU profiles, whole-device passthrough still works
+                }
+            };
+
+            const handleAddGpu = async () => {
+                if (!selectedGpu) return;
+                setGpuLoading(true);
+                try {
+                    const response = await authFetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/passthrough/gpu`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            pciid: selectedGpu.pciid,
+                            mdev_type: selectedVgpuProfile || null,
+                        })
+                    });
+                    if (response && response.ok) {
+                        setShowAddGpu(false);
+                        setSelectedGpu(null);
+                        setVgpuProfiles([]);
+                        setSelectedVgpuProfile('');
+                        fetchPassthrough();
+                        addToast(t('deviceAdded') || 'GPU added — restart the VM to apply');
+                    } else {
+                        const err = await response.json();
+                        addToast(err.error || t('operationFailed'), 'error');
+                    }
+                } catch (error) {
+                    addToast(t('connectionError'), 'error');
+                }
+                setGpuLoading(false);
             };
 
             const handleAddUsbDevice = async () => {
@@ -2301,7 +2367,26 @@
                                                                 </span>
                                                             )}
                                                         </h3>
-                                                        
+
+                                                        {/* GPU / vGPU quick-add — friendlier picker on top of the same
+                                                            hostpciN mechanism the raw PCI section below uses */}
+                                                        <div className="mb-4 p-3 bg-proxmox-dark/60 border border-proxmox-border rounded-lg">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-sm text-gray-300 flex items-center gap-2">
+                                                                    🎮 GPU / vGPU
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => { setShowAddGpu(true); fetchAvailableGpus(); }}
+                                                                    className="text-xs px-2 py-1 bg-proxmox-orange/20 text-proxmox-orange rounded hover:bg-proxmox-orange/30"
+                                                                >
+                                                                    + GPU 할당
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-xs text-gray-500 mt-1">
+                                                                노드에 장착된 GPU를 자동으로 찾아서 통짜 패스스루하거나, NVIDIA vGPU 프로파일로 나눠서 할당합니다.
+                                                            </p>
+                                                        </div>
+
                                                         {/* PCI Devices */}
                                                         <div className="mb-4">
                                                             <div className="flex justify-between items-center mb-2">
@@ -5562,6 +5647,88 @@
                             onUpdate={(config) => handleUpdateNetwork(showEditNetwork.id, config)}
                             onClose={() => setShowEditNetwork(null)}
                         />
+                    )}
+
+                    {/* Add GPU / vGPU Modal */}
+                    {showAddGpu && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60">
+                            <div className="w-full max-w-lg bg-proxmox-card border border-proxmox-border rounded-xl p-6">
+                                <h3 className="text-lg font-semibold text-white mb-4">GPU / vGPU 할당</h3>
+                                <div className="space-y-4">
+                                    {gpuLoading && availableGpus.length === 0 ? (
+                                        <p className="text-sm text-gray-400">GPU 목록을 불러오는 중...</p>
+                                    ) : availableGpus.length === 0 ? (
+                                        <p className="text-sm text-gray-500">이 노드에서 감지된 GPU가 없습니다.</p>
+                                    ) : (
+                                        <div>
+                                            <label className="block text-xs text-gray-400 mb-1">감지된 GPU</label>
+                                            <select
+                                                value={selectedGpu?.pciid || ''}
+                                                onChange={(e) => {
+                                                    const gpu = availableGpus.find(g => g.pciid === e.target.value);
+                                                    setSelectedGpu(gpu || null);
+                                                    if (gpu?.vgpu_capable) fetchVgpuProfiles(gpu.pciid);
+                                                    else { setVgpuProfiles([]); setSelectedVgpuProfile(''); }
+                                                }}
+                                                className="w-full bg-proxmox-dark border border-proxmox-border rounded px-3 py-2 text-white"
+                                            >
+                                                <option value="">-- GPU 선택 --</option>
+                                                {availableGpus.map(gpu => (
+                                                    <option key={gpu.pciid} value={gpu.pciid}>
+                                                        {gpu.pciid} - {gpu.vendor} {gpu.device_name}{gpu.vgpu_capable ? ' (vGPU 지원)' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    {selectedGpu && (
+                                        <div className="p-3 bg-proxmox-dark rounded text-sm space-y-1">
+                                            <div className="text-gray-400">벤더: <span className="text-white">{selectedGpu.vendor}</span></div>
+                                            <div className="text-gray-400">모델: <span className="text-white">{selectedGpu.device_name}</span></div>
+                                            <div className="text-gray-400">IOMMU 그룹: <span className="text-white">{selectedGpu.iommu_group}</span></div>
+                                        </div>
+                                    )}
+
+                                    {selectedGpu?.vgpu_capable && (
+                                        <div>
+                                            <label className="block text-xs text-gray-400 mb-1">할당 방식</label>
+                                            <select
+                                                value={selectedVgpuProfile}
+                                                onChange={(e) => setSelectedVgpuProfile(e.target.value)}
+                                                className="w-full bg-proxmox-dark border border-proxmox-border rounded px-3 py-2 text-white"
+                                            >
+                                                <option value="">전체 패스스루 (vGPU 아님, GPU 하나 통째로)</option>
+                                                {vgpuProfiles.map(p => (
+                                                    <option key={p.type} value={p.type} disabled={p.available_instances === 0}>
+                                                        {p.name} — 여유 {p.available_instances}개{p.available_instances === 0 ? ' (사용 중)' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                vGPU 프로파일을 선택하면 이 GPU의 일부(슬라이스)만 VM에 할당됩니다. 같은 GPU의 나머지 용량은 다른 VM에 계속 나눠줄 수 있습니다.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-2 justify-end pt-4">
+                                        <button
+                                            onClick={() => { setShowAddGpu(false); setSelectedGpu(null); setVgpuProfiles([]); setSelectedVgpuProfile(''); }}
+                                            className="px-4 py-2 bg-proxmox-dark hover:bg-proxmox-hover rounded"
+                                        >
+                                            {t('cancel')}
+                                        </button>
+                                        <button
+                                            onClick={handleAddGpu}
+                                            disabled={!selectedGpu || gpuLoading}
+                                            className="px-4 py-2 bg-proxmox-orange hover:bg-orange-600 rounded disabled:opacity-50"
+                                        >
+                                            {gpuLoading ? '할당 중...' : '할당'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     )}
 
                     {/* Add PCI Device Modal */}

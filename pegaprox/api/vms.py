@@ -4858,6 +4858,79 @@ def get_vm_passthrough_devices(cluster_id, node, vmid):
         return jsonify({'error': safe_error(e, 'Failed to get passthrough devices')}), 500
 
 
+@bp.route('/api/clusters/<cluster_id>/vms/<node>/qemu/<int:vmid>/passthrough/gpu', methods=['POST'])
+@require_auth(perms=['vm.config'])
+def add_gpu_passthrough(cluster_id, node, vmid):
+    """Assign a GPU to a VM — whole-device passthrough, or a single NVIDIA
+    vGPU (mdev) slice when a profile is given. Thin GPU-aware wrapper around
+    the same hostpciN slot mechanism add_pci_passthrough() uses; kept as a
+    separate endpoint so the frontend's GPU picker doesn't need to know
+    raw PCI config-string syntax."""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    denied = _require_vm_access(cluster_id, vmid, 'vm.config', 'qemu')
+    if denied: return denied
+
+    manager, error = get_connected_manager(cluster_id)
+    if error:
+        return error
+
+    data = request.json or {}
+    pciid = data.get('pciid')
+    mdev_type = data.get('mdev_type')  # None = whole-device passthrough
+
+    if not pciid or not re.match(r'^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$', pciid):
+        return jsonify({'error': 'Valid pciid required (e.g. 0000:01:00.0)'}), 400
+    if mdev_type and not re.match(r'^[\w.\-]+$', mdev_type):
+        return jsonify({'error': 'Invalid vGPU profile type'}), 400
+
+    try:
+        host, port = manager.host, manager.api_port
+        session = manager._create_session()
+
+        config_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu/{vmid}/config"
+        config_response = session.get(config_url, timeout=10)
+        config = config_response.json().get('data', {}) if config_response.status_code == 200 else {}
+
+        used_slots = [int(k.replace('hostpci', '')) for k in config.keys() if k.startswith('hostpci')]
+        next_slot = 0
+        while next_slot in used_slots and next_slot < 16:
+            next_slot += 1
+        if next_slot >= 16:
+            return jsonify({'error': 'No free PCI slots available'}), 400
+
+        # Whole-GPU passthrough gets pcie=1 + x-vga defaults sane for a display
+        # adapter; a vGPU slice must NOT set x-vga (the mdev profile handles
+        # display itself) and Proxmox requires pcie=1 for mdev devices.
+        pci_config = pciid
+        if mdev_type:
+            pci_config += f',mdev={mdev_type},pcie=1'
+        else:
+            pci_config += ',pcie=1'
+            if data.get('x_vga', True):
+                pci_config += ',x-vga=1'
+        if data.get('rombar') is False:
+            pci_config += ',rombar=0'
+
+        update_url = config_url
+        update_data = {f'hostpci{next_slot}': pci_config}
+        response = session.put(update_url, data=update_data, timeout=15)
+
+        if response.status_code == 200:
+            user = getattr(request, 'session', {}).get('user', 'system')
+            kind = f'vGPU ({mdev_type})' if mdev_type else 'whole-device'
+            log_audit(user, 'vm.gpu_added',
+                      f"VM {vmid}: Added GPU {pciid} ({kind}) at slot {next_slot}",
+                      cluster=manager.config.name)
+            return jsonify({'message': f'GPU added at hostpci{next_slot}', 'slot': next_slot})
+        else:
+            return jsonify({'error': parse_pve_error(response.text)}), 500
+
+    except Exception as e:
+        logging.error(f"Error adding GPU passthrough: {e}")
+        return jsonify({'error': safe_error(e, 'Failed to add GPU passthrough')}), 500
+
+
 @bp.route('/api/clusters/<cluster_id>/vms/<node>/qemu/<int:vmid>/passthrough/pci', methods=['POST'])
 @require_auth(perms=['vm.config'])
 def add_pci_passthrough(cluster_id, node, vmid):
