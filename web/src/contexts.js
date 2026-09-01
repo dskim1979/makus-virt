@@ -1,7 +1,84 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - Contexts
+        // Makus Virt - Contexts
         // LanguageContext + AuthContext providers
         // ═══════════════════════════════════════════════
+        // ═══════════════════════════════════════════════
+        // Branding Context — white-label support (Makus Virt)
+        // Fetches /api/branding (public, no auth) once on boot and applies it
+        // to <title>, favicon, and exposes it to any component that wants a
+        // custom logo instead of the bundled default.
+        // ═══════════════════════════════════════════════
+        const BrandingContext = createContext({
+            appName: 'Makus Virt',
+            appTagline: 'for Proxmox Virtual Environment',
+            logoUrl: '',
+            faviconUrl: '',
+            loaded: false,
+        });
+
+        function BrandingProvider({ children }) {
+            const [branding, setBranding] = useState({
+                appName: 'Makus Virt',
+                appTagline: 'for Proxmox Virtual Environment',
+                logoUrl: '',
+                faviconUrl: '',
+                loaded: false,
+            });
+
+            useEffect(() => {
+                let cancelled = false;
+                fetch('/api/branding')
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (cancelled || !data) return;
+                        const next = {
+                            appName: data.app_name || 'Makus Virt',
+                            appTagline: data.app_tagline || '',
+                            logoUrl: data.logo_url || '',
+                            faviconUrl: data.favicon_url || '',
+                            loaded: true,
+                        };
+                        setBranding(next);
+                        // NS: getLogoSrc() in ui.js is a plain (non-hook) helper called
+                        // from many non-component call sites, so we mirror the custom
+                        // logo URL onto a module-level global it can read synchronously
+                        // rather than threading BrandingContext through every caller.
+                        try { window.__NEXUS_CUSTOM_LOGO__ = next.logoUrl || ''; } catch (_) {}
+                        // apply to document head — runs before any component using
+                        // this context necessarily mounts, so we do it here directly
+                        // rather than relying on every consumer to remember to.
+                        try {
+                            document.title = next.appTagline
+                                ? `${next.appName} • ${next.appTagline}`
+                                : next.appName;
+                        } catch (_) {}
+                        if (next.faviconUrl) {
+                            try {
+                                let link = document.querySelector("link[rel~='icon']");
+                                if (!link) {
+                                    link = document.createElement('link');
+                                    link.rel = 'icon';
+                                    document.head.appendChild(link);
+                                }
+                                link.href = next.faviconUrl;
+                            } catch (_) {}
+                        }
+                    })
+                    .catch(() => { /* stay on defaults — never block boot on this */ });
+                return () => { cancelled = true; };
+            }, []);
+
+            return (
+                <BrandingContext.Provider value={branding}>
+                    {children}
+                </BrandingContext.Provider>
+            );
+        }
+
+        function useBranding() {
+            return useContext(BrandingContext);
+        }
+
         // Language Context
         // LW: Default is German (de) since thats what we use internally
         const LanguageContext = createContext();
@@ -9,7 +86,7 @@
         // NS May 2026 (#389): supported language allowlist — reused for input validation
         // both at init (localStorage) and at switch time. Keep in sync with the
         // backend allowlist in pegaprox/api/users.py and the LanguageSwitcher list.
-        const SUPPORTED_LANGS = ['de', 'en', 'it', 'fr', 'es', 'pt', 'ko', 'zh'];
+        const SUPPORTED_LANGS = ['ko'];
 
         // map navigator.language ("en-US", "de-AT", ...) onto a supported code, or null
         function _detectBrowserLang() {
@@ -48,12 +125,12 @@
                 } catch (_) {}
                 const detected = _detectBrowserLang();
                 if (detected) return detected;
-                return 'de';
+                return 'ko';
             });
 
             // Translation function with English fallback
             const t = useCallback((key) => {
-                return translations[language]?.[key] || translations['en']?.[key] || key;
+                return translations[language]?.[key] || translations['ko']?.[key] || key;
             }, [language]);
 
             // Internal: validate + persist locally. Used by both code paths.
@@ -94,8 +171,12 @@
             return useContext(LanguageContext);
         }
 
-        // Language Switcher Component
+        // Language Switcher Component - disabled (Korean-only build)
         function LanguageSwitcher() {
+            return null;
+        }
+
+        function _DisabledLanguageSwitcher() {
             const { language, t, changeLanguage, applyLanguage } = useTranslation();
             const { isCorporate } = useLayout();
             // NS May 2026 (#389): On the login page (unauthenticated) we must NOT

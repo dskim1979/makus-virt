@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - Icons
+        // Makus Virt - Icons
         // SVG icon components (Heroicons)
         // ═══════════════════════════════════════════════
         // Icons - mostly from Heroicons, some custom ones -- MK

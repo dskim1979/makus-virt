@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - Dashboard & App
+        // Makus Virt - Dashboard & App
         // TaskBar, Dashboard, App component, ReactDOM.render
         // ═══════════════════════════════════════════════
 
@@ -359,7 +359,7 @@
                                                 <th className="px-4 py-2 text-gray-400 font-medium">{t('startTime')}</th>
                                                 <th className="px-4 py-2 text-gray-400 font-medium">{t('endTime')}</th>
                                                 <th className="px-4 py-2 text-gray-400 font-medium">{t('node')}</th>
-                                                <th className="px-4 py-2 text-gray-400 font-medium" title={t('userColumnHint') || 'Shows PegaProx user if available, otherwise Proxmox user'}>{t('user')}</th>
+                                                <th className="px-4 py-2 text-gray-400 font-medium" title={t('userColumnHint') || 'Shows Makus Virt user if available, otherwise Proxmox user'}>{t('user')}</th>
                                                 <th className="px-4 py-2 text-gray-400 font-medium">{t('description')}</th>
                                                 <th className="px-4 py-2 text-gray-400 font-medium">{t('status')}</th>
                                             </tr>
@@ -400,7 +400,7 @@
                                                             {task.endtime ? fmtDate(task.endtime * 1000) : '-'}
                                                         </td>
                                                         <td className="px-4 py-2 text-white">{task.node || '-'}</td>
-                                                        <td className="px-4 py-2 text-gray-300" title={task.pegaprox_user ? `PegaProx: ${task.pegaprox_user}\nProxmox: ${task.user || '-'}` : (task.user || '-')}>
+                                                        <td className="px-4 py-2 text-gray-300" title={task.pegaprox_user ? `Makus Virt: ${task.pegaprox_user}\nProxmox: ${task.user || '-'}` : (task.user || '-')}>
                                                             {task.pegaprox_user || (task.user ? task.user.split('@')[0] : '-')}
                                                             {task.pegaprox_user && <span className="ml-1 text-proxmox-orange text-xs">●</span>}
                                                         </td>
@@ -1962,7 +1962,7 @@
                             <svg ref={svgRef}
                                 role="img"
                                 aria-label={isMultiCluster
-                                    ? `PegaProx multi-cluster topology diagram (${frozenMultiCluster.length} clusters)`
+                                    ? `Makus Virt multi-cluster topology diagram (${frozenMultiCluster.length} clusters)`
                                     : `Cluster topology for ${clusterName} — ${allNodes.length} node(s), ${totalGuests} guests`}
                                 viewBox={`${vbX.toFixed(1)} ${vbY.toFixed(1)} ${vbW.toFixed(1)} ${vbH.toFixed(1)}`}
                                 xmlns="http://www.w3.org/2000/svg"
@@ -1989,20 +1989,20 @@
                                                 strokeWidth={1.5} />
                                         ))}
 
-                                        {/* PegaProx brand at top — bigger pill on Corporate */}
+                                        {/* Makus Virt brand at top — bigger pill on Corporate */}
                                         {isCorporate ? (
                                             <React.Fragment>
                                                 <rect x={mcLayout.mcW / 2 - 110} y={MC_TIER.brand - 22}
                                                     width={220} height={42} rx={6}
                                                     fill={topoColor.section} stroke={topoColor.brand} strokeWidth={1.5} />
                                                 <text x={mcLayout.mcW / 2} y={MC_TIER.brand - 4} textAnchor="middle"
-                                                    fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="0.5">PegaProx</text>
+                                                    fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="0.5">Makus Virt</text>
                                                 <text x={mcLayout.mcW / 2} y={MC_TIER.brand + 12} textAnchor="middle"
                                                     fill={topoColor.muted} fontSize="9" letterSpacing="1">MULTI-CLUSTER TOPOLOGY</text>
                                             </React.Fragment>
                                         ) : (
                                             <React.Fragment>
-                                                <text x={mcLayout.mcW / 2} y={MC_TIER.brand} textAnchor="middle" fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="1.5">PegaProx</text>
+                                                <text x={mcLayout.mcW / 2} y={MC_TIER.brand} textAnchor="middle" fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="1.5">Makus Virt</text>
                                                 <text x={mcLayout.mcW / 2} y={MC_TIER.brand + 14} textAnchor="middle" fill={topoColor.muted} fontSize="9">Multi-Cluster Topology</text>
                                             </React.Fragment>
                                         )}
@@ -2229,19 +2229,19 @@
                                     );
                                 })}
 
-                                {/* PegaProx branding — Corporate gets the pill style, Modern keeps the bold orange */}
+                                {/* Makus Virt branding — Corporate gets the pill style, Modern keeps the bold orange */}
                                 {isCorporate ? (
                                     <React.Fragment>
                                         <rect x={clusterX - 80} y={10} width={160} height={34} rx={4}
                                             fill={topoColor.section} stroke={topoColor.brand} strokeWidth={1} />
                                         <text x={clusterX} y={26} textAnchor="middle"
-                                            fill={topoColor.brand} fontSize="14" fontWeight="600" letterSpacing="0.4">PegaProx</text>
+                                            fill={topoColor.brand} fontSize="14" fontWeight="600" letterSpacing="0.4">Makus Virt</text>
                                         <text x={clusterX} y={39} textAnchor="middle"
                                             fill={topoColor.muted} fontSize="9" letterSpacing="0.3">CLUSTER TOPOLOGY</text>
                                     </React.Fragment>
                                 ) : (
                                     <React.Fragment>
-                                        <text x={clusterX} y={28} textAnchor="middle" fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="1.5">PegaProx</text>
+                                        <text x={clusterX} y={28} textAnchor="middle" fill={topoColor.brand} fontSize="16" fontWeight="700" letterSpacing="1.5">Makus Virt</text>
                                         <text x={clusterX} y={42} textAnchor="middle" fill={topoColor.muted} fontSize="9">Cluster Topology</text>
                                     </React.Fragment>
                                 )}
@@ -3255,7 +3255,7 @@
         }
 
         // LW #430 — one place to see every replication job's health: local PVE jobs
-        // across all connected clusters + PegaProx cross-cluster jobs, instead of
+        // across all connected clusters + Makus Virt cross-cluster jobs, instead of
         // drilling into each VM. CSV + PDF export.
         function ReplicationOverviewTab({ clusters, authFetch, addToast, t }) {
             const [local, setLocal] = React.useState([]);
@@ -3851,7 +3851,7 @@
 
             const openRates = async () => {
                 const r = await authFetch(`${API_URL}/power/rates/${clusterId}`).then(x => x?.json()).catch(() => null);
-                setRateForm(r || { node_idle_w: 80, node_max_w: 300, mem_w_per_gb: 0.3, pue: 1.5, kwh_price: 0.30, kg_co2_per_kwh: 0.40, currency: 'EUR', notes: '' });
+                setRateForm(r || { node_idle_w: 80, node_max_w: 300, mem_w_per_gb: 0.3, pue: 1.5, kwh_price: 150, kg_co2_per_kwh: 0.4173, currency: 'KRW', notes: '' });
                 setShowRates(true);
             };
             const saveRates = async () => {
@@ -3867,7 +3867,7 @@
                             pue: parseFloat(rateForm.pue) || 1,
                             kwh_price: parseFloat(rateForm.kwh_price) || 0,
                             kg_co2_per_kwh: parseFloat(rateForm.kg_co2_per_kwh) || 0,
-                            currency: rateForm.currency || 'EUR',
+                            currency: rateForm.currency || 'KRW',
                             notes: rateForm.notes || '',
                         }),
                     });
@@ -3879,9 +3879,7 @@
                 } finally { setSavingRates(false); }
             };
 
-            const cur = summary?.rates?.currency || 'EUR';
-            const sym = ({ EUR: '€', USD: '$', GBP: '£' }[cur] || cur);
-            const fmtCost = (n) => `${sym} ${(n || 0).toFixed(2)}`;
+            const fmtCost = (n) => `₩${Math.round(n || 0).toLocaleString()}`;
             const fmtKwh = (n) => `${(n || 0).toFixed(1)} kWh`;
             const fmtCo2 = (n) => `${(n || 0).toFixed(1)} kg`;
 
@@ -3904,7 +3902,7 @@
                     'vmid', 'name', 'node', 'type',
                     'avg_cpu_pct', 'avg_mem_pct', 'cores', 'memory_gb', 'running_h',
                     'kwh', 'monthly_kwh',
-                    `cost_${cur}`, `monthly_cost_${cur}`,
+                    `cost_KRW`, `monthly_cost_KRW`,
                     'kg_co2', 'monthly_kg_co2',
                 ];
                 const esc = (v) => {
@@ -3940,8 +3938,7 @@
                     addToast(t('powerNoData') || 'No data', 'warning');
                     return;
                 }
-                const symX = ({ EUR: 'EUR', USD: 'USD', GBP: 'GBP', CHF: 'CHF', JPY: 'JPY', BRL: 'BRL' }[cur] || cur);
-                const pf = (n) => `${symX} ${(n || 0).toFixed(2)}`;
+                const pf = (n) => `KRW ${Math.round(n || 0).toLocaleString()}`;
                 const kwh = (n) => `${(n || 0).toFixed(1)} kWh`;
                 const co2 = (n) => `${(n || 0).toFixed(1)} kg`;
 
@@ -3961,7 +3958,7 @@
                     value: safe(`Window: ${summary.days} days * ${summary.snapshots_count} snapshots * `
                                 + `Rates: ${summary.rates.node_idle_w}W idle, ${summary.rates.node_max_w}W max, `
                                 + `${summary.rates.mem_w_per_gb} W/GB, PUE ${summary.rates.pue}, `
-                                + `${summary.rates.kwh_price.toFixed(2)} ${cur}/kWh, `
+                                + `${Math.round(summary.rates.kwh_price)} KRW/kWh, `
                                 + `${summary.rates.kg_co2_per_kwh.toFixed(2)} kg CO2/kWh`),
                 });
 
@@ -4171,18 +4168,14 @@
                                         </div>
                                     ))}
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">{t('currency') || 'Currency'}</label>
-                                        <select value={rateForm.currency} onChange={e => setRateForm({...rateForm, currency: e.target.value})}
-                                            className="w-full px-3 py-1.5 bg-proxmox-dark border border-proxmox-border rounded text-white text-sm">
-                                            <option value="EUR">EUR (€)</option>
-                                            <option value="USD">USD ($)</option>
-                                            <option value="GBP">GBP (£)</option>
-                                            <option value="CHF">CHF</option>
-                                        </select>
+                                        <label className="text-xs text-gray-400 block mb-1">통화</label>
+                                        <div className="w-full px-3 py-1.5 bg-proxmox-darker border border-proxmox-border rounded text-gray-400 text-sm">
+                                            KRW (₩)
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="text-xs text-gray-500 mt-3 bg-yellow-500/5 border border-yellow-500/20 rounded p-2">
-                                    {t('powerRatesHint') || 'Defaults: 80W idle / 300W max per node, 0.3 W/GB RAM, PUE 1.5, €0.30/kWh, 0.4 kg CO₂/kWh (DE 2024 grid). Adjust to your hardware + supplier.'}
+                                    기본값: 노드당 대기전력 80W / 최대 300W, RAM 0.3W/GB, PUE 1.5, 전기요금 150원/kWh(한전 산업용 참고가), 탄소배출계수 0.4173kg CO₂/kWh(2023년 국가 전력배출계수). 실제 계약 요금과 하드웨어 사양에 맞게 조정하세요.
                                 </div>
                                 <div className="flex justify-end gap-2 mt-5">
                                     <button onClick={() => setShowRates(false)} disabled={savingRates}
@@ -4230,10 +4223,10 @@
             const openRates = async () => {
                 const r = await authFetch(`${API_URL}/cost/rates/${clusterId}`).then(r => r?.json()).catch(() => null);
                 setRateForm(r || {
-                    cpu_per_core_h: 0.012,
-                    mem_per_gb_h: 0.0035,
-                    storage_per_gb_month: 0.10,
-                    currency: 'EUR',
+                    cpu_per_core_h: 15,
+                    mem_per_gb_h: 5,
+                    storage_per_gb_month: 150,
+                    currency: 'KRW',
                     notes: '',
                 });
                 setShowRates(true);
@@ -4249,7 +4242,7 @@
                             cpu_per_core_h: parseFloat(rateForm.cpu_per_core_h) || 0,
                             mem_per_gb_h: parseFloat(rateForm.mem_per_gb_h) || 0,
                             storage_per_gb_month: parseFloat(rateForm.storage_per_gb_month) || 0,
-                            currency: rateForm.currency || 'EUR',
+                            currency: rateForm.currency || 'KRW',
                             notes: rateForm.notes || '',
                         }),
                     });
@@ -4263,11 +4256,7 @@
                 } finally { setSavingRates(false); }
             };
 
-            const fmt = (n) => {
-                const cur = summary?.rates?.currency || 'EUR';
-                const sym = ({ EUR: '€', USD: '$', GBP: '£', CHF: 'CHF', JPY: '¥', BRL: 'R$' }[cur] || cur);
-                return `${sym} ${(n || 0).toFixed(2)}`;
-            };
+            const fmt = (n) => `₩${Math.round(n || 0).toLocaleString()}`;
 
             const sorted = [...rows].sort((a, b) => {
                 if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
@@ -4290,7 +4279,7 @@
                     addToast(t('costNoData') || 'No data', 'warning');
                     return;
                 }
-                const cur = summary?.rates?.currency || 'EUR';
+                const cur = summary?.rates?.currency || 'KRW';
                 const cols = [
                     'vmid', 'name', 'node', 'type',
                     'avg_cpu_pct', 'avg_mem_pct', 'running_ratio',
@@ -4334,9 +4323,7 @@
                     addToast(t('costNoData') || 'No data', 'warning');
                     return;
                 }
-                const cur = summary.rates.currency || 'EUR';
-                const sym = ({ EUR: 'EUR', USD: 'USD', GBP: 'GBP', CHF: 'CHF', JPY: 'JPY', BRL: 'BRL' }[cur] || cur);
-                const pf = (n) => `${sym} ${(n || 0).toFixed(2)}`;
+                const pf = (n) => `KRW ${Math.round(n || 0).toLocaleString()}`;
 
                 const blocks = [];
 
@@ -4355,9 +4342,9 @@
                 blocks.push({
                     type: 'text',
                     value: safe(`Window: ${summary.days} days · ${summary.snapshots_count} snapshots · ` +
-                                `Rates: ${summary.rates.cpu_per_core_h.toFixed(4)} ${cur}/core*h, ` +
-                                `${summary.rates.mem_per_gb_h.toFixed(4)} ${cur}/GB*h, ` +
-                                `${summary.rates.storage_per_gb_month.toFixed(2)} ${cur}/GB*month`),
+                                `Rates: ${Math.round(summary.rates.cpu_per_core_h)} KRW/core*h, ` +
+                                `${Math.round(summary.rates.mem_per_gb_h)} KRW/GB*h, ` +
+                                `${Math.round(summary.rates.storage_per_gb_month)} KRW/GB*month`),
                 });
 
                 // by-node table
@@ -4379,7 +4366,7 @@
                     columns: [
                         'VMID', safe(t('name') || 'Name'), safe(t('node') || 'Node'),
                         'CPU %', 'RAM %',
-                        safe('CPU ' + cur), safe('RAM ' + cur), safe(t('costStorage') || 'Storage'),
+                        safe('CPU KRW'), safe('RAM KRW'), safe(t('costStorage') || 'Storage'),
                         safe(t('costMonthly') || 'Monthly'),
                     ],
                     rows: sorted.map(r => [
@@ -4507,9 +4494,9 @@
                                         {t('costPerVm') || 'Per VM'} <span className="text-xs text-gray-500 font-normal">({rows.length})</span>
                                     </h3>
                                     <div className="text-[10px] text-gray-500">
-                                        {summary.rates.cpu_per_core_h.toFixed(4)} {summary.rates.currency}/core·h ·
-                                        {' '}{summary.rates.mem_per_gb_h.toFixed(4)} {summary.rates.currency}/GB·h ·
-                                        {' '}{summary.rates.storage_per_gb_month.toFixed(2)} {summary.rates.currency}/GB·month
+                                        {summary.rates.currency === 'KRW' ? Math.round(summary.rates.cpu_per_core_h) : summary.rates.cpu_per_core_h.toFixed(4)} {summary.rates.currency}/core·h ·
+                                        {' '}{summary.rates.currency === 'KRW' ? Math.round(summary.rates.mem_per_gb_h) : summary.rates.mem_per_gb_h.toFixed(4)} {summary.rates.currency}/GB·h ·
+                                        {' '}{summary.rates.currency === 'KRW' ? Math.round(summary.rates.storage_per_gb_month) : summary.rates.storage_per_gb_month.toFixed(2)} {summary.rates.currency}/GB·month
                                     </div>
                                 </div>
                                 <table className="w-full text-xs">
@@ -4581,16 +4568,10 @@
                                             className="w-full px-3 py-1.5 bg-proxmox-dark border border-proxmox-border rounded text-white text-sm" />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">{t('currency') || 'Currency'}</label>
-                                        <select value={rateForm.currency} onChange={e => setRateForm({...rateForm, currency: e.target.value})}
-                                            className="w-full px-3 py-1.5 bg-proxmox-dark border border-proxmox-border rounded text-white text-sm">
-                                            <option value="EUR">EUR (€)</option>
-                                            <option value="USD">USD ($)</option>
-                                            <option value="GBP">GBP (£)</option>
-                                            <option value="CHF">CHF</option>
-                                            <option value="JPY">JPY (¥)</option>
-                                            <option value="BRL">BRL (R$)</option>
-                                        </select>
+                                        <label className="text-xs text-gray-400 block mb-1">통화</label>
+                                        <div className="w-full px-3 py-1.5 bg-proxmox-darker border border-proxmox-border rounded text-gray-400 text-sm">
+                                            KRW (₩)
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="text-xs text-gray-400 block mb-1">{t('notes') || 'Notes'}</label>
@@ -5529,7 +5510,7 @@
                                     </div>
                                 </div>
                                 <div className="bg-yellow-500/5 border border-yellow-500/20 rounded p-2 mt-4 text-[11px] text-yellow-300">
-                                    {t('templateDeployHint') || 'PegaProx will SSH into the node, download the cloud image, create the VM and convert it to a template. This can take 1-3 minutes.'}
+                                    {t('templateDeployHint') || 'Makus Virt will SSH into the node, download the cloud image, create the VM and convert it to a template. This can take 1-3 minutes.'}
                                 </div>
                                 <div className="flex justify-end gap-2 mt-4">
                                     <button onClick={() => setShowDeploy(null)} disabled={submitting}
@@ -6520,8 +6501,8 @@
                         [t('hardeningProfile') || 'Hardening profile', profileLabel],
                         [t('reportingPeriod') || 'Reporting period',   reportingPeriod],
                         [t('classification') || 'Classification',      t('classificationInternal') || 'Internal Use — Audit Working Paper'],
-                        [t('generatedBy') || 'Generated by',           (user?.username || user?.email || 'PegaProx')],
-                        [t('reportTool') || 'Report tool',             'PegaProx ' + (window.PEGAPROX_VERSION || '0.9.x')],
+                        [t('generatedBy') || 'Generated by',           (user?.username || user?.email || 'Makus Virt')],
+                        [t('reportTool') || 'Report tool',             'Makus Virt ' + (window.PEGAPROX_VERSION || '0.9.x')],
                         [t('generatedAt') || 'Generated at',           isoTime],
                     ],
                 });
@@ -6612,7 +6593,7 @@
                     })
                     .join(' · ');
                 const controlSetSizeText =
-                    `${fw.controls.length} PegaProx control${fw.controls.length !== 1 ? 's' : ''} in profile, ` +
+                    `${fw.controls.length} Makus Virt control${fw.controls.length !== 1 ? 's' : ''} in profile, ` +
                     `mapped to ${allRefsForFw.size} ${fw.name} reference${allRefsForFw.size !== 1 ? 's' : ''}` +
                     (familySummary ? ` (${familySummary})` : '') +
                     `; ${overallChecked} data point${overallChecked !== 1 ? 's' : ''} evaluated across ${nodes.length} node${nodes.length !== 1 ? 's' : ''}`;
@@ -6645,7 +6626,7 @@
                             t('family') || 'Family',
                             t('familyName') || 'Name',
                             t('refsCovered') || 'References covered',
-                            t('pegaproxControls') || 'PegaProx controls',
+                            t('pegaproxControls') || 'Makus Virt controls',
                         ],
                         rows: Object.keys(refsByFamily).sort().map(fam => {
                             const refs = Array.from(refsByFamily[fam]).sort();
@@ -6671,7 +6652,7 @@
                         type: 'table',
                         title: (t('unmappedControls') || 'Controls without a direct framework mapping (informational)'),
                         columns: [
-                            t('pegaproxControl') || 'PegaProx control',
+                            t('pegaproxControl') || 'Makus Virt control',
                             t('description') || 'Description',
                             t('rationale') || 'Note',
                         ],
@@ -6743,7 +6724,7 @@
                         : `${familyCode} — ${label} (${passedCount}/${totalCtrls} ${t('fullySatisfied') || 'fully satisfied'})`;
                     blocks.push({
                         type: 'table', title: titleStr,
-                        columns: [t('ref') || 'Ref', t('controlTitle') || 'Control Title', t('severity') || 'Severity', t('pegaproxControl') || 'PegaProx control', ...nodes],
+                        columns: [t('ref') || 'Ref', t('controlTitle') || 'Control Title', t('severity') || 'Severity', t('pegaproxControl') || 'Makus Virt control', ...nodes],
                         rows: ctrls.map(ctrl => {
                             const refsStr = ctrl.refs.length ? ctrl.refs.map(r => r.ref).join('\n') : (t('noDirectMapping') || 'no direct mapping');
                             const titleStr2 = ctrl.refs.length ? ctrl.refs[0].title : ctrl.title;
@@ -6760,7 +6741,7 @@
                     blocks.push({
                         type: 'table',
                         title: `${t('appendixBRemediation') || 'Appendix B — Remediation Plan'} (${failedControls.length} ${failedControls.length === 1 ? (t('failedControl') || 'failed control') : (t('failedControls') || 'failed controls')})`,
-                        columns: [t('priority') || '#', t('severity') || 'Severity', t('timeline') || 'Timeline', t('ref') || 'Ref', t('controlTitle') || 'Title', t('pegaproxControl') || 'PegaProx control', t('affectedNodes') || 'Affected Nodes', t('recommendedAction') || 'Recommended Action'],
+                        columns: [t('priority') || '#', t('severity') || 'Severity', t('timeline') || 'Timeline', t('ref') || 'Ref', t('controlTitle') || 'Title', t('pegaproxControl') || 'Makus Virt control', t('affectedNodes') || 'Affected Nodes', t('recommendedAction') || 'Recommended Action'],
                         rows: failedControls.map((ctrl, i) => {
                             const refsStr = ctrl.refs.length ? ctrl.refs.map(r => r.ref).join(', ') : ctrl.cid;
                             const titleStr2 = ctrl.refs.length ? ctrl.refs[0].title : ctrl.title;
@@ -6769,14 +6750,14 @@
                             const rem = remediation[ctrl.cid];
                             const remStr = rem
                                 ? `${rem.summary}\n\n${t('howToFix') || 'How to fix'}: ${rem.how_to_fix}`
-                                : (t('useHardeningTool') || 'Use PegaProx Hardening tool to apply') + ` "${ctrl.cid}".`;
+                                : (t('useHardeningTool') || 'Use Makus Virt Hardening tool to apply') + ` "${ctrl.cid}".`;
                             return [String(i + 1), sevBadge(ctrl.severity), tl, refsStr, titleStr2, ctrl.cid, failNodes, remStr];
                         }),
                     });
                     // Operator-handoff hint — explicitly link the report back to the Hardening UI.
                     blocks.push({
                         type: 'text',
-                        value: t('hardeningUiHint') || 'Operator note: the values in the "PegaProx control" column match the checkbox names in Settings → Compliance → Harden PVE Node. To remediate, select the failed control by that name and click "Apply Selected".',
+                        value: t('hardeningUiHint') || 'Operator note: the values in the "Makus Virt control" column match the checkbox names in Settings → Compliance → Harden PVE Node. To remediate, select the failed control by that name and click "Apply Selected".',
                     });
                 }
 
@@ -6809,7 +6790,7 @@
                     blocks.push({
                         type: 'table',
                         title: `${t('appendixCEvidence') || 'Appendix C — Evidence'} (${evidenceRows.length} ${t('observations') || 'observations'})`,
-                        columns: [t('ref') || 'Ref', t('pegaproxControl') || 'PegaProx control', t('node') || 'Node', t('checkCommand') || 'Check command', t('expected') || 'Expected', t('observed') || 'Observed'],
+                        columns: [t('ref') || 'Ref', t('pegaproxControl') || 'Makus Virt control', t('node') || 'Node', t('checkCommand') || 'Check command', t('expected') || 'Expected', t('observed') || 'Observed'],
                         rows: evidenceRows,
                     });
                 }
@@ -6818,7 +6799,7 @@
                 // 10. Appendix D — Glossary (only terms relevant to this report)
                 // ──────────────────────────────────────────────────────────
                 const glossaryRows = [];
-                const baseTerms = ['PegaProx', 'PVE', 'CIS', 'BSI', fw.region === 'EU' ? 'IT-Grundschutz' : 'STIG'];
+                const baseTerms = ['Makus Virt', 'PVE', 'CIS', 'BSI', fw.region === 'EU' ? 'IT-Grundschutz' : 'STIG'];
                 const usedSlugs = new Set(baseTerms);
                 fw.controls.forEach(cid => {
                     const titleLow = (allTitles[cid] || cid).toLowerCase();
@@ -6855,7 +6836,7 @@
                 const dt = isoTime.slice(0, 10);
                 generatePegaProxPDF({
                     title:     `${fw.name} ${t('complianceReport') || 'Compliance Report'}`,
-                    subtitle:  c.name || 'PegaProx',
+                    subtitle:  c.name || 'Makus Virt',
                     clusterName: c.name,
                     filename:  `pegaprox-compliance-${fw.id}-${(c.id || 'cluster')}-${dt}.pdf`,
                     content:   blocks,
@@ -8157,6 +8138,7 @@
             const _DAY_MS = 86400000;
             const sponsorKeyRef = useRef('');
             useEffect(() => {
+                return; // NS: sponsor/donation nag disabled for Makus Virt rebrand
                 if (!user || !isAdmin) return;
                 const key = `pegaprox_sponsor_v2:${user.username || user.id || 'anon'}`;
                 sponsorKeyRef.current = key;
@@ -9781,7 +9763,7 @@
 
             // NS May 2026 (#387): when the user enters the Logs subtab while a specific
             // node is in scope (sidebar selection), auto-populate the hostname filter
-            // so they see only that node's syslog instead of every host PegaProx ingests.
+            // so they see only that node's syslog instead of every host Makus Virt ingests.
             // User can clear / change the filter in the UI if they want the wider view.
             useEffect(() => {
                 if (resourcesSubTab !== 'logs') return;
@@ -10225,7 +10207,7 @@
                 if (!selectedCluster?.id || !hardenNode) return;
                 const toRoll = Object.keys(hardenSelected).filter(k => hardenSelected[k]);
                 if (!toRoll.length) { addToast(t('noControlsSelected') || 'No controls selected', 'warning'); return; }
-                if (!confirm(t('hardenRollbackConfirm') || `↩️ Restore ${toRoll.length} control(s) on "${hardenNode}" to their pre-apply state?\n\nOnly controls applied through PegaProx (with a saved snapshot) can be rolled back.`)) return;
+                if (!confirm(t('hardenRollbackConfirm') || `↩️ Restore ${toRoll.length} control(s) on "${hardenNode}" to their pre-apply state?\n\nOnly controls applied through Makus Virt (with a saved snapshot) can be rolled back.`)) return;
                 setHardenApplying(true);
                 try {
                     const resp = await authFetch(`${API_URL}/clusters/${selectedCluster.id}/nodes/${hardenNode}/hardening/rollback`, {
@@ -11087,7 +11069,7 @@
 
             // MK Apr 2026: #273 — PBS Reports fetchers
             // NS May 2026 — vm-name lookup for PBS views. PBS only stores VMID,
-            // PegaProx knows the names from the linked PVE clusters. Memoised by
+            // Makus Virt knows the names from the linked PVE clusters. Memoised by
             // the dependency triple (linked clusters of selected PBS, plus the
             // cached guests-per-cluster map). Returns name or '' (never undefined).
             const pbsVmNameLookup = React.useMemo(() => {
@@ -13727,10 +13709,10 @@
                                     className={`flex items-center ${isCorporate ? 'gap-2' : 'gap-4'} hover:opacity-80 transition-opacity`}
                                     title={t('allClustersOverview') || 'All Clusters Overview'}
                                 >
-                                    {/* PegaProx Logo */}
+                                    {/* Makus Virt Logo */}
                                     <img
                                         src={getLogoSrc()}
-                                        alt="PegaProx"
+                                        alt="Makus Virt"
                                         className={`${isCorporate ? 'w-8 h-8' : 'w-12 h-12 rounded-xl'} object-contain`}
                                         onError={(e) => {
                                             e.target.style.display = 'none';
@@ -13743,10 +13725,10 @@
                                         </svg>
                                     </div>
                                     {isCorporate ? (
-                                        <span className="text-[13px] font-semibold">PegaProx</span>
+                                        <span className="text-[13px] font-semibold">Makus Virt</span>
                                     ) : (
                                         <div className="text-left">
-                                            <h1 className="text-xl font-bold">PegaProx</h1>
+                                            <h1 className="text-xl font-bold">Makus Virt</h1>
                                             <p className="text-xs text-gray-500">{t('clusterManagement')}</p>
                                         </div>
                                     )}
@@ -16525,7 +16507,7 @@
                                                                 value={hardenProfile}
                                                                 onChange={e => { setHardenProfile(e.target.value); setHardenStatus(null); setHardenSelected({}); }}
                                                                 className="bg-proxmox-dark border border-proxmox-border rounded-lg px-3 py-2 text-sm"
-                                                                title={t('hardenProfileHint') || 'Filter controls by compliance framework. All controls = full CIS+Lynis+STIG+PegaProx set.'}>
+                                                                title={t('hardenProfileHint') || 'Filter controls by compliance framework. All controls = full CIS+Lynis+STIG+Makus Virt set.'}>
                                                                 <option value="">{t('hardenProfileAll') || 'All controls'}</option>
                                                                 <optgroup label={t('regionEU') || 'EU / DACH'}>
                                                                     <option value="bsi">BSI IT-Grundschutz</option>
@@ -16609,7 +16591,7 @@
                                                                 mem_protection: { ref: 'Kernel', title: t('stigMemProt') || 'Memory Protection - Kernel Hardening', desc: t('stigMemProtDesc') || 'Kernel parameters: init_on_alloc=1, init_on_free=1, page_alloc.shuffle=1, slab_nomerge. Prevents info leaks and use-after-free attacks.', impact: t('stigMemProtImpact') || '~1-3% performance overhead. Reboot required.', reboot: true },
                                                                 audit_immutable: { ref: 'V-270832', title: t('stigAuditLock') || 'Audit Rules Immutable', desc: t('stigAuditLockDesc') || 'Locks audit configuration with -e 2 flag. Rules cannot be modified without reboot, preventing attackers from disabling auditing.', impact: t('stigAuditLockImpact') || 'Audit rule changes require reboot' },
                                                             };
-                                                            // PegaProx recommendations
+                                                            // Makus Virt recommendations
                                                             const pegaControls = {
                                                                 apparmor: { ref: 'MAC', title: t('pegaApparmor') || 'AppArmor (Mandatory Access Control)', desc: t('pegaApparmorDesc') || 'Enables AppArmor and enforces all profiles. Restricts what programs can access even if compromised — adds a security layer beyond standard file permissions.', impact: t('pegaApparmorImpact') || 'None for standard PVE — custom services may need profiles' },
                                                                 disable_services: { ref: 'SVC', title: t('pegaDisableSvc') || 'Disable Unnecessary Services', desc: t('pegaDisableSvcDesc') || 'Stops and disables bluetooth, CUPS (printing), and Avahi (mDNS). Fewer running services means less attack surface.', impact: t('pegaDisableSvcImpact') || 'No local printing or Bluetooth — irrelevant for servers' },
@@ -16692,7 +16674,7 @@
                                                                         </div>
                                                                         <div className="flex-1 min-w-0">
                                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                                <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${source === 'cis' ? 'text-blue-400 bg-blue-500/10' : source === 'lynis' ? 'text-purple-400 bg-purple-500/10' : source === 'pega' ? 'text-orange-400 bg-orange-500/10' : 'text-amber-400 bg-amber-500/10'}`}>{source === 'cis' ? 'CIS' : source === 'lynis' ? 'Lynis' : source === 'pega' ? 'PegaProx' : 'STIG'} {info.ref}</span>
+                                                                                <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${source === 'cis' ? 'text-blue-400 bg-blue-500/10' : source === 'lynis' ? 'text-purple-400 bg-purple-500/10' : source === 'pega' ? 'text-orange-400 bg-orange-500/10' : 'text-amber-400 bg-amber-500/10'}`}>{source === 'cis' ? 'CIS' : source === 'lynis' ? 'Lynis' : source === 'pega' ? 'Makus Virt' : 'STIG'} {info.ref}</span>
                                                                                 <span className="text-sm font-medium text-white">{info.title}</span>
                                                                                 {applied && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">{t('applied') || 'Applied'}</span>}
                                                                                 {applied && info.reboot && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded font-semibold">{t('rebootRequired') || 'Reboot required'}</span>}
@@ -16795,7 +16777,7 @@
                                                                     { name: 'CIS Debian Linux 13 Benchmark', ctrls: cisControls, src: 'cis' },
                                                                     { name: 'Lynis Security Auditing', ctrls: lynisControls, src: 'lynis' },
                                                                     { name: 'STIG — DoD Security Technical Implementation Guide', ctrls: stigControls, src: 'stig' },
-                                                                    { name: 'PegaProx ' + (t('recommendations') || 'Recommendations'), ctrls: pegaControls, src: 'pega' },
+                                                                    { name: 'Makus Virt ' + (t('recommendations') || 'Recommendations'), ctrls: pegaControls, src: 'pega' },
                                                                     { name: 'VS-NfD / BSI Grundschutz (' + (t('informational') || 'informational') + ')', ctrls: vsnfdControls, src: 'vsnfd' },
                                                                 ];
                                                                 const statusLbl = (applied, failed) => failed ? (t('failed') || 'Failed') : applied ? (t('applied') || 'Applied') : (t('notApplied') || 'Not applied');
@@ -16889,7 +16871,7 @@
                                                                     <button
                                                                         onClick={rollbackHardening}
                                                                         disabled={hardenApplying || selectedCount === 0}
-                                                                        title={t('hardenRollbackHint') || 'Restore the selected controls to their pre-apply state (only controls applied via PegaProx)'}
+                                                                        title={t('hardenRollbackHint') || 'Restore the selected controls to their pre-apply state (only controls applied via Makus Virt)'}
                                                                         className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 whitespace-nowrap ${
                                                                             hardenApplying || selectedCount === 0 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-500 text-white'
                                                                         }`}
@@ -16940,12 +16922,12 @@
                                                                 </div>
                                                                 )}
 
-                                                                {/* PegaProx Recommendations section */}
+                                                                {/* Makus Virt Recommendations section */}
                                                                 {Object.entries(pegaControls).some(([id]) => id in controls) && (
                                                                 <div>
                                                                     <h3 className="text-sm font-semibold text-orange-400 mb-2 flex items-center gap-2">
                                                                         <Icons.Zap className="w-4 h-4" />
-                                                                        PegaProx {t('recommendations') || 'Recommendations'}
+                                                                        Makus Virt {t('recommendations') || 'Recommendations'}
                                                                     </h3>
                                                                     <div className="space-y-2">
                                                                         {Object.entries(pegaControls).filter(([id]) => id in controls).map(([id, info]) => renderControl(id, info, 'pega'))}
@@ -16990,7 +16972,7 @@
                                                             <div className="text-center py-16">
                                                                 <Icons.Shield className="w-16 h-16 text-gray-700 mx-auto mb-4" />
                                                                 <p className="text-gray-400 mb-2">{t('hardenEmpty') || 'Select a node and click "Check Status"'}</p>
-                                                                <p className="text-gray-600 text-sm">{t('hardenEmptyDesc') || 'PegaProx checks which CIS controls are already applied and lets you enable the remaining ones.'}</p>
+                                                                <p className="text-gray-600 text-sm">{t('hardenEmptyDesc') || 'Makus Virt checks which CIS controls are already applied and lets you enable the remaining ones.'}</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -21188,36 +21170,11 @@
                                                             </div>
 
 
-                                                            {/* NS Apr 2026 — OpenCollective awareness banner. Subtle slate card, kein Popup,
-                                                                kein Disable des Wizards selbst. Nur die finale Start-Migration ist gated bis
-                                                                der User einmal acknowledged hat. Logo unter /images/oc_contribute_button.png. */}
-                                                            <div className="mt-4 p-3 rounded-lg border border-proxmox-border" style={{background: 'rgba(99, 110, 250, 0.06)'}}>
-                                                                <div className="flex items-start gap-3">
-                                                                    <a href="https://opencollective.com/pegaprox" target="_blank" rel="noopener noreferrer" className="shrink-0">
-                                                                        <img src="/images/oc_contribute_button.png" alt="Open Collective"
-                                                                            className="h-8 w-auto opacity-90 hover:opacity-100 transition-opacity" />
-                                                                    </a>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <p className="text-xs text-gray-300 leading-snug">
-                                                                            {t('v2pSupportNote') || 'Nur mit eurer Unterstützung können wir diese Funktion kostenlos halten.'}
-                                                                        </p>
-                                                                        <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer">
-                                                                            <input type="checkbox"
-                                                                                checked={!!vmwareMigrateForm.oc_acknowledge}
-                                                                                onChange={e => setVmwareMigrateForm(f => ({...f, oc_acknowledge: e.target.checked}))}
-                                                                                className="rounded" />
-                                                                            <span>{t('v2pSupportAck') || 'Verstanden — ich behalte das im Hinterkopf.'}</span>
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
                                                             <div className="flex gap-2 justify-end mt-4">
                                                                 <button onClick={() => setShowVmwareMigrate(false)} className="px-4 py-2 rounded-lg bg-proxmox-dark text-gray-400 text-sm">Cancel</button>
                                                                 <button
                                                                     onClick={() => startVmwareMigration(vmwareSelectedVm)}
-                                                                    disabled={!vmwareMigrateForm.target_cluster || !vmwareMigrateForm.target_node || !vmwareMigrateForm.target_storage || !vmwareMigrateForm.esxi_password || !vmwareMigrateForm.oc_acknowledge || vmwareMigrateLoading}
-                                                                    title={!vmwareMigrateForm.oc_acknowledge ? (t('v2pSupportAckRequired') || 'Bitte den Hinweis kurz bestätigen') : ''}
+                                                                    disabled={!vmwareMigrateForm.target_cluster || !vmwareMigrateForm.target_node || !vmwareMigrateForm.target_storage || !vmwareMigrateForm.esxi_password || vmwareMigrateLoading}
                                                                     className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium disabled:opacity-50">
                                                                     {vmwareMigrateLoading ? 'Starting...' : 'Start Migration'}
                                                                 </button>
@@ -21741,7 +21698,7 @@
                                         </div>
                                         <div className="p-2">
                                             <TopologyView
-                                                clusterName="PegaProx"
+                                                clusterName="Makus Virt"
                                                 multiCluster={clusters.filter(c => c.connected).map(cluster => {
                                                     const metrics = sidebarClusterData[cluster.id]?.metrics || {};
                                                     let nodes = Object.entries(metrics)
@@ -22287,7 +22244,7 @@
                                             {pbsForm._showSsh && (
                                                 <div className="mt-3 space-y-3 p-3 bg-proxmox-dark/50 rounded-lg">
                                                     <p className="text-xs text-gray-400">
-                                                        SSH is only used for apt dist-upgrade. If blank, PegaProx falls back to the PBS web password. Use a key if password login is disabled.
+                                                        SSH is only used for apt dist-upgrade. If blank, Makus Virt falls back to the PBS web password. Use a key if password login is disabled.
                                                     </p>
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <div>
@@ -22934,7 +22891,7 @@
                                             ✓ {t('noSharedStorageNeeded')} • ✓ {t('worksWithLvmIscsi')}
                                         </div>
 
-                                        {/* PegaProx VM Auto-Recovery */}
+                                        {/* Makus Virt VM Auto-Recovery */}
                                         {haStatus?.self_fence_installed && (
                                             <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                                                 <label className="block text-sm text-blue-400 font-medium mb-1">
@@ -23081,33 +23038,12 @@
                         </div>
                     )}
 
-                    {/* Sponsor Footer */}
+                    {/* Source Notice Footer */}
                     <footer className="border-t border-proxmox-border bg-proxmox-dark/50 mt-8">
-                        <div className="max-w-[800px] mx-auto px-6 py-6">
-                            <div className="text-center mb-4">
-                                <p className="text-sm text-gray-400">
-                                    ❤️ {t('thanksToSponsors') || 'Thanks to our Sponsors'}
-                                </p>
-                            </div>
-                            <div className="flex justify-center gap-3 flex-wrap">
-                                {/* Sponsor logos from /images/sponsors/ folder */}
-                                {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                                    <SponsorSlot key={num} num={num} />
-                                ))}
-                            </div>
-                            {/* LW Apr 2026: OpenCollective contribute CTA under sponsor logos */}
-                            <div className="flex justify-center mt-4">
-                                <a href="https://opencollective.com/pegaprox"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title="Contribute on Open Collective">
-                                    <img src="/images/oc_contribute_button.png"
-                                        alt="Contribute to our Collective"
-                                        className="h-8 w-auto hover:opacity-90 transition-opacity" />
-                                </a>
-                            </div>
-                            <div className="text-center mt-4 text-xs text-gray-600">
-                                <p>PegaProx {PEGAPROX_VERSION} • {t('madeWithLove') || 'Made with ❤️ for the Proxmox community'}</p>
+                        <div className="max-w-[800px] mx-auto px-6 py-4">
+                            <div className="text-center text-xs text-gray-600">
+                                <p>Makus Virt {PEGAPROX_VERSION} · for Proxmox Virtual Environment</p>
+                                <p className="mt-1">Based on open-source software, licensed under AGPL-3.0 — <a href="https://github.com/dskim1979/makus-virt" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-400">source code</a></p>
                             </div>
                         </div>
                     </footer>
@@ -23171,7 +23107,7 @@
                                 </div>
                             )}
                             <div className="corp-status-bar-item" style={{borderRight: 'none'}}>
-                                PegaProx {PEGAPROX_VERSION}
+                                Makus Virt {PEGAPROX_VERSION}
                             </div>
                         </div>
                     )}
@@ -23843,7 +23779,7 @@
                                             name="content" 
                                             required 
                                             rows={12}
-                                            defaultValue={editingScript?.content || (editingScript?.type === 'python' ? '#!/usr/bin/env python3\n# Your script here\n\nprint("Hello from PegaProx!")' : '#!/bin/bash\n# Your script here\n\necho "Hello from PegaProx!"')}
+                                            defaultValue={editingScript?.content || (editingScript?.type === 'python' ? '#!/usr/bin/env python3\n# Your script here\n\nprint("Hello from Makus Virt!")' : '#!/bin/bash\n# Your script here\n\necho "Hello from Makus Virt!"')}
                                             placeholder="#!/bin/bash"
                                             className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg font-mono text-sm"
                                         />
@@ -23924,7 +23860,7 @@
                         addToast={addToast}
                     />
 
-                    {/* PegaProx Settings Modal */}
+                    {/* Makus Virt Settings Modal */}
                     <PegaProxSettingsModal
                         isOpen={showSettings}
                         onClose={() => setShowSettings(false)}
@@ -24298,7 +24234,7 @@
                                         </div>
                                     ) : (
                                         <>
-                                        <p className="text-xs text-gray-500 mb-4">{t('reconfigureHint') || 'Enter your PegaProx password to verify your identity.'}</p>
+                                        <p className="text-xs text-gray-500 mb-4">{t('reconfigureHint') || 'Enter your Makus Virt password to verify your identity.'}</p>
                                         <input
                                             type="password"
                                             value={reconfigurePassword}
@@ -24370,119 +24306,6 @@
                         read time. Rendered via portal because the corporate layout root has
                         transforms that break `position: fixed` on descendants (same reason
                         the toast system uses a portal above). */}
-                    {showSponsorNag && ReactDOM.createPortal(
-                        <div style={{
-                                position: 'fixed',
-                                inset: 0,
-                                zIndex: 99998,
-                                background: 'rgba(0,0,0,0.72)',
-                                backdropFilter: 'blur(3px)',
-                                WebkitBackdropFilter: 'blur(3px)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 16
-                             }}>
-                            <div style={{
-                                    width: '100%',
-                                    maxWidth: 520,
-                                    borderRadius: 16,
-                                    overflow: 'hidden',
-                                    boxShadow: '0 25px 80px -10px rgba(0,0,0,0.8)',
-                                    background: 'linear-gradient(135deg, #1a2530 0%, #0f1923 100%)',
-                                    border: '1px solid rgba(236,72,153,0.35)',
-                                    animation: 'sponsorNagPopIn 0.35s cubic-bezier(0.34, 1.2, 0.64, 1) both'
-                                 }}>
-                                <div style={{padding: '28px 28px 20px', textAlign: 'center'}}>
-                                    <div style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            width: 64,
-                                            height: 64,
-                                            borderRadius: 16,
-                                            marginBottom: 16,
-                                            background: 'rgba(236,72,153,0.14)',
-                                            border: '1px solid rgba(236,72,153,0.3)'
-                                         }}>
-                                        <Icons.Heart className="w-8 h-8 text-pink-400" />
-                                    </div>
-                                    <h2 style={{fontSize: 24, fontWeight: 700, color: '#fff', marginBottom: 12, lineHeight: 1.2}}>
-                                        {t('sponsorNagTitle') || 'Help keep PegaProx alive'}
-                                    </h2>
-                                    <p style={{fontSize: 14, color: '#cbd5e1', lineHeight: 1.6}}>
-                                        {t('sponsorNagBody') || 'PegaProx is a passion project — we pay for the servers, domains and all those dev hours out of our own pockets. If this tool saves you time and you can spare a bit, we would be incredibly grateful for a tip on Open Collective. Every contribution, big or small, keeps the lights on!'}
-                                    </p>
-                                </div>
-                                <div style={{padding: '0 28px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14}}>
-                                    <a href="https://opencollective.com/pegaprox"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={dismissSponsorNag}
-                                        title={t('sponsorNagCta') || 'Support us on Open Collective'}>
-                                        <img src="/images/oc_contribute_button.png"
-                                            alt={t('sponsorNagCta') || 'Support us on Open Collective'}
-                                            style={{height: 40, width: 'auto', transition: 'opacity 0.2s'}}
-                                            onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
-                                            onMouseLeave={e => e.currentTarget.style.opacity = '1'} />
-                                    </a>
-                                    <button
-                                        disabled={sponsorSecondsLeft > 0}
-                                        onClick={dismissSponsorNag}
-                                        style={{
-                                            padding: '9px 20px',
-                                            borderRadius: 8,
-                                            fontSize: 14,
-                                            fontWeight: 500,
-                                            width: '100%',
-                                            maxWidth: 280,
-                                            transition: 'all 0.2s',
-                                            background: sponsorSecondsLeft > 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
-                                            color: sponsorSecondsLeft > 0 ? 'rgba(255,255,255,0.4)' : '#fff',
-                                            cursor: sponsorSecondsLeft > 0 ? 'not-allowed' : 'pointer',
-                                            border: sponsorSecondsLeft > 0 ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.15)'
-                                        }}>
-                                        {sponsorSecondsLeft > 0
-                                            ? `${t('sponsorNagDismiss') || 'Maybe later'} (${sponsorSecondsLeft}s)`
-                                            : (t('sponsorNagDismiss') || 'Maybe later')}
-                                    </button>
-                                    {/* LW Apr 2026: 90-day snooze checkbox, clickable only after the 15s read period */}
-                                    <label style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: 8,
-                                            fontSize: 12,
-                                            color: sponsorSecondsLeft > 0 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.55)',
-                                            cursor: sponsorSecondsLeft > 0 ? 'not-allowed' : 'pointer',
-                                            userSelect: 'none'
-                                         }}>
-                                        <input type="checkbox"
-                                            checked={sponsorSnooze}
-                                            disabled={sponsorSecondsLeft > 0}
-                                            onChange={e => setSponsorSnooze(e.target.checked)}
-                                            style={{
-                                                width: 14,
-                                                height: 14,
-                                                accentColor: '#ec4899',
-                                                cursor: sponsorSecondsLeft > 0 ? 'not-allowed' : 'pointer'
-                                            }} />
-                                        {t('sponsorNagSnooze90') || "Don't show again for 90 days"}
-                                    </label>
-                                </div>
-                                {/* countdown bar: fills from 0 -> 100% as the 15s elapses */}
-                                <div style={{height: 4, background: 'rgba(0,0,0,0.4)', position: 'relative', overflow: 'hidden'}}>
-                                    <div style={{
-                                            height: '100%',
-                                            transition: 'width 1s linear',
-                                            width: `${((15 - sponsorSecondsLeft) / 15) * 100}%`,
-                                            background: 'linear-gradient(90deg, #ec4899 0%, #f472b6 100%)'
-                                         }}></div>
-                                </div>
-                            </div>
-                        </div>,
-                        document.body
-                    )}
-
                     {/* Task Bar */}
                     {showTaskBar && (
                         <TaskBar
@@ -24798,11 +24621,13 @@
         }
 
         ReactDOM.render(
-            <LanguageProvider>
-                <AuthProvider>
-                    <App />
-                </AuthProvider>
-            </LanguageProvider>,
+            <BrandingProvider>
+                <LanguageProvider>
+                    <AuthProvider>
+                        <App />
+                    </AuthProvider>
+                </LanguageProvider>
+            </BrandingProvider>,
             document.getElementById('root')
         );
         

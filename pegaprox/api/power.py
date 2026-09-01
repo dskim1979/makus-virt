@@ -45,9 +45,9 @@ _DEFAULT = {
     'node_max_w': 300.0,
     'mem_w_per_gb': 0.3,
     'pue': 1.5,
-    'kwh_price': 0.30,
-    'kg_co2_per_kwh': 0.40,
-    'currency': 'EUR',
+    'kwh_price': 150,
+    'kg_co2_per_kwh': 0.4173,
+    'currency': 'KRW',
     'notes': '',
 }
 
@@ -61,7 +61,7 @@ def _row_to_rates(r):
         'pue': float(r['pue'] or 1.0),
         'kwh_price': float(r['kwh_price'] or 0),
         'kg_co2_per_kwh': float(r['kg_co2_per_kwh'] or 0),
-        'currency': r['currency'] or 'EUR',
+        'currency': r['currency'] or 'KRW',
         'notes': r['notes'] or '',
         'updated_at': r['updated_at'],
         'updated_by': r['updated_by'] or '',
@@ -248,7 +248,7 @@ def upsert(cluster_id):
              ('node_idle_w', 'node_max_w', 'mem_w_per_gb', 'pue', 'kwh_price', 'kg_co2_per_kwh')}
     except (TypeError, ValueError):
         return jsonify({'error': 'rates must be numeric'}), 400
-    cur = (body.get('currency') or 'EUR').strip()[:8]
+    cur = (body.get('currency') or 'KRW').strip()[:8]
     notes = (body.get('notes') or '').strip()[:500]
     try:
         c = get_db().conn.cursor()

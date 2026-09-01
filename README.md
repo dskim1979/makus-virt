@@ -2,29 +2,28 @@
   <picture>
     <!-- GitHub dark mode → swap to light variant so it stays readable -->
     <source media="(prefers-color-scheme: dark)" srcset="images/pegaprox-logo-light.png">
-    <img src="images/pegaprox-logo-dark.png" alt="PegaProx Logo" width="220"/>
+    <img src="images/pegaprox-logo-dark.png" alt="Makus Virt Logo" width="220"/>
   </picture>
 </p>
 
-<h1 align="center">PegaProx</h1>
+<h1 align="center">Makus Virt</h1>
 
 <p align="center">
-  <strong>Modern Multi-Cluster Management for Proxmox VE & XCP-ng</strong>
+  <strong>Proxmox VE &amp; XCP-ng 멀티 클러스터 통합관리 — 한국 실정에 맞춘 오픈소스 에디션</strong>
 </p>
 
 <p align="center">
-  <a href="https://pegaprox.com">Website</a> •
-  <a href="https://docs.pegaprox.com">Documentation</a> •
-  <a href="https://github.com/PegaProx/project-pegaprox/releases">Releases</a> •
-  <a href="https://plugins.pegaprox.com/">Plugins</a> •
-  <a href="https://opencollective.com/pegaprox">Sponsoring</a> •
-  <a href="https://pegaprox.com/sponsors.html">Commercial Support</a>
+  <a href="https://github.com/dskim1979/makus-virt/releases">Releases</a> •
+  <a href="https://github.com/dskim1979/makus-virt/issues">Issues</a> •
+  <a href="#-이-포크에-대해">이 포크에 대해</a> •
+  <a href="https://pegaprox.com">원본 프로젝트 (PegaProx)</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.0.1-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.8+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/license-AGPL--3.0--License-orange" alt="License"/>
+  <img src="https://img.shields.io/badge/기반-PegaProx-lightgrey" alt="Based on PegaProx"/>
 </p>
 
 <p align="center">
@@ -34,12 +33,25 @@
 </p>
 ---
 
+## 🇰🇷 이 포크에 대해
+
+**Makus Virt**는 오픈소스 프로젝트 [PegaProx](https://github.com/PegaProx/project-pegaprox)(AGPL-3.0)를 포크하여, **Makus Systems**가 한국 시장에 맞게 로컬라이즈·유지보수하는 에디션입니다.
+
+- 🇰🇷 **한국어 전용 UI** — 다국어 지원 대신 한국어에 완전히 집중
+- 💰 **원화(KRW) 기반 비용 대시보드** — 국내 전기요금·컴퓨트 비용 산정 기준 반영
+- 🎨 **화이트라벨 지원** — 로고·파비콘·앱 이름을 배포 환경에 맞게 커스터마이징 가능
+- 📜 **AGPL-3.0 그대로 유지** — 원저작자(PegaProx Team) 표시 및 라이선스 의무를 그대로 준수
+
+이 포크 자체는 별도로 후원을 받지 않습니다. Makus Virt가 유용하셨다면, 아래 **PegaProx 원 개발팀을 후원**해주세요 — 이 프로젝트가 존재할 수 있는 건 전적으로 그분들 덕분입니다.
+
+기업용 상용 지원이 필요하시면 별도 파트너십 제품을 통해 제공되며, 이 저장소와는 무관합니다.
+
 ## 🚀 What is PegaProx?
 
 PegaProx is a powerful web-based management interface for Proxmox VE and XCP-ng clusters. Manage multiple clusters from a single dashboard with features like live monitoring, VM management, automated tasks, and more.
 
 <p align="center">
-  <img src="https://pegaprox.com/pictures/pegaprox.png" alt="Dashboard Screenshot" width="800"/>
+  <img src="https://pegaprox.com/pictures/pegaprox.png" alt="Dashboard Screenshot (upstream PegaProx UI shown — Makus Virt's Korean UI differs)" width="800"/>
 </p>
 
 ### 🪽 What's in the name?
@@ -49,6 +61,8 @@ The name **PegaProx** is inspired by *Pegasus*, the winged horse of Greek mythol
 ## ❤️ Sponsors
 
 > PegaProx is a community-driven open source project that **lives entirely from sponsorships and donations**. Server costs, domains, code-signing certificates and the developer hours behind every release come straight out of our own pockets — and out of the contributions of the wonderful companies and individuals below. If PegaProx saves you time at work, please consider [becoming a sponsor](mailto:sponsor@pegaprox.com) or chipping in on [Open Collective](https://opencollective.com/pegaprox). Every euro keeps the lights on. 💛
+>
+> **Makus Virt 안내**: 이 포크는 별도로 후원을 받지 않습니다. 아래 후원 정보는 전부 원본 **PegaProx** 프로젝트로 연결됩니다 — Makus Virt가 존재할 수 있는 건 이분들의 작업 덕분입니다.
 
 ### 💎 Platinum
 
@@ -232,6 +246,8 @@ sudo ./deploy.sh
 ```
 
 ### Debian Repository
+> ⚠️ **Makus Virt 사용 시 참고**: 아래 APT 저장소·Docker 이미지는 **원본 PegaProx**의 공식 배포 채널입니다. Makus Virt는 아직 별도 패키지 저장소/Docker 이미지를 운영하지 않으므로, `apt-get install pegaprox`나 `ghcr.io/pegaprox/pegaprox`를 그대로 쓰면 Makus Virt가 아닌 **원본 PegaProx가 설치됩니다.** Makus Virt를 쓰시려면 아래 [Manual Installation](#manual-installation) 섹션에서 이 저장소(`dskim1979/makus-virt`)를 clone하세요.
+
 This installation method uses the official APT repository provided by gyptazy. The repository and its associated build and packaging pipeline are fully hosted and maintained by <a href="https://github.com/gyptazy">gyptazy</a>, where PegaProx releases are automatically built and published as Debian packages. Unlike the automated installation script, which pulls the latest code directly from the repository branch, the APT repository distributes packaged and versioned releases. This generally provides a more stable and predictable installation, making it the recommended approach for production environments.
 ```bash
 curl https://git.gyptazy.com/api/packages/gyptazy/debian/repository.key -o /etc/apt/keyrings/gyptazy.asc
@@ -250,6 +266,17 @@ If you prefer a more stable version, you can optionally checkout a specific rele
 Running PegaProx from source can be useful for debugging, contributing to the project, or integrating custom functionality, since you have direct access to the entire codebase and can easily update it using standard Git workflows.
 
 ### Manual Installation
+
+**Makus Virt (이 저장소):**
+```bash
+git clone https://github.com/dskim1979/makus-virt.git
+cd makus-virt
+pip install -r requirements.txt
+bash web/Dev/build.sh   # 프론트엔드 빌드 (최초 1회 + 소스 수정 시마다)
+python3 pegaprox_multi_cluster.py
+```
+
+**원본 PegaProx:**
 ```bash
 git clone https://github.com/PegaProx/project-pegaprox.git
 cd project-pegaprox
@@ -258,6 +285,8 @@ python3 pegaprox_multi_cluster.py
 ```
 
 ### Docker
+> ⚠️ 아래 Docker 예시는 원본 PegaProx 이미지(`ghcr.io/pegaprox/pegaprox`) 기준입니다. Makus Virt는 아직 자체 Docker 이미지가 없으니, "For local builds" 항목처럼 이 저장소를 직접 clone해서 빌드하는 방식을 이용하세요.
+
 ```bash
 docker compose up -d
 ```
@@ -272,17 +301,17 @@ docker run -d --name pegaprox \
   ghcr.io/pegaprox/pegaprox:latest
 ```
 
-For local builds:
+For local builds (Makus Virt):
 ```bash
-git clone https://github.com/PegaProx/project-pegaprox.git
-cd project-pegaprox
-docker build -t pegaprox .
-docker run -d --name pegaprox \
+git clone https://github.com/dskim1979/makus-virt.git
+cd makus-virt
+docker build -t makus-virt .
+docker run -d --name makus-virt \
   -p 5000:5000 -p 5001:5001 -p 5002:5002 \
-  -v pegaprox-config:/app/config \
-  -v pegaprox-logs:/app/logs \
+  -v makus-virt-config:/app/config \
+  -v makus-virt-logs:/app/logs \
   --restart unless-stopped \
-  pegaprox
+  makus-virt
 ```
 
 ### Debian Package (.deb build)
@@ -366,7 +395,7 @@ Password: admin
 
 ## 📖 Documentation
 
-Full documentation is available at **[docs.pegaprox.com](https://docs.pegaprox.com)**
+Full documentation is available at **[docs.pegaprox.com](https://docs.pegaprox.com)** (원본 PegaProx 문서 — Makus Virt 전용 한국어 문서는 준비 중입니다)
 
 ## 📜 License
 
@@ -374,8 +403,15 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 **Attribution (AGPL §7b):** Under Section 7(b) of the AGPL, the **"Powered by PegaProx"** attribution shown in the client portal is a *required* author attribution and must be preserved in every copy and modified/derivative version — see the [NOTICE](NOTICE) file. Note also that AGPL §13 requires anyone hosting a **modified** version for network users to publish that version's complete source to those users. PegaProx is AGPL-3.0 only — the attribution applies to everyone, without exception.
 
+Makus Virt는 이 요건을 그대로 준수하며, 수정된 소스 전체를 이 저장소를 통해 공개하고 있습니다.
+
 ## 💬 Support
 
+**Makus Virt (이 포크) 관련 문의:**
+- 📧 Email: support@makusvirt.example.com
+- 🐛 Issues: [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
+
+**원본 PegaProx 커뮤니티/코어 기능 문의:**
 - 💬 Discord: [Community Server](https://discord.gg/AJPf3H62QW)
 - 📧 Email: support@pegaprox.com
 - 🐛 Issues: [GitHub Issues](https://github.com/PegaProx/project-pegaprox/issues)

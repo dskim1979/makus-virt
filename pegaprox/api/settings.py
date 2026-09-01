@@ -1037,7 +1037,11 @@ from pegaprox.constants import BRANDING_DIR  # config/branding
 
 @bp.route('/favicon.ico')
 def serve_favicon():
-    """serve favicon from images or static folder"""
+    """serve favicon from branding upload, images, or static folder"""
+    # NS: white-label — a custom-uploaded favicon (any extension) wins first.
+    from pathlib import Path as _Path
+    for custom in sorted(_Path(BRANDING_DIR).glob('favicon.*')):
+        return send_from_directory(BRANDING_DIR, custom.name)
     # try images first, then static
     for folder in [IMAGES_DIR, STATIC_DIR]:
         favicon_path = os.path.join(folder, 'favicon.ico')
@@ -1045,65 +1049,6 @@ def serve_favicon():
             return send_from_directory(folder, 'favicon.ico', mimetype='image/x-icon')
     # return empty response if no favicon (prevents 404 spam in logs)
     return '', 204
-
-# MK 2026-06-11 (Nico) — sponsor logos must ALWAYS render. A freshly-added
-# sponsor asset doesn't always reach an existing install (the per-file updater
-# missed it — that's how Expertize's sponsor3.png went missing on some boxes).
-# So make them redundant: if a sponsors/* file is absent locally, pull it from
-# the update mirror, then GitHub. We try to cache it to images/sponsors/ so it
-# self-heals — but if that folder isn't writable (read-only mount, or the app
-# dir owned by root while we run as a restricted user, common on bare-metal) we
-# keep the bytes in memory and serve them directly, so wrong permissions can't
-# break the logo. Skipped in air-gap mode (no egress). Negative-cached so a
-# genuinely-absent file isn't re-fetched on every page load.
-_SPONSOR_HEAL_SOURCES = (
-    "https://updates.pegaprox.com/images/sponsors/{name}",
-    "https://raw.githubusercontent.com/PegaProx/project-pegaprox/main/images/sponsors/{name}",
-)
-_sponsor_heal_misses = {}  # name -> monotonic ts of last failed remote fetch
-_sponsor_mem_cache = {}    # name -> (bytes, content_type) — fallback when images/ isn't writable
-
-def _get_healed_sponsor(filename):
-    """Return (content, content_type) for a missing sponsors/* asset pulled from
-    the mirror then GitHub. Caches to images/sponsors/ when writable, otherwise
-    keeps it in memory so the logo still shows on read-only installs. Returns
-    (None, None) in air-gap mode, on a recent miss, or if it can't be fetched."""
-    name = os.path.basename(filename)
-    if not re.match(r'^sponsor[\w-]+\.(png|svg|jpg|jpeg|webp|gif)$', name, re.I):
-        return None, None
-    if name in _sponsor_mem_cache:          # fetched before but couldn't write to disk
-        return _sponsor_mem_cache[name]
-    try:
-        if load_server_settings().get('air_gap_mode', False):
-            return None, None
-    except Exception:
-        pass
-    now = time.monotonic()
-    if now - _sponsor_heal_misses.get(name, 0) < 600:
-        return None, None
-    for tmpl in _SPONSOR_HEAL_SOURCES:
-        url = tmpl.format(name=name)
-        try:
-            r = requests.get(url, timeout=8)
-            if r.status_code == 200 and 0 < len(r.content) <= 5 * 1024 * 1024:
-                ctype = r.headers.get('Content-Type') or ('image/svg+xml' if name.lower().endswith('.svg') else 'image/png')
-                try:
-                    dst_dir = os.path.join(IMAGES_DIR, 'sponsors')
-                    os.makedirs(dst_dir, exist_ok=True)
-                    with open(os.path.join(dst_dir, name), 'wb') as fh:
-                        fh.write(r.content)
-                    logging.info(f"[sponsors] self-healed {name} via {url.split('/')[2]} (cached to disk)")
-                except Exception as werr:
-                    # images/ not writable — keep it in memory so the logo still
-                    # renders; perms must not be able to break a sponsor logo.
-                    _sponsor_mem_cache[name] = (r.content, ctype)
-                    logging.warning(f"[sponsors] fetched {name} via {url.split('/')[2]} but images/ not writable ({werr}); serving from memory")
-                _sponsor_heal_misses.pop(name, None)
-                return r.content, ctype
-        except Exception as e:
-            logging.debug(f"[sponsors] heal fetch failed ({url}): {e}")
-    _sponsor_heal_misses[name] = now
-    return None, None
 
 @bp.route('/images/<path:filename>')
 def serve_images(filename):
@@ -1119,15 +1064,12 @@ def serve_images(filename):
         branding_path = os.path.join(BRANDING_DIR, filename)
         if os.path.exists(branding_path):
             return send_from_directory(BRANDING_DIR, filename)
-    # sponsor logos are redundant — self-heal a missing one from mirror/GitHub
-    if filename.startswith('sponsors/') and not os.path.exists(os.path.join(IMAGES_DIR, filename)):
-        _content, _ctype = _get_healed_sponsor(filename)
-        # if the disk cache couldn't be written (read-only images/), serve the
-        # fetched bytes straight from memory so the logo still shows
-        if _content is not None and not os.path.exists(os.path.join(IMAGES_DIR, filename)):
-            resp = Response(_content, mimetype=_ctype)
-            resp.headers['Cache-Control'] = 'public, max-age=86400'
-            return resp
+    # NS: white-label — custom logo/favicon uploaded via /api/settings/server,
+    # same BRANDING_DIR pattern as login_bg above.
+    if filename.startswith('logo.') or filename.startswith('favicon.'):
+        branding_path = os.path.join(BRANDING_DIR, filename)
+        if os.path.exists(branding_path):
+            return send_from_directory(BRANDING_DIR, filename)
     return send_from_directory(IMAGES_DIR, filename)
 
 
@@ -1660,6 +1602,15 @@ def update_server_settings():
             ]
             if default_theme in allowed_themes:
                 settings['default_theme'] = default_theme
+
+            # NS: white-label — app name / tagline, simple text fields, cap length
+            # defensively (these render unescaped in some places like the browser
+            # tab title, so length is the only guard needed here).
+            if 'app_name' in request.form:
+                _app_name = request.form.get('app_name', '').strip()[:80]
+                settings['app_name'] = _app_name or 'Makus Virt'
+            if 'app_tagline' in request.form:
+                settings['app_tagline'] = request.form.get('app_tagline', '').strip()[:120]
             
             # alert recipients from form-data (#131)
             if 'alert_email_recipients' in request.form:
@@ -1752,6 +1703,32 @@ def update_server_settings():
                         f.write(bg_content)
                     settings['login_background'] = '/images/login_bg' + ext
 
+            # NS: white-label — logo + favicon upload, same validation pattern as
+            # login_background above (size cap, extension allowlist, magic-byte check).
+            for field, max_mb, exts in (('logo', 2, ('.png', '.jpg', '.jpeg', '.webp', '.svg')),
+                                         ('favicon', 1, ('.ico', '.png', '.svg'))):
+                if field in request.files:
+                    up_file = request.files[field]
+                    if up_file.filename:
+                        up_content = up_file.read()
+                        if len(up_content) > max_mb * 1024 * 1024:
+                            return jsonify({'error': f'{field.capitalize()} too large (max {max_mb}MB)'}), 400
+                        ext = os.path.splitext(up_file.filename)[1].lower()
+                        if ext not in exts:
+                            return jsonify({'error': 'Invalid image format'}), 400
+                        _magic = {'.png': b'\x89PNG', '.jpg': b'\xff\xd8\xff', '.jpeg': b'\xff\xd8\xff',
+                                  '.webp': b'RIFF', '.ico': b'\x00\x00\x01\x00'}
+                        if ext in _magic and not up_content[:4].startswith(_magic[ext]):
+                            return jsonify({'error': 'File content does not match extension'}), 400
+                        from pathlib import Path as _Path
+                        _Path(BRANDING_DIR).mkdir(parents=True, exist_ok=True)
+                        dest_path = os.path.join(BRANDING_DIR, field + ext)
+                        for old in _Path(BRANDING_DIR).glob(field + '.*'):
+                            old.unlink(missing_ok=True)
+                        with open(dest_path, 'wb') as f:
+                            f.write(up_content)
+                        settings[f'{field}_url'] = '/images/' + field + ext
+
         # save
         logging.info(f"[Settings] Saving settings. SMTP enabled={settings.get('smtp_enabled')}, host={settings.get('smtp_host')}")
         if save_server_settings(settings):
@@ -1797,6 +1774,36 @@ def delete_login_background():
     settings['login_background'] = ''
     save_server_settings(settings)
     return jsonify({'success': True})
+
+
+@bp.route('/api/settings/branding/<field>', methods=['DELETE'])
+@require_auth(perms=['admin.settings'])
+def delete_branding_asset(field):
+    """Remove a custom-uploaded logo or favicon, reverting to the bundled default."""
+    if field not in ('logo', 'favicon'):
+        return jsonify({'error': 'Unknown branding field'}), 400
+    from pathlib import Path as _Path
+    for old in _Path(BRANDING_DIR).glob(field + '.*'):
+        old.unlink(missing_ok=True)
+    settings = load_server_settings()
+    settings[f'{field}_url'] = ''
+    save_server_settings(settings)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/branding', methods=['GET'])
+def get_branding():
+    """Public (unauthenticated) branding info — app name, tagline, logo/favicon
+    URLs. Used by the login page and browser tab title/favicon, which render
+    before any session exists. Deliberately excludes every other server
+    setting; this is the ONLY settings data exposed without auth."""
+    settings = load_server_settings()
+    return jsonify({
+        'app_name': settings.get('app_name') or 'Makus Virt',
+        'app_tagline': settings.get('app_tagline') or '',
+        'logo_url': settings.get('logo_url') or '',
+        'favicon_url': settings.get('favicon_url') or '',
+    })
 
 @bp.route('/api/settings/server/restart', methods=['POST'])
 @require_auth(perms=['admin.settings'])

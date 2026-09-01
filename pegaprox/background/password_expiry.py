@@ -17,7 +17,7 @@ from pegaprox.core.db import get_db
 from pegaprox.api.helpers import load_server_settings
 from pegaprox.models.permissions import ROLE_ADMIN
 from pegaprox.utils.auth import load_users
-from pegaprox.utils.email import send_email
+from pegaprox.utils.email import send_email, get_email_logo_html
 
 def check_password_expiry():
     """Check all users for expiring passwords and send email notifications
@@ -103,59 +103,65 @@ def check_password_expiry():
             # Send notification - bilingual DE/EN because we dont track user language
             # NS: some users might want english only but this works for everyone
             display_name = user.get('display_name', username)
+            _app_name = load_server_settings().get('app_name', 'Makus Virt')
             
             if days_until_expiry <= 0:
-                subject = f"[PegaProx] Password expired / Passwort abgelaufen"
+                subject = f"[{_app_name}] Password expired / Passwort abgelaufen"
                 body = f"""Hello {display_name},
 
-Your PegaProx password has expired. Please change it as soon as possible.
+Your {_app_name} password has expired. Please change it as soon as possible.
 
 You can still log in, but you will be prompted to change your password.
 
 Username: {username}
 
 Best regards,
-Your PegaProx System
+Your {_app_name} System
 
 ---
 
 Hallo {display_name},
 
-Ihr PegaProx-Passwort ist abgelaufen. Bitte ändern Sie es so bald wie möglich.
+Ihr {_app_name}-Passwort ist abgelaufen. Bitte ändern Sie es so bald wie möglich.
 
 Sie können sich weiterhin anmelden, werden aber aufgefordert Ihr Passwort zu ändern.
 
 Benutzername: {username}
 
 Mit freundlichen Grüßen,
-Ihr PegaProx System"""
+Ihr {_app_name} System"""
             else:
-                subject = f"[PegaProx] Password expires in {days_until_expiry} days / Passwort läuft ab"
+                subject = f"[{_app_name}] Password expires in {days_until_expiry} days / Passwort läuft ab"
                 body = f"""Hello {display_name},
 
-Your PegaProx password will expire in {days_until_expiry} days.
+Your {_app_name} password will expire in {days_until_expiry} days.
 
 Please change your password in time to avoid any interruptions.
 
 Username: {username}
 
 Best regards,
-Your PegaProx System
+Your {_app_name} System
 
 ---
 
 Hallo {display_name},
 
-Ihr PegaProx-Passwort läuft in {days_until_expiry} Tagen ab.
+Ihr {_app_name}-Passwort läuft in {days_until_expiry} Tagen ab.
 
 Bitte ändern Sie Ihr Passwort rechtzeitig um Unterbrechungen zu vermeiden.
 
 Benutzername: {username}
 
 Mit freundlichen Grüßen,
-Ihr PegaProx System"""
-            
-            success, error = send_email([email], subject, body)
+Ihr {_app_name} System"""
+
+            import html as _html_lib
+            _html_body = (
+                f"{get_email_logo_html()}"
+                f"<pre style=\"font-family:inherit;white-space:pre-wrap;\">{_html_lib.escape(body)}</pre>"
+            )
+            success, error = send_email([email], subject, body, _html_body)
             if success:
                 _password_expiry_last_check[username] = today
                 logging.info(f"Password expiry notification sent to {username} ({days_until_expiry} days)")

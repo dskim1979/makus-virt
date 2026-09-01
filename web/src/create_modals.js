@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - Create Modals
+        // Makus Virt - Create Modals
         // CreateVM, AddCluster, UserProfile
         // ═══════════════════════════════════════════════
         // Create VM/CT Modal Component
@@ -2217,7 +2217,7 @@
                                 {showPbsSshSettings && (
                                     <div className="mt-4 space-y-3 p-4 bg-proxmox-dark/50 rounded-lg">
                                         <p className="text-xs text-gray-400">
-                                            {t('pbsSshHint') || 'SSH is only used for the Update Manager (apt dist-upgrade). If left blank, PegaProx falls back to the PBS web password. Use a dedicated key if your PBS has password-login disabled.'}
+                                            {t('pbsSshHint') || 'SSH is only used for the Update Manager (apt dist-upgrade). If left blank, Makus Virt falls back to the PBS web password. Use a dedicated key if your PBS has password-login disabled.'}
                                         </p>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
@@ -3052,7 +3052,7 @@
                                     )}
 
                                     {/* NS Jun 2026 — language moved from corporate header into profile prefs */}
-                                    {isCorporate && (
+                                    {false && isCorporate && (
                                         <div className="pt-4 border-t border-proxmox-border">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
@@ -3627,7 +3627,7 @@
                             <div className="text-xs text-yellow-300">
                                 <div className="font-medium">{t('webauthnIpHostTitle') || 'WebAuthn cannot be used with IP addresses'}</div>
                                 <div className="text-gray-400 mt-0.5">
-                                    {t('webauthnIpHostDesc') || 'Open PegaProx via its hostname (e.g. https://localhost:5000 or https://your-server.local:5000) to register a security key. IP addresses like 127.0.0.1 are not allowed by the WebAuthn spec.'}
+                                    {t('webauthnIpHostDesc') || 'Open Makus Virt via its hostname (e.g. https://localhost:5000 or https://your-server.local:5000) to register a security key. IP addresses like 127.0.0.1 are not allowed by the WebAuthn spec.'}
                                 </div>
                             </div>
                         </div>

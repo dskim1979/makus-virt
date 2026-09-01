@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - VM Configuration
+        // Makus Virt - VM Configuration
         // ConfigModal, disk/network/ISO management
         // ═══════════════════════════════════════════════
         // VM/Container Config Modal
@@ -665,7 +665,7 @@
                 }
             };
 
-            // MK: Fetch VM History (Proxmox Tasks + PegaProx Audit)
+            // MK: Fetch VM History (Proxmox Tasks + Makus Virt Audit)
             const fetchHistory = async () => {
                 setHistoryLoading(true);
                 try {
@@ -675,7 +675,7 @@
                         setVmProxmoxTasks(await tasksRes.json());
                     }
                     
-                    // Fetch PegaProx audit log for this VM
+                    // Fetch Makus Virt audit log for this VM
                     const auditRes = await authFetch(`${API_URL}/clusters/${clusterId}/audit?vmid=${vm.vmid}&limit=50`);
                     if (auditRes && auditRes.ok) {
                         setVmPegaproxActions(await auditRes.json());
@@ -3588,10 +3588,10 @@
                                                         </div>
                                                     )}
 
-                                                    {/* PegaProx Actions */}
+                                                    {/* Makus Virt Actions */}
                                                     {historySubTab === 'pegaprox' && (
                                                         <div className="space-y-2">
-                                                            <h4 className="text-sm font-medium text-gray-400 mb-2">PegaProx Actions for {isQemu ? 'VM' : 'CT'} {vm.vmid}</h4>
+                                                            <h4 className="text-sm font-medium text-gray-400 mb-2">Makus Virt Actions for {isQemu ? 'VM' : 'CT'} {vm.vmid}</h4>
                                                             {vmPegaproxActions && vmPegaproxActions.length > 0 ? (
                                                                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                                                                     <table className="w-full text-sm">
@@ -3626,7 +3626,7 @@
                                                             ) : (
                                                                 <div className="text-center py-8 text-gray-500">
                                                                     <Icons.List className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                                                    <p>No PegaProx actions found for this {isQemu ? 'VM' : 'Container'}</p>
+                                                                    <p>No Makus Virt actions found for this {isQemu ? 'VM' : 'Container'}</p>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -5060,7 +5060,7 @@
                                                                                 className="px-2 py-1 bg-proxmox-orange/20 border border-proxmox-orange/50 rounded text-xs text-proxmox-orange hover:bg-proxmox-orange/30"
                                                                                 title={t('applySmbiosFromClusterConfig') || 'Apply SMBIOS settings from cluster configuration'}
                                                                             >
-                                                                                🦄 PegaProx
+                                                                                🦄 Makus Virt
                                                                             </button>
                                                                             <button
                                                                                 onClick={() => {

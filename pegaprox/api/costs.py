@@ -40,10 +40,10 @@ bp = Blueprint('costs', __name__)
 
 
 _DEFAULT_RATES = {
-    'cpu_per_core_h': 0.012,
-    'mem_per_gb_h': 0.0035,
-    'storage_per_gb_month': 0.10,
-    'currency': 'EUR',
+    'cpu_per_core_h': 15,
+    'mem_per_gb_h': 5,
+    'storage_per_gb_month': 150,
+    'currency': 'KRW',
     'notes': '',
 }
 
@@ -54,7 +54,7 @@ def _row_to_rates(row):
         'cpu_per_core_h': float(row['cpu_per_core_h'] or 0),
         'mem_per_gb_h': float(row['mem_per_gb_h'] or 0),
         'storage_per_gb_month': float(row['storage_per_gb_month'] or 0),
-        'currency': row['currency'] or 'EUR',
+        'currency': row['currency'] or 'KRW',
         'notes': row['notes'] or '',
         'updated_at': row['updated_at'],
         'updated_by': row['updated_by'] or '',
@@ -240,7 +240,7 @@ def upsert_rate(cluster_id):
         sto = float(body.get('storage_per_gb_month', _DEFAULT_RATES['storage_per_gb_month']))
     except (TypeError, ValueError):
         return jsonify({'error': 'rates must be numeric'}), 400
-    currency = (body.get('currency') or 'EUR').strip()[:8]
+    currency = (body.get('currency') or 'KRW').strip()[:8]
     notes = (body.get('notes') or '').strip()[:500]
 
     try:
@@ -414,7 +414,7 @@ def tenant_chargeback(tenant_id):
         by_cluster = []
         all_rows = []
         grand_total = 0.0
-        currency = 'EUR'
+        currency = 'KRW'
         for cid, mgr in cluster_managers.items():
             if allowed is not None and cid not in allowed:
                 continue

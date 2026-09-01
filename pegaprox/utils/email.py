@@ -13,6 +13,38 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
+
+def get_email_logo_html(settings: dict = None) -> str:
+    """<img> tag for the app logo at the top of HTML emails, or '' if we can't
+    build a reachable URL for it.
+
+    Email clients need an absolute, publicly-reachable URL — they can't read
+    files off this server's local disk — so this only renders once a domain
+    is configured. Embedding the ~1MB bundled logo as base64 would bloat every
+    single alert email, so we link to it instead (same trade-off virtually
+    every SaaS product's email templates make).
+    """
+    try:
+        if settings is None:
+            from pegaprox.api.helpers import load_server_settings
+            settings = load_server_settings()
+        domain = (settings.get('domain') or '').strip()
+        if not domain:
+            return ''
+        port = settings.get('port', 5000)
+        base = f"https://{domain}" if port in (443, '443') else f"https://{domain}:{port}"
+        logo_path = settings.get('logo_url') or '/images/pegaprox-logo-dark.png'
+        app_name = settings.get('app_name') or 'Makus Virt'
+        import html as _html_lib
+        return (
+            f'<div style="text-align:center;margin-bottom:16px;">'
+            f'<img src="{_html_lib.escape(base + logo_path, quote=True)}" alt="{_html_lib.escape(app_name)}" '
+            f'style="height:36px;max-width:220px;object-fit:contain;" />'
+            f'</div>'
+        )
+    except Exception:
+        return ''
+
 def send_email(to_addresses: list, subject: str, body: str, html_body: str = None,
                smtp_settings: dict = None) -> tuple:
     """send email via smtp"""
@@ -43,7 +75,7 @@ def send_email(to_addresses: list, subject: str, body: str, html_body: str = Non
         except Exception:
             smtp_password = raw_smtp_password  # Fallback for unencrypted legacy values
     from_email = settings.get('smtp_from_email', '')
-    from_name = settings.get('smtp_from_name', '') or 'PegaProx'
+    from_name = settings.get('smtp_from_name', '') or settings.get('app_name', '') or 'Makus Virt'
     use_tls = settings.get('smtp_tls', True)
     use_ssl = settings.get('smtp_ssl', False)
     

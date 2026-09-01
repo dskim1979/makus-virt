@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - VM Modals
+        // Makus Virt - VM Modals
         // Delete, Clone, Detail, Migrate, Snapshots, Replication
         // ═══════════════════════════════════════════════
 

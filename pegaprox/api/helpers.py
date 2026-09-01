@@ -58,7 +58,9 @@ def load_server_settings():
         'acme_dns_rfc2136_ttl': 60,
         'acme_dns_propagation_seconds': 30,
         'logo_url': '',
-        'app_name': 'PegaProx',
+        'favicon_url': '',
+        'app_name': 'Makus Virt',
+        'app_tagline': 'for Proxmox Virtual Environment',
         # HTTP redirect port - NS Jan 2026
         # Now that we have protocol detection on the main port, this is only needed
         # if you want HTTP:80 → HTTPS:5000 redirect
@@ -89,7 +91,7 @@ def load_server_settings():
         'smtp_user': '',
         'smtp_password': '',  # stored encrypted ideally
         'smtp_from_email': '',
-        'smtp_from_name': 'PegaProx Alerts',
+        'smtp_from_name': 'Makus Virt Alerts',
         'smtp_tls': True,
         'smtp_ssl': False,
         # Alert notification settings

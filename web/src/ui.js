@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx - UI Components
+        // Makus Virt - UI Components
         // Charts, Gauge, Toast, NodeJoin wizards
         // ═══════════════════════════════════════════════
 
@@ -9,6 +9,7 @@
         // synchronously with the corp-theme toggle.
         function getLogoSrc() {
             try {
+                if (window.__NEXUS_CUSTOM_LOGO__) return window.__NEXUS_CUSTOM_LOGO__;
                 return document.body?.dataset?.corpTheme === 'light'
                     ? '/images/pegaprox-logo-light.png'
                     : '/images/pegaprox-logo-dark.png';
@@ -36,7 +37,7 @@
             } catch(e) { return null; }
         }
 
-        // NS: main entry point for all PegaProx PDF exports
+        // NS: main entry point for all Makus Virt PDF exports
         async function generatePegaProxPDF({ title, subtitle, clusterName, content, filename, orientation }) {
             if (typeof window.jspdf === 'undefined') {
                 console.error('[PDF] jsPDF not loaded');
@@ -65,7 +66,7 @@
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(16);
             doc.setTextColor(233, 236, 239); // #e9ecef
-            doc.text(title || 'PegaProx Report', margin + 24, 12);
+            doc.text(title || 'Makus Virt Report', margin + 24, 12);
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
             doc.setTextColor(150, 160, 170);
@@ -187,7 +188,7 @@
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(7);
                 doc.setTextColor(140, 140, 140);
-                doc.text(`PegaProx ${PEGAPROX_VERSION ? 'v' + PEGAPROX_VERSION : ''}`, margin, pageH - 4);
+                doc.text(`Makus Virt ${PEGAPROX_VERSION ? 'v' + PEGAPROX_VERSION : ''}`, margin, pageH - 4);
                 doc.text('Confidential', pageW / 2, pageH - 4, { align: 'center' });
                 doc.text(`Page ${i} / ${totalPages}`, pageW - margin, pageH - 4, { align: 'right' });
             }
@@ -777,8 +778,12 @@
             );
         }
 
-        // Sponsor Slot Component - loads PNG from /images/sponsors/
+        // Sponsor Slot Component - disabled for Makus Virt rebrand
         function SponsorSlot({ num }) {
+            return null;
+        }
+
+        function _DisabledSponsorSlot({ num }) {
             const { t } = useTranslation();
             const [hasImage, setHasImage] = useState(true);
             
@@ -807,7 +812,7 @@
                 // Show "Wanted" placeholder
                 return(
                     <a
-                        href="mailto:sponsor@pegaprox.com?subject=Sponsorship%20Inquiry"
+                        href="mailto:sponsor@makusvirt.example.com?subject=Sponsorship%20Inquiry"
                         className="group"
                         title={t('becomeSponsor') || 'Become a sponsor'}
                     >
@@ -2712,7 +2717,7 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                     </div>
                                     <div style={{ background: 'rgba(245,79,71,0.08)', border: '1px solid rgba(245,79,71,0.4)',
                                                   borderRadius: '4px', padding: '8px 10px', fontSize: '12px', color: '#f54f47' }}>
-                                        ⚠ The key is shown <strong>once</strong>. PegaProx does not retain a copy.
+                                        ⚠ The key is shown <strong>once</strong>. Makus Virt does not retain a copy.
                                     </div>
                                     {err && <div style={{ color: '#f54f47', fontSize: '12px' }}>{err}</div>}
                                     <div className="flex justify-end">

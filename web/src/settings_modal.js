@@ -566,10 +566,10 @@
         }
 
         // ═══════════════════════════════════════════════
-        // PegaProx - Settings Modal
+        // Makus Virt - Settings Modal
         // PegaProxSettingsModal (Server, SSL, SMTP, RBAC, Audit, Tenants)
         // ═══════════════════════════════════════════════
-        // PegaProx Settings Modal with User Management and Audit Log
+        // Makus Virt Settings Modal with User Management and Audit Log
         function PegaProxSettingsModal({ isOpen, onClose, addToast, onGroupsChanged }) {
             const { t } = useTranslation();
             const { getAuthHeaders, user: currentUser } = useAuth();
@@ -726,7 +726,9 @@
                 trusted_proxies: '',
                 proxy_bind_address: '',
                 logo_url: '',
-                app_name: 'PegaProx',
+                favicon_url: '',
+                app_name: 'Makus Virt',
+                app_tagline: 'for Proxmox Virtual Environment',
                 default_theme: 'proxmoxDark',  // NS: Default theme for new users - Jan 2026
                 login_background: '',
                 // NS: SMTP Settings - Dec 2025
@@ -736,7 +738,7 @@
                 smtp_user: '',
                 smtp_password: '',
                 smtp_from_email: '',
-                smtp_from_name: 'PegaProx Alerts',
+                smtp_from_name: 'Makus Virt Alerts',
                 smtp_tls: true,
                 smtp_ssl: false,
                 alert_email_recipients: [],
@@ -755,6 +757,10 @@
             const [testEmailAddress, setTestEmailAddress] = useState('');
             const [loginBgFile, setLoginBgFile] = useState(null);
             const [loginBgError, setLoginBgError] = useState(null);
+            const [logoFile, setLogoFile] = useState(null);
+            const [logoError, setLogoError] = useState(null);
+            const [faviconFile, setFaviconFile] = useState(null);
+            const [faviconError, setFaviconError] = useState(null);
             const [discoveredPlugins, setDiscoveredPlugins] = useState([]);
             const [editingPluginConfig, setEditingPluginConfig] = useState(null); // {id, name, config}
 
@@ -999,7 +1005,7 @@
             
             // NS: Perform rollback - Jan 2026
             const performRollback = async (backupName) => {
-                if (!confirm(t('confirmRollback') || `This will restore PegaProx from backup "${backupName}". The server will restart. Continue?`)) return;
+                if (!confirm(t('confirmRollback') || `This will restore Makus Virt from backup "${backupName}". The server will restart. Continue?`)) return;
                 setUpdateLoading(true);
                 setUpdateProgress({ status: 'restoring', message: t('restoringBackup') || 'Restoring from backup...' });
                 try {
@@ -1541,6 +1547,10 @@
                             proxy_bind_address: data.proxy_bind_address || '',
                             default_theme: data.default_theme || 'proxmoxDark',
                             login_background: data.login_background || '',
+                            logo_url: data.logo_url || '',
+                            favicon_url: data.favicon_url || '',
+                            app_name: data.app_name || 'Makus Virt',
+                            app_tagline: data.app_tagline || 'for Proxmox Virtual Environment',
                             // SMTP settings
                             smtp_enabled: data.smtp_enabled || false,
                             smtp_host: data.smtp_host || '',
@@ -1548,7 +1558,7 @@
                             smtp_user: data.smtp_user || '',
                             smtp_password: data.smtp_password || '',
                             smtp_from_email: data.smtp_from_email || '',
-                            smtp_from_name: data.smtp_from_name || 'PegaProx Alerts',
+                            smtp_from_name: data.smtp_from_name || 'Makus Virt Alerts',
                             smtp_tls: data.smtp_tls !== false,
                             smtp_ssl: data.smtp_ssl || false,
                             // Alert settings
@@ -1773,6 +1783,8 @@
                     formData.append('trusted_proxies', serverSettings.trusted_proxies || '');
                     formData.append('proxy_bind_address', serverSettings.proxy_bind_address || '');
                     formData.append('default_theme', serverSettings.default_theme || 'proxmoxDark');
+                    formData.append('app_name', serverSettings.app_name || 'Makus Virt');
+                    formData.append('app_tagline', serverSettings.app_tagline || '');
                     // NS: alert recipients live in the same tab - must send them too (#131)
                     formData.append('alert_email_recipients', JSON.stringify(serverSettings.alert_email_recipients || []));
                     if (serverSettings.alert_cooldown) {
@@ -1791,6 +1803,12 @@
                     if (loginBgFile) {
                         formData.append('login_background', loginBgFile);
                     }
+                    if (logoFile) {
+                        formData.append('logo', logoFile);
+                    }
+                    if (faviconFile) {
+                        formData.append('favicon', faviconFile);
+                    }
                     
                     const response = await fetch(`${API_URL}/settings/server`, {
                         method: 'POST',
@@ -1806,6 +1824,8 @@
                             addToast(t('restartRequired'), 'info');
                         }
                         setLoginBgFile(null);
+                        setLogoFile(null);
+                        setFaviconFile(null);
                         fetchServerSettings();
                     } else {
                         const err = await response.json();
@@ -1977,7 +1997,7 @@
                             smtp_user: serverSettings.smtp_user || '',
                             smtp_password: serverSettings.smtp_password || '',
                             smtp_from_email: serverSettings.smtp_from_email,
-                            smtp_from_name: serverSettings.smtp_from_name || 'PegaProx Alerts',
+                            smtp_from_name: serverSettings.smtp_from_name || 'Makus Virt Alerts',
                             smtp_tls: serverSettings.smtp_tls !== false,
                             smtp_ssl: serverSettings.smtp_ssl || false
                         })
@@ -2384,7 +2404,7 @@
                                 <Icons.Settings className="w-5 h-5" style={{color:'var(--corp-accent, #49afd9)'}} />
                                 <div className="min-w-0">
                                     <div className="corp-vm-modal-title truncate">{t('pegaproxSettings')}</div>
-                                    <div className="corp-vm-modal-meta">PegaProx {PEGAPROX_VERSION}</div>
+                                    <div className="corp-vm-modal-meta">Makus Virt {PEGAPROX_VERSION}</div>
                                 </div>
                             </div>
                             <div className="corp-vm-modal-actions">
@@ -2403,7 +2423,7 @@
                                     <h2 className="text-xl font-bold text-white">
                                         {t('pegaproxSettings')}
                                     </h2>
-                                    <p className="text-sm text-gray-400">PegaProx {PEGAPROX_VERSION}</p>
+                                    <p className="text-sm text-gray-400">Makus Virt {PEGAPROX_VERSION}</p>
                                 </div>
                             </div>
                             <button onClick={onClose} className="p-1.5 hover:bg-proxmox-dark text-gray-400 hover:text-white">
@@ -5150,7 +5170,7 @@
                                                 <Icons.Plus className="w-3 h-3" /> Add Mapping
                                             </button>
                                         </div>
-                                        <p className="text-xs text-gray-500">Map AD/LDAP groups to PegaProx roles (including custom roles). Use full Distinguished Name (DN).</p>
+                                        <p className="text-xs text-gray-500">Map AD/LDAP groups to Makus Virt roles (including custom roles). Use full Distinguished Name (DN).</p>
                                         
                                         {ldapConfig.ldap_group_mappings.length === 0 ? (
                                             <p className="text-gray-600 text-sm text-center py-4 border border-dashed border-proxmox-border rounded-lg">No group mappings configured. Click "Add Mapping" to map an AD group to a role.</p>
@@ -5463,7 +5483,7 @@
                                                 <Icons.Plus className="w-3 h-3" /> Add Mapping
                                             </button>
                                         </div>
-                                        <p className="text-xs text-gray-500">{oidcConfig.oidc_provider === 'entra' ? 'Map Entra groups to PegaProx roles. Use group Object IDs (Azure Portal ↑ Groups ↑ Overview).' : 'Map provider groups to PegaProx roles (including custom roles).'}</p>
+                                        <p className="text-xs text-gray-500">{oidcConfig.oidc_provider === 'entra' ? 'Map Entra groups to Makus Virt roles. Use group Object IDs (Azure Portal ↑ Groups ↑ Overview).' : 'Map provider groups to Makus Virt roles (including custom roles).'}</p>
                                         
                                         {oidcConfig.oidc_group_mappings.length === 0 ? (
                                             <p className="text-gray-600 text-sm text-center py-4 border border-dashed border-proxmox-border rounded-lg">No group mappings configured. Click "Add Mapping" to map a group to a role.</p>
@@ -5583,7 +5603,7 @@
                                                     {t('syslogEnabled') || 'Syslog receiver'}
                                                 </h4>
                                                 <p className="text-sm text-gray-400 mt-1">
-                                                    {t('syslogEnabledDesc') || 'Listen for syslog messages on UDP/TCP port 1514. Disable to close the port if PegaProx does not ingest syslog from your nodes.'}
+                                                    {t('syslogEnabledDesc') || 'Listen for syslog messages on UDP/TCP port 1514. Disable to close the port if Makus Virt does not ingest syslog from your nodes.'}
                                                 </p>
                                             </div>
                                             <label className="flex items-center gap-2 cursor-pointer shrink-0">
@@ -5716,6 +5736,126 @@
                                         <p className="text-xs text-gray-500">
                                             {t('currentDefault') || 'Current default'}: {PEGAPROX_THEMES[serverSettings.default_theme || 'proxmoxDark']?.name || 'Proxmox Dark'}
                                         </p>
+                                    </div>
+
+                                    {/* White-label branding - Makus Virt */}
+                                    <div className="bg-proxmox-dark border border-proxmox-border rounded-xl p-4 space-y-4">
+                                        <h4 className="font-medium text-white flex items-center gap-2">
+                                            <Icons.Image />
+                                            '브랜딩'
+                                        </h4>
+                                        <p className="text-sm text-gray-400">
+                                            '로그인 화면, 대시보드, 이메일 알림에 표시되는 앱 이름·로고·파비콘을 설정합니다.'
+                                        </p>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">'앱 이름'</label>
+                                                <input
+                                                    type="text"
+                                                    value={serverSettings.app_name}
+                                                    onChange={e => setServerSettings({...serverSettings, app_name: e.target.value})}
+                                                    placeholder="Makus Virt"
+                                                    maxLength={80}
+                                                    className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm focus:outline-none focus:border-proxmox-orange"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">'태그라인'</label>
+                                                <input
+                                                    type="text"
+                                                    value={serverSettings.app_tagline}
+                                                    onChange={e => setServerSettings({...serverSettings, app_tagline: e.target.value})}
+                                                    placeholder="for Proxmox Virtual Environment"
+                                                    maxLength={120}
+                                                    className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm focus:outline-none focus:border-proxmox-orange"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Logo */}
+                                        <div className="pt-3 border-t border-proxmox-border/50 space-y-2">
+                                            <label className="block text-sm text-gray-400">'로고'</label>
+                                            {serverSettings.logo_url && (
+                                                <div className="flex items-center gap-3">
+                                                    <img src={serverSettings.logo_url} alt="Logo" className="h-12 w-12 rounded border border-proxmox-border object-contain bg-proxmox-darker p-1" />
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                const r = await fetch(`${API_URL}/settings/branding/logo`, { method: 'DELETE', credentials: 'include', headers: getAuthHeaders() });
+                                                                if (r.ok) {
+                                                                    addToast('제거되었습니다', 'success');
+                                                                    setServerSettings(prev => ({...prev, logo_url: ''}));
+                                                                }
+                                                            } catch (e) { addToast('Error', 'error'); }
+                                                        }}
+                                                        className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-colors"
+                                                    >
+                                                        '제거'
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <input
+                                                type="file"
+                                                accept=".png,.jpg,.jpeg,.webp,.svg"
+                                                onChange={e => {
+                                                    const file = e.target.files[0];
+                                                    if (file && file.size > 2 * 1024 * 1024) {
+                                                        setLogoError('로고 파일이 너무 큽니다 (최대 2MB)');
+                                                        e.target.value = '';
+                                                        setLogoFile(null);
+                                                    } else {
+                                                        setLogoError(null);
+                                                        setLogoFile(file || null);
+                                                    }
+                                                }}
+                                                className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-proxmox-orange/20 file:text-proxmox-orange hover:file:bg-proxmox-orange/30 file:cursor-pointer"
+                                            />
+                                            {logoError && <p className="text-xs text-red-400">{logoError}</p>}
+                                            {logoFile && <p className="text-xs text-green-400">{logoFile.name} ({(logoFile.size / 1024).toFixed(0)} KB)</p>}
+                                        </div>
+
+                                        {/* Favicon */}
+                                        <div className="pt-3 border-t border-proxmox-border/50 space-y-2">
+                                            <label className="block text-sm text-gray-400">'파비콘'</label>
+                                            {serverSettings.favicon_url && (
+                                                <div className="flex items-center gap-3">
+                                                    <img src={serverSettings.favicon_url} alt="Favicon" className="h-8 w-8 rounded border border-proxmox-border object-contain bg-proxmox-darker p-1" />
+                                                    <button
+                                                        onClick={async () => {
+                                                            try {
+                                                                const r = await fetch(`${API_URL}/settings/branding/favicon`, { method: 'DELETE', credentials: 'include', headers: getAuthHeaders() });
+                                                                if (r.ok) {
+                                                                    addToast('제거되었습니다', 'success');
+                                                                    setServerSettings(prev => ({...prev, favicon_url: ''}));
+                                                                }
+                                                            } catch (e) { addToast('Error', 'error'); }
+                                                        }}
+                                                        className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-colors"
+                                                    >
+                                                        '제거'
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <input
+                                                type="file"
+                                                accept=".ico,.png,.svg"
+                                                onChange={e => {
+                                                    const file = e.target.files[0];
+                                                    if (file && file.size > 1024 * 1024) {
+                                                        setFaviconError('파비콘 파일이 너무 큽니다 (최대 1MB)');
+                                                        e.target.value = '';
+                                                        setFaviconFile(null);
+                                                    } else {
+                                                        setFaviconError(null);
+                                                        setFaviconFile(file || null);
+                                                    }
+                                                }}
+                                                className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-proxmox-orange/20 file:text-proxmox-orange hover:file:bg-proxmox-orange/30 file:cursor-pointer"
+                                            />
+                                            {faviconError && <p className="text-xs text-red-400">{faviconError}</p>}
+                                            {faviconFile && <p className="text-xs text-green-400">{faviconFile.name} ({(faviconFile.size / 1024).toFixed(0)} KB)</p>}
+                                        </div>
                                     </div>
 
                                     {/* Login Background - NS Mar 2026 */}
@@ -6294,7 +6434,7 @@
                                                             type="text"
                                                             value={serverSettings.smtp_from_name}
                                                             onChange={e => setServerSettings({...serverSettings, smtp_from_name: e.target.value})}
-                                                            placeholder="PegaProx Alerts"
+                                                            placeholder="Makus Virt Alerts"
                                                             className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm"
                                                         />
                                                     </div>
@@ -6445,7 +6585,7 @@
                                                     onChange={e => setServerSettings({...serverSettings, alert_update_available: e.target.checked})}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm text-white">{t('alertUpdateAvailable') || 'Email me when a PegaProx update is available'}</span>
+                                                <span className="text-sm text-white">{t('alertUpdateAvailable') || 'Email me when a Makus Virt update is available'}</span>
                                             </label>
                                             <p className="text-xs text-gray-500 mt-1 ml-6">{t('alertUpdateAvailableDesc') || 'Polled once a day. Notifies once per new version to the recipients listed above.'}</p>
                                         </div>
@@ -6474,7 +6614,7 @@
                                         </div>
                                         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
                                             <p className="text-xs text-yellow-400">
-                                                {t('pluginDisclaimer') || 'PegaProx takes no responsibility or liability for community plugins. Administrators should always review and scan plugin code before enabling. Only install plugins from trusted sources.'}
+                                                {t('pluginDisclaimer') || 'Makus Virt takes no responsibility or liability for community plugins. Administrators should always review and scan plugin code before enabling. Only install plugins from trusted sources.'}
                                             </p>
                                         </div>
                                         {discoveredPlugins.length === 0 ? (
@@ -6907,7 +7047,7 @@
                                                 </h3>
                                                 <div className="mt-2 space-y-1">
                                                     <p className="text-2xl font-bold text-proxmox-orange">
-                                                        PegaProx {updateInfo?.current_version || PEGAPROX_VERSION}
+                                                        Makus Virt {updateInfo?.current_version || PEGAPROX_VERSION}
                                                     </p>
                                                     <p className="text-sm text-gray-400">
                                                         Build: {updateInfo?.current_build || '2026.01'}
@@ -7032,7 +7172,7 @@
                                             <Icons.CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                             <h3 className="text-lg font-semibold text-white">You're up to date!</h3>
                                             <p className="text-gray-400 mt-1">
-                                                PegaProx {updateInfo.current_version} is the latest version.
+                                                Makus Virt {updateInfo.current_version} is the latest version.
                                             </p>
                                         </div>
                                     )}
@@ -7096,7 +7236,7 @@
                                     {/* GitHub Link */}
                                     <div className="text-center text-sm text-gray-500">
                                         <a 
-                                            href="https://github.com/PegaProx/project-pegaprox" 
+                                            href="https://github.com/Makus Virt/project-pegaprox" 
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="hover:text-proxmox-orange transition-colors inline-flex items-center gap-1"
@@ -7191,7 +7331,7 @@
                                         </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <a 
-                                                href="https://github.com/PegaProx/project-pegaprox/issues" 
+                                                href="https://github.com/Makus Virt/project-pegaprox/issues" 
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7211,7 +7351,7 @@
                                                 an Issue" already covers the Q&A use case and Nico answers there.
                                                 If we ever turn Discussions on, restore from git history. */}
                                             <a
-                                                href="https://github.com/PegaProx/project-pegaprox/wiki"
+                                                href="https://github.com/Makus Virt/project-pegaprox/wiki"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7226,7 +7366,7 @@
                                                 <Icons.ExternalLink className="w-4 h-4 text-gray-500 ml-auto" />
                                             </a>
                                             <a 
-                                                href="https://github.com/PegaProx/project-pegaprox/releases" 
+                                                href="https://github.com/Makus Virt/project-pegaprox/releases" 
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7282,12 +7422,12 @@
                                     {/* Version Info */}
                                     <div className="bg-proxmox-dark border border-proxmox-border rounded-xl p-6 text-center">
                                         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4">
-                                            <img src={getLogoSrc()} alt="PegaProx" className="w-20 h-20 object-contain" />
+                                            <img src={getLogoSrc()} alt="Makus Virt" className="w-20 h-20 object-contain" />
                                         </div>
-                                        <h2 className="text-3xl font-bold text-white">PegaProx</h2>
+                                        <h2 className="text-3xl font-bold text-white">Makus Virt</h2>
                                         <p className="text-xl text-proxmox-orange mt-1">{PEGAPROX_VERSION}</p>
                                         <p className="text-sm text-gray-400 mt-2">Multi-Cluster Proxmox Management</p>
-                                        <p className="text-xs text-gray-500 mt-1">Build 2026.02 • © 2025-2026 PegaProx Team</p>
+                                        <p className="text-xs text-gray-500 mt-1">Build 2026.02 • © 2025-2026 Makus Virt Team</p>
                                     </div>
                                     
                                     {/* Team */}
@@ -7388,7 +7528,7 @@
                                                     <div>
                                                         <h4 className="font-medium text-white">Community Translations</h4>
                                                         <p className="text-sm text-gray-400 mt-1">
-                                                            Thanks to community contributors for helping translate PegaProx into multiple languages.
+                                                            Thanks to community contributors for helping translate Makus Virt into multiple languages.
                                                         </p>
                                                         <div className="flex flex-wrap gap-2 mt-2 text-[12px]">
                                                             <a href="https://github.com/ColombianJoker" target="_blank" rel="noopener noreferrer"
@@ -7440,45 +7580,29 @@
                                             {t('links') || 'Links'}
                                         </h3>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                            <a href="https://pegaprox.com" target="_blank" rel="noopener noreferrer"
+                                            <a href="https://makusvirt.example.com" target="_blank" rel="noopener noreferrer"
                                                 className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
                                                 <Icons.Globe className="text-proxmox-orange" />
-                                                <span className="text-sm text-gray-300">pegaprox.com</span>
+                                                <span className="text-sm text-gray-300">makusvirt.example.com</span>
                                             </a>
-                                            <a href="https://github.com/PegaProx/project-pegaprox" target="_blank" rel="noopener noreferrer"
+                                            <a href="https://github.com/Makus Virt/project-pegaprox" target="_blank" rel="noopener noreferrer"
                                                 className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
                                                 <Icons.Github className="text-gray-400" />
                                                 <span className="text-sm text-gray-300">GitHub</span>
                                             </a>
-                                            <a href="https://docs.pegaprox.com" target="_blank" rel="noopener noreferrer"
+                                            <a href="https://docs.makusvirt.example.com" target="_blank" rel="noopener noreferrer"
                                                 className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
                                                 <Icons.Book className="text-blue-400" />
                                                 <span className="text-sm text-gray-300">Documentation</span>
-                                            </a>
-                                            <a href="mailto:sponsor@pegaprox.com"
-                                                className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
-                                                <Icons.Heart className="text-pink-400" />
-                                                <span className="text-sm text-gray-300">Sponsor</span>
-                                            </a>
-                                        </div>
-                                        {/* LW Apr 2026: OpenCollective contribute button — prefer this over the mailto for recurring support */}
-                                        <div className="mt-4 flex justify-center">
-                                            <a href="https://opencollective.com/pegaprox"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                title="Contribute on Open Collective">
-                                                <img src="/images/oc_contribute_button.png"
-                                                    alt="Contribute to our Collective"
-                                                    className="h-9 w-auto hover:opacity-90 transition-opacity" />
                                             </a>
                                         </div>
                                     </div>
 
                                     {/* License */}
                                     <div className="text-center text-sm text-gray-500 space-y-1">
-                                        <p>PegaProx is open source software licensed under the AGPL-3.0 License.</p>
+                                        <p>Makus Virt is open source software licensed under the AGPL-3.0 License.</p>
                                         <p>Made with ❤️ in Austria and Germany</p>
-                                        <p>© 2025-2026 PegaProx Team</p>
+                                        <p>© 2025-2026 Makus Virt Team</p>
                                     </div>
                                 </div>
                             )}

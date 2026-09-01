@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // PegaProx — Cloud console skin (Preview)
+        // Makus Virt — Cloud console skin (Preview)
         // Modern resource-first console: collapsible grouped nav, KPI dashboard,
         // data tables w/ bulk + per-row actions, full detail views with tabs.
         // self-contained: only React + global Icons + props passed from dashboard. -- LW
@@ -433,20 +433,18 @@
             return (
                 <nav className={'cloud-nav' + (collapsed ? ' cloud-nav-collapsed' : '')}>
                     <div className="cloud-nav-brand">
-                        {/* NS 2026-07: real PegaProx pegasus logo (was a generic Cloud icon).
+                        {/* NS 2026-07: real Makus Virt pegasus logo (was a generic Cloud icon).
                             Cloud-theme-aware: white pegasus on the dark shell, dark pegasus on
                             the light theme. Falls back to the Cloud icon if the asset 404s. */}
                         <span className="cloud-nav-brand-mark">
                             <img
-                                src={(typeof document !== 'undefined' && document.body && document.body.dataset.cloudTheme === 'light')
-                                    ? '/images/pegaprox-logo-light.png'
-                                    : '/images/pegaprox-logo-dark.png'}
-                                alt="PegaProx"
+                                src={getLogoSrc()}
+                                alt="Makus Virt"
                                 onError={(e) => { e.target.style.display = 'none'; const s = e.target.nextSibling; if (s) s.style.display = 'inline-flex'; }}
                             />
                             <span className="cloud-nav-brand-fallback" style={{ display: 'none' }}><Icons.Cloud /></span>
                         </span>
-                        {!collapsed && <span className="cloud-nav-brand-text">PegaProx</span>}
+                        {!collapsed && <span className="cloud-nav-brand-text">Makus Virt</span>}
                         {!collapsed && <span className="cloud-chip cloud-chip-preview">PREVIEW</span>}
                     </div>
                     <div className="cloud-nav-scroll">
@@ -1897,7 +1895,7 @@
                                     <div className="cloud-util-row"><span>{t('twoNodeMode') || '2-node mode'}</span><span>{sbp.two_node_mode ? 'Yes' : 'No'}</span></div>
                                     <div className="cloud-util-row"><span>{t('storageHeartbeat') || 'Storage heartbeat'}</span><span>{sbp.storage_heartbeat_enabled ? (sbp.storage_heartbeat_path || (t('enabled') || 'Enabled')) : (t('disabled') || 'Disabled')}</span></div>
                                     <div className="cloud-util-row"><span>{t('recoveryDelay') || 'Recovery delay'}</span><span>{sbp.recovery_delay != null ? sbp.recovery_delay + 's' : '—'}</span></div>
-                                    {sbp.pegaprox_vmid ? <div className="cloud-util-row"><span>PegaProx VM</span><span>#{sbp.pegaprox_vmid}</span></div> : null}
+                                    {sbp.pegaprox_vmid ? <div className="cloud-util-row"><span>Makus Virt VM</span><span>#{sbp.pegaprox_vmid}</span></div> : null}
                                 </div>
                             </div>
                         </React.Fragment>
@@ -1910,17 +1908,11 @@
         // + OC button as the classic footer, just sized for the cloud content area.
         // Reuses the global SponsorSlot so the mirror/GitHub self-heal applies here too.
         function CloudSponsorFooter({ t }) {
-            const label = (typeof t === 'function' && t('thanksToSponsors')) || 'Thanks to our Sponsors';
+            const label = 'Source available under AGPL-3.0';
             return (
                 <footer className="cloud-sponsors" style={{ marginTop: 28, paddingTop: 18, borderTop: '1px solid rgba(127,127,127,0.18)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 12 }}>❤️ {label}</div>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => <SponsorSlot key={num} num={num} />)}
-                    </div>
-                    <div style={{ marginTop: 14 }}>
-                        <a href="https://opencollective.com/pegaprox" target="_blank" rel="noopener noreferrer" title="Contribute on Open Collective">
-                            <img src="/images/oc_contribute_button.png" alt="Contribute on Open Collective" style={{ height: 26, opacity: 0.9 }} />
-                        </a>
+                    <div style={{ fontSize: 11, opacity: 0.5 }}>
+                        Makus Virt &mdash; <a href="https://github.com/dskim1979/makus-virt" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{label}</a>
                     </div>
                 </footer>
             );
@@ -2200,7 +2192,7 @@
             const safeClusters = Array.isArray(clusters) ? clusters : [];
             const safeResources = Array.isArray(clusterResources) ? clusterResources : [];
 
-            // PegaProx t() ECHOES the key back on a miss, so `t('cloud.x') || 'Fallback'`
+            // Makus Virt t() ECHOES the key back on a miss, so `t('cloud.x') || 'Fallback'`
             // would render the raw key. treat key-echo as "no translation". -- NS
             const tx = React.useCallback((k) => {
                 const v = (typeof t === 'function') ? t(k) : undefined;
@@ -2433,10 +2425,10 @@
                         body = <CloudTasks tasks={tasks} t={T} />;
                         break;
                     case 'users':
-                        body = <CloudClassicLauncher title={T('cloud.users') || 'Users'} icon="Users" text={T('cloud.usersClassic') || 'User, group and ACL management is available in the classic PegaProx layout.'} onExit={onExitCloud} t={T} />;
+                        body = <CloudClassicLauncher title={T('cloud.users') || 'Users'} icon="Users" text={T('cloud.usersClassic') || 'User, group and ACL management is available in the classic Makus Virt layout.'} onExit={onExitCloud} t={T} />;
                         break;
                     case 'settings':
-                        body = <CloudClassicLauncher title={T('cloud.settings') || 'Settings'} icon="Settings" text={T('cloud.settingsClassic') || 'Full settings (auth, backups, monitoring, integrations) live in the classic PegaProx layout.'} onExit={onExitCloud} t={T} />;
+                        body = <CloudClassicLauncher title={T('cloud.settings') || 'Settings'} icon="Settings" text={T('cloud.settingsClassic') || 'Full settings (auth, backups, monitoring, integrations) live in the classic Makus Virt layout.'} onExit={onExitCloud} t={T} />;
                         break;
                     default:
                         body = <CloudDashboard clusters={safeClusters} resources={safeResources} metrics={clusterMetrics} dcStatus={dcStatus} tasks={tasks} onNav={selectSection} t={T} />;
