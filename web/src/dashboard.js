@@ -17,7 +17,7 @@
             const [taskLogLoading, setTaskLogLoading] = useState(false);
             const [filter, setFilter] = useState('all'); // all, running, error, today
             const { getAuthHeaders } = useAuth();
-            const prevRunningCount = React.useRef(0);
+            const seenRunningIds = React.useRef(null);  // #738: UPIDs already seen running (null = not yet seeded)
             
             // LW: Resizable height - Feb 2026
             const [height, setHeight] = useState(() => {
@@ -32,13 +32,31 @@
             const runningCount = safeTasks.filter(task => task && task.status === 'running').length;
             const failedCount = safeTasks.filter(task => task && (task.status === 'failed' || task.status === 'error')).length;
             
-            // NS: Auto-expand when new task starts (if enabled in user preferences)
+            // #738 — auto-expand only for a task the user actually just started: an unseen UPID
+            // whose starttime is within the last 2 min. The old check compared running COUNTS, but
+            // the parent wipes tasks with setTasks([]) on every cluster switch / reload, so the count
+            // ran 0→N and popped the bar open for tasks that were already running. starttime is Unix
+            // seconds across providers (XCP-ng normalised in get_tasks).
             React.useEffect(() => {
-                if (autoExpandEnabled && runningCount > prevRunningCount.current && runningCount > 0) {
-                    setExpanded(true);
+                const running = safeTasks.filter(t => t && t.status === 'running');
+                const ids = new Set(running.map(t => t.upid || t.id).filter(Boolean));
+                if (seenRunningIds.current === null) {
+                    // first snapshot — whatever is already running is existing, not new
+                    seenRunningIds.current = ids;
+                    return;
                 }
-                prevRunningCount.current = runningCount;
-            }, [runningCount, autoExpandEnabled]);
+                if (autoExpandEnabled) {
+                    const now = Date.now() / 1000;
+                    const justStarted = running.some(t => {
+                        const id = t.upid || t.id;
+                        if (!id || seenRunningIds.current.has(id)) return false;
+                        const st = Number(t.starttime);
+                        return Number.isFinite(st) && (now - st) <= 120;
+                    });
+                    if (justStarted) setExpanded(true);
+                }
+                seenRunningIds.current = ids;
+            }, [tasks, autoExpandEnabled]);
             
             // NS: Handle resize drag
             React.useEffect(() => {
@@ -163,7 +181,7 @@
             
             return (
                 <div 
-                    className={`fixed bottom-0 left-0 right-0 z-40 transition-all ${isResizing ? '' : 'duration-300'}`}
+                    className={`pp-taskbar fixed bottom-0 left-0 right-0 z-40 transition-all ${isResizing ? '' : 'duration-300'}`}
                     style={{ height: expanded ? `${height}px` : '40px' }}
                 >
                     {/* NS: Resize Handle - only visible when expanded */}
@@ -2752,7 +2770,9 @@
                                 {allNodes.map(node => {
                                     const vms = nodeGroups[node.name] || [];
                                     const running = vms.filter(v => v.status === 'running').length;
-                                    const stopped = vms.length - running;
+                                    // #749: stopped is its own status — paused/suspended/templates
+                                    // shouldn't get bucketed as stopped via length-minus-running.
+                                    const stopped = vms.filter(v => v.status === 'stopped').length;
                                     const isOnline = node.status === 'online' || node.cpu !== undefined || node.cpu_percent !== undefined;
                                     // LW: #299 — default collapsed: node is collapsed unless explicitly expanded
                                     const isCollapsed = collapsedNodes._defaultCollapsed
@@ -8426,6 +8446,15 @@
             const [warningBannerDismissed, setWarningBannerDismissed] = useState(false);
             // LW: Feb 2026 - corporate sidebar resize
             const [sidebarWidth, setSidebarWidth] = useState(() => parseInt(localStorage.getItem('corp-sidebar-w')) || 224);
+            // #189 - on phones the sidebar is an off-canvas drawer. Purely visual, CSS drives it.
+            const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+            // Close the drawer whenever navigation actually lands somewhere. Watching the
+            // selection state covers every sidebar item at once - there are dozens of
+            // handlers and patching each one would rot the moment somebody adds another.
+            useEffect(() => { setMobileSidebarOpen(false); }, [
+                selectedGroup, selectedCluster, selectedPBS, selectedVMware,
+                selectedSidebarVm, selectedSidebarNode, selectedSidebarDatastore, activeTab,
+            ]);
             const sidebarResizing = useRef(false);
             const wsRef = useRef(null);
             const retryCount = useRef(0);  // unused but might need later
@@ -8508,6 +8537,7 @@
             const [globalSnapshots, setGlobalSnapshots] = useState([]);
             const [snapshotSortBy, setSnapshotSortBy] = useState('age'); // vmid, vm_name, node, snapshot_name, snapshot_date, age
             const [snapshotSortDir, setSnapshotSortDir] = useState('desc');
+            const [selectedSnaps, setSelectedSnaps] = useState({}); // #696 — multi-select in the snapshot overview (key -> true)
             const [logEvents, setLogEvents] = useState([]);
             const [logEventsLoading, setLogEventsLoading] = useState(false);
             const [logEventsError, setLogEventsError] = useState('');
@@ -8568,6 +8598,11 @@
             // so user sees "Applying X (3/15)…" instead of a frozen "Applying…" spinner.
             const [hardenApplyProgress, setHardenApplyProgress] = useState(null);
             const [hardenExpanded, setHardenExpanded] = useState({});  // {ctrl_id: bool}
+            // #16745 — checkbox-gated apply confirmation (A/C) so click-happy users can't
+            // silently footgun their remote access. hardenConfirm holds the pending apply.
+            const [hardenConfirm, setHardenConfirm] = useState(null); // {toApply, needsAccessAck, needsLockoutAck}
+            const [hardenAccessAck, setHardenAccessAck] = useState(false);
+            const [hardenLockoutAck, setHardenLockoutAck] = useState(false);
 
             // Custom Scripts state - MK Jan 2026
             const [customScripts, setCustomScripts] = useState([]);
@@ -9743,6 +9778,31 @@
                 await fetchGlobalSnapshots(clusterId, snapshotFilterDate || null);
             };
             
+            // #696 — stable per-row key for multi-select (the render idx is unstable across sorts)
+            const snapKey = (s) => `${s.cluster_id || ''}:${s.node || ''}:${s.vm_type || ''}:${s.vmid}:${s.snapshot_name}`;
+
+            // #696 — bulk-delete the checked snapshots (backend /snapshots/delete already loops an array)
+            const deleteSelectedSnapshots = async (clusterId) => {
+                const chosen = (sortedSnapshots || []).filter(s => selectedSnaps[snapKey(s)]);
+                if (chosen.length === 0) return;
+                if (!window.confirm(`Delete ${chosen.length} selected snapshot(s)?`)) {
+                    return;
+                }
+                try {
+                    await authFetch(`${API_URL}/snapshots/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ snapshots: chosen.map(s => ({ ...s, cluster_id: s.cluster_id || clusterId })) })
+                    });
+                    addToast(`${chosen.length} snapshot(s) deleted`, 'success');
+                    setSelectedSnaps({});
+                    await fetchGlobalSnapshots(clusterId, snapshotFilterDate || null);
+                } catch (err) {
+                    console.error('Bulk snapshot delete failed:', err);
+                    addToast('Failed to delete selected snapshots', 'error');
+                }
+            };
+
             const deleteGlobalSnapshot = async (snap, clusterId) => {
                 if (!window.confirm(`Delete snapshot "${snap.snapshot_name}" from VM ${snap.vmid}?`)) {
                     return;
@@ -10264,12 +10324,27 @@
                 setHardenLoading(false);
             };
 
-            const applyHardening = async () => {
+            // #16745 (C) — controls that change SSH / login access; selecting any of them makes the
+            // apply confirmation require an explicit "I understand this can lock out access" checkbox.
+            const HARDEN_ACCESS_CONTROLS = ['sshd_hardening', 'ssh_perms', 'ssh_crypto', 'pam_faillock'];
+
+            // Opens the gated confirmation modal instead of a bare confirm(), so a click-happy user
+            // has to read + tick before anything touches the node (#16745 A/C).
+            const applyHardening = () => {
                 if (!selectedCluster?.id || !hardenNode) return;
                 const toApply = Object.keys(hardenSelected).filter(k => hardenSelected[k]);
                 if (!toApply.length) { addToast(t('noControlsSelected') || 'No controls selected', 'warning'); return; }
-                // NS: warn before modifying system config
-                if (!confirm(`${t('hardenConfirm') || `⚠️ This will apply ${toApply.length} hardening control(s) to "${hardenNode}".\n\nSystem configuration files will be modified. Some changes may require a reboot.\n\nProceed?`}`)) return;
+                const needsAccessAck = toApply.some(c => HARDEN_ACCESS_CONTROLS.includes(c));
+                // (A) the reliable self-lockout combo: sshd_hardening on a cluster we reach by
+                // password with no key deployed — needs a second, explicit red acknowledgement.
+                const needsLockoutAck = toApply.includes('sshd_hardening') && selectedCluster?.has_ssh_key === false;
+                setHardenAccessAck(false);
+                setHardenLockoutAck(false);
+                setHardenConfirm({ toApply, needsAccessAck, needsLockoutAck });
+            };
+
+            const doApplyHardening = async (toApply, force) => {
+                setHardenConfirm(null);
                 setHardenApplying(true);
                 setHardenResults({});
                 // NS Apr 2026 — apply controls one at a time so the user gets live feedback
@@ -10289,6 +10364,8 @@
                                 body: JSON.stringify({
                                     controls: [ctrlId],
                                     params: hardenParams && hardenParams[ctrlId] ? { [ctrlId]: hardenParams[ctrlId] } : {},
+                                    // #16745 (A) — only sshd_hardening, only after the explicit red ack, carries force
+                                    ...(ctrlId === 'sshd_hardening' && force ? { force: true } : {}),
                                 })
                             });
                             if (resp && resp.ok) {
@@ -12696,7 +12773,13 @@
                         setTimeout(() => logout(), 2000);
                     } else {
                         const err = await response.json().catch(() => ({}));
-                        setError(err.error || t('connectionFailed'));
+                        // #683 — a 2FA-enabled PVE account can't be added by password; show the
+                        // localized hint (API token OR temporarily disable 2FA) instead of the raw text.
+                        if (err.error_code === 'NEEDS_2FA') {
+                            setError(t('cluster2FAHint') || err.error);
+                        } else {
+                            setError(err.error || t('connectionFailed'));
+                        }
                     }
                 } catch (error) {
                     setError(t('connectionError') + ': ' + error.message);
@@ -12716,6 +12799,23 @@
                     }
                 } catch (error) {
                     addToast(t('deleteError') || 'Delete error', 'error');
+                }
+            };
+
+            // #717 — drop pinned SSH host keys for a cluster whose node host key changed
+            // (CIS hardening / reinstall) so the next connect re-pins, without deleting the cluster.
+            const handleRepinHostKeys = async (clusterId) => {
+                if (!window.confirm(t('repinHostKeysConfirm') || 'Clear the pinned SSH host keys for this cluster? Use this after a node was reinstalled or hardened and its SSH host key changed — the next connection re-learns the new key.')) return;
+                try {
+                    const response = await authFetch(`${API_URL}/clusters/${clusterId}/ssh/repin-host-keys`, { method: 'POST' });
+                    const d = response ? await response.json().catch(() => ({})) : {};
+                    if (response && response.ok) {
+                        addToast((t('repinHostKeysDone') || 'SSH host keys cleared — the next connection re-pins') + (d.removed != null ? ` (${d.removed})` : ''));
+                    } else {
+                        addToast(d.error || (t('repinHostKeysFailed') || 'Re-pin failed'), 'error');
+                    }
+                } catch (error) {
+                    addToast(t('repinHostKeysFailed') || 'Re-pin failed', 'error');
                 }
             };
 
@@ -13205,6 +13305,7 @@
                                 name: cloneConfig.name,
                                 full: cloneConfig.full,
                                 target_node: cloneConfig.target_node,
+                                target_storage: cloneConfig.target_storage,
                                 description: cloneConfig.description
                             })
                         }
@@ -13213,8 +13314,9 @@
                     if (response && response.ok) {
                         const result = await response.json();
                         addToast(result.message || `${t('cloneStarted') || 'Clone started'}: ${vm.vmid} ↑ ${cloneConfig.newid}`);
-                        setShowCloneModal(null);
+                        setDashCloneVm(null);
                         setTimeout(() => fetchClusterResources(selectedCluster.id), 3000);
+                        return true;   // #702 — signal success so the table-view modal can self-close
                     } else if (response) {
                         const err = await response.json();
                         addToast(err.error || t('cloneFailed'), 'error');
@@ -13462,6 +13564,7 @@
                         { label: t('refreshData') || 'Refresh', icon: <Icons.RefreshCw className="w-3.5 h-3.5" />, onClick: () => { fetchSidebarClusterData(cluster.id); if (selectedCluster?.id === cluster.id) { fetchClusterMetrics(cluster.id); fetchClusterResources(cluster.id); } } },
                         { separator: true },
                         { label: t('reconfigureCluster') || 'Re-configure', icon: <Icons.Settings className="w-3.5 h-3.5" />, onClick: () => setReconfigureCluster(cluster) },
+                        { label: t('repinHostKeys') || 'Re-pin SSH host keys', icon: <Icons.Key className="w-3.5 h-3.5" />, onClick: () => handleRepinHostKeys(cluster.id) },
                         { label: t('deleteCluster') || 'Remove Cluster', icon: <Icons.Trash className="w-3.5 h-3.5" />, danger: true, onClick: () => handleDeleteCluster(cluster.id) },
                     ];
                 }
@@ -13759,7 +13862,7 @@
                             <MigrateModal vm={dashMigrateVm} nodes={Object.keys(clusterMetrics)} clusterId={dashMigrateVm._clusterId || selectedCluster?.id} onMigrate={handleMigrate} onClose={() => setDashMigrateVm(null)} />
                         )}
                         {dashCloneVm && (
-                            <CloneVmModal vm={dashCloneVm} nodes={Object.keys(clusterMetrics)} clusterId={dashCloneVm._clusterId || selectedCluster?.id} onClone={handleCloneVm} onClose={() => setDashCloneVm(null)} />
+                            <CloneVmModal vm={dashCloneVm} nodes={Object.keys(clusterMetrics)} clusterId={dashCloneVm._clusterId || selectedCluster?.id} storages={clusterDatastores} onClone={handleCloneVm} onClose={() => setDashCloneVm(null)} />
                         )}
                         {dashDeleteVm && (
                             <DeleteVmModal vm={dashDeleteVm} clusterId={dashDeleteVm._clusterId || selectedCluster?.id} onDelete={handleDeleteVm} onClose={() => setDashDeleteVm(null)} />
@@ -13793,8 +13896,12 @@
                 );
             }
 
+            // NS #727 — Firefox drives text-selection autoscroll into overflow:hidden boxes
+            // (Chrome doesn't), which can shove the whole shell off-screen horizontally with no
+            // scrollbar left to recover it. overflow-x:clip pins the shell on the x-axis; y stays
+            // visible so the page still scrolls vertically and fixed-position modals are unaffected.
             return (
-                <div className={`min-h-screen bg-proxmox-darker text-white flex flex-col ${isCorporate ? 'pb-7' : ''}`}>
+                <div className={`min-h-screen bg-proxmox-darker text-white flex flex-col ${isCorporate ? 'pb-7' : ''}`} style={{ overflowX: 'clip' }}>
                     {/* LW: Password Expiry Warning */}
                     <PasswordExpiryBanner onChangePassword={() => setShowProfile(true)} />
                     
@@ -13816,9 +13923,17 @@
                     {/* LW: Mar 2026 - z-50 so search dropdown renders above content area (#corp-search-overlap) */}
                     <header className={`sticky top-0 z-50 border-b border-proxmox-border ${isCorporate ? 'bg-proxmox-darker' : 'bg-proxmox-dark/80 backdrop-blur-xl'}`}>
                         <div className={`${isCorporate ? 'max-w-full px-3 py-1' : 'max-w-[1600px] mx-auto px-6 py-4'}`}>
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between pp-header-row">
                                 {/* MK: Click logo to return to All Clusters Overview */}
                                 <div className="flex items-center gap-3">
+                                {/* #189 - drawer toggle. In the header so it is always reachable and
+                                    can never paint on top of the content. Hidden above 820px. */}
+                                <button className="pp-drawer-toggle"
+                                    aria-label={t('toggleNavigation') || 'Toggle navigation'}
+                                    aria-expanded={mobileSidebarOpen}
+                                    onClick={() => setMobileSidebarOpen(o => !o)}>
+                                    <span /><span /><span />
+                                </button>
                                 <button
                                     onClick={() => { setSelectedCluster(null); setSelectedPBS(null); setSelectedVMware(null); }}
                                     className={`flex items-center ${isCorporate ? 'gap-2' : 'gap-4'} hover:opacity-80 transition-opacity`}
@@ -13875,9 +13990,9 @@
                                     </div>
                                 )}
                                 </div>
-                                <div className={`flex items-center ${isCorporate ? 'gap-2 justify-end' : 'gap-3'}`}>
+                                <div className={`flex items-center pp-header-actions ${isCorporate ? 'gap-2 justify-end' : 'gap-3'}`}>
                                     {/* NS: Global Search - now with tag search + ctrl+k, LW: fixed width in corporate */}
-                                    <div className="relative">
+                                    <div className="relative pp-header-search">
                                         <div className={`flex items-center ${isCorporate ? 'bg-[#17242b]' : 'bg-proxmox-dark'} border border-proxmox-border rounded-lg overflow-hidden focus-within:border-proxmox-orange/50 transition-colors`}>
                                             <Icons.Search className="w-4 h-4 ml-3 text-gray-500 flex-shrink-0" />
                                             <input
@@ -13921,7 +14036,7 @@
                                         {showGlobalSearch && globalSearchResults && (
                                             <>
                                                 <div className="fixed inset-0 z-40" onClick={() => setShowGlobalSearch(false)} />
-                                                <div className={`absolute top-full right-0 md:left-0 mt-2 w-[28rem] max-h-[32rem] overflow-y-auto z-50 ${isCorporate ? 'rounded-md border-2' : 'bg-proxmox-card border border-proxmox-border rounded-xl shadow-2xl'}`} style={isCorporate ? {background: '#243542', borderColor: '#49afd9', boxShadow: '0 8px 32px rgba(0,0,0,0.5)'} : {}}>
+                                                <div className={`pp-search-results absolute top-full right-0 md:left-0 mt-2 w-[28rem] max-h-[32rem] overflow-y-auto z-50 ${isCorporate ? 'rounded-md border-2' : 'bg-proxmox-card border border-proxmox-border rounded-xl shadow-2xl'}`} style={isCorporate ? {background: '#243542', borderColor: '#49afd9', boxShadow: '0 8px 32px rgba(0,0,0,0.5)'} : {}}>
                                                     {/* Header with count and prefix hints */}
                                                     <div className="p-3 border-b border-proxmox-border">
                                                         <div className="flex justify-between items-center">
@@ -14297,10 +14412,17 @@
                         );
                     })()}
 
-                    <div className={`relative flex-1 flex flex-col ${isCorporate ? 'max-w-full mx-0 px-0 py-0' : 'max-w-[1600px] mx-auto px-6 py-6 w-full'}`}>
-                        <div className={`flex flex-1 ${isCorporate ? 'gap-0' : 'gap-6'}`}>
+                    <div className={`relative flex-1 flex flex-col pp-main-wrap ${isCorporate ? 'max-w-full mx-0 px-0 py-0' : 'max-w-[1600px] mx-auto px-6 py-6 w-full'}`}>
+                        {/* #189 - drawer backdrop. The toggle itself lives in the header. */}
+                        {/* LW #189 — tap the backdrop to close the drawer; navigation also auto-closes it (effect above). */}
+                        {mobileSidebarOpen && <div className="pp-drawer-backdrop" onClick={() => setMobileSidebarOpen(false)} />}
+                        <div className={`flex flex-1 pp-main-row ${isCorporate ? 'gap-0' : 'gap-6'}`}>
                             {/* LW: Feb 2026 - sidebar, resizable in corporate */}
-                            <div className={`${isCorporate ? 'flex-shrink-0 corporate-sidebar' : 'w-72 flex-shrink-0'}`} style={isCorporate ? {width: sidebarWidth + 'px'} : undefined}>
+                            <div className={`pp-sidebar ${mobileSidebarOpen ? 'pp-sidebar-open' : ''} ${isCorporate ? 'flex-shrink-0 corporate-sidebar' : 'w-72 flex-shrink-0'}`} style={isCorporate ? {width: sidebarWidth + 'px'} : undefined}>
+                                {/* #189 - the drawer covers the header, so the header toggle cannot close it */}
+                                <button className="pp-drawer-close"
+                                    aria-label={t('close') || 'Close'}
+                                    onClick={() => setMobileSidebarOpen(false)}>&times;</button>
                                 <div className={`sticky top-6 ${isCorporate ? 'space-y-0.5 px-1 py-2' : 'space-y-3 pr-1'} pb-4`} style={{ maxHeight: 'calc(100vh - 3rem)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'thin', scrollbarColor: '#4a4a4a transparent' }}>
                                     {/* LW: view switcher (tree/pools/datastores) - horizontal icon toggle */}
                                     {isCorporate && (
@@ -15230,6 +15352,7 @@
                                                                     name={node}
                                                                     metrics={metrics}
                                                                     clusterId={selectedCluster.id}
+                                                                    nodeUiSuffix={selectedCluster.node_ui_suffix || ''}
                                                                     onOpenNodeConfig={(nodeName) => setConfigNode(nodeName)}
                                                                     onMaintenanceToggle={handleMaintenanceToggle}
                                                                     onStartUpdate={handleStartUpdate}
@@ -15242,12 +15365,12 @@
                                                             {Object.entries(knownNodes)
                                                                 .filter(([nodeName, nodeData]) => nodeData.status === 'offline' && !clusterMetrics[nodeName])
                                                                 .map(([nodeName]) => (
-                                                                <NodeCompactRow key={`offline-${nodeName}`} name={nodeName} metrics={null} clusterId={selectedCluster.id} />
+                                                                <NodeCompactRow key={`offline-${nodeName}`} name={nodeName} metrics={null} clusterId={selectedCluster.id} nodeUiSuffix={selectedCluster.node_ui_suffix || ''} />
                                                             ))}
                                                             {Object.entries(nodeAlerts)
                                                                 .filter(([nodeName, alert]) => alert.cluster_id === selectedCluster.id && !clusterMetrics[nodeName] && !knownNodes[nodeName]?.status)
                                                                 .map(([nodeName]) => (
-                                                                <NodeCompactRow key={`alert-${nodeName}`} name={nodeName} metrics={null} clusterId={selectedCluster.id} />
+                                                                <NodeCompactRow key={`alert-${nodeName}`} name={nodeName} metrics={null} clusterId={selectedCluster.id} nodeUiSuffix={selectedCluster.node_ui_suffix || ''} />
                                                             ))}
                                                         </div>
                                                         ) : (
@@ -15262,6 +15385,7 @@
                                                                     metrics={metrics}
                                                                     index={idx}
                                                                     clusterId={selectedCluster.id}
+                                                                    nodeUiSuffix={selectedCluster.node_ui_suffix || ''}
                                                                     onMaintenanceToggle={handleMaintenanceToggle}
                                                                     onStartUpdate={handleStartUpdate}
                                                                     onOpenNodeConfig={(nodeName) => setConfigNode(nodeName)}
@@ -15591,6 +15715,7 @@
                                                             onForceStop={handleForceStop}
                                                             onCrossClusterMigrate={handleCrossClusterMigrate}
                                                             nodes={Object.keys(clusterMetrics)}
+                                                            datastores={clusterDatastores}
                                                             onOpenTags={(resource) => {
                                                                 loadVmTags(selectedCluster.id, resource.vmid);
                                                                 loadClusterTags(selectedCluster.id);
@@ -15742,6 +15867,23 @@
                                                           </div>
                                                         )}
 
+                                                        {/* #696 — bulk actions bar (shows once one or more snapshots are checked; works in both layouts) */}
+                                                        {(() => {
+                                                            const selCount = (sortedSnapshots || []).filter(s => selectedSnaps[snapKey(s)]).length;
+                                                            return selCount > 0 ? (
+                                                                <div className="flex items-center gap-3 mb-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
+                                                                    <span className="text-sm text-gray-200">{selCount} {t('selected') || 'selected'}</span>
+                                                                    <button
+                                                                        onClick={() => deleteSelectedSnapshots(selectedCluster.id)}
+                                                                        className="inline-flex items-center gap-1 rounded-lg bg-red-600 hover:bg-red-500 px-3 py-1.5 text-sm font-medium text-white">
+                                                                        <Icons.Trash className="w-4 h-4" /> {t('deleteSelected') || 'Delete selected'}
+                                                                    </button>
+                                                                    <button onClick={() => setSelectedSnaps({})} className="text-sm text-gray-400 hover:text-white">
+                                                                        {t('clear') || 'Clear'}
+                                                                    </button>
+                                                                </div>
+                                                            ) : null;
+                                                        })()}
                                                         {snapshotsLoading ? (
                                                             <div className={isCorporate ? 'corp-snap-empty' : 'bg-proxmox-dark rounded-xl p-8 text-center'}>
                                                                 <div className={isCorporate
@@ -15770,6 +15912,16 @@
                                                                 <table className={isCorporate ? 'corp-snap-table' : 'min-w-full text-sm'}>
                                                                     <thead className={isCorporate ? '' : 'bg-black/40 text-gray-400'}>
                                                                         <tr>
+                                                                            <th className={isCorporate ? '' : 'px-4 py-3 text-left w-8'}>
+                                                                                {/* #696 — select-all across the currently listed snapshots */}
+                                                                                <input type="checkbox"
+                                                                                    checked={(sortedSnapshots || []).length > 0 && sortedSnapshots.every(s => selectedSnaps[snapKey(s)])}
+                                                                                    onChange={(e) => {
+                                                                                        if (e.target.checked) { const all = {}; (sortedSnapshots || []).forEach(s => { all[snapKey(s)] = true; }); setSelectedSnaps(all); }
+                                                                                        else { setSelectedSnaps({}); }
+                                                                                    }}
+                                                                                    className="rounded" title={t('selectAll') || 'Select all'} />
+                                                                            </th>
                                                                             <th onClick={() => toggleSnapshotSort('vmid')} className={isCorporate ? '' : 'px-4 py-3 text-left cursor-pointer hover:text-white'}>
                                                                                 VM ID {snapshotSortBy === 'vmid' && (snapshotSortDir === 'asc' ? '↑' : '↓')}
                                                                             </th>
@@ -15800,6 +15952,13 @@
                                                                                 key={`${snap.vmid}-${snap.snapshot_name}-${idx}`}
                                                                                 className={isCorporate ? 'group' : 'group hover:bg-white/5 transition-colors'}
                                                                             >
+                                                                                <td className={isCorporate ? '' : 'px-4 py-3'}>
+                                                                                    {/* #696 — per-row select */}
+                                                                                    <input type="checkbox"
+                                                                                        checked={!!selectedSnaps[snapKey(snap)]}
+                                                                                        onChange={(e) => setSelectedSnaps(prev => { const n = {...prev}; if (e.target.checked) n[snapKey(snap)] = true; else delete n[snapKey(snap)]; return n; })}
+                                                                                        className="rounded" />
+                                                                                </td>
                                                                                 <td className={isCorporate ? '' : 'px-4 py-3 text-gray-300'}>{snap.vmid ?? '-'}</td>
                                                                                 <td className={isCorporate ? '' : 'px-4 py-3 text-gray-200'}>{snap.vm_name ?? '-'}</td>
                                                                                 <td className={isCorporate ? '' : 'px-4 py-3'}>
@@ -16797,6 +16956,14 @@
                                                                             </div>
                                                                             <p className="text-xs text-gray-400 mt-1">{info.desc}</p>
                                                                             <p className="text-xs text-gray-600 mt-0.5">{t('pveImpact') || 'PVE Impact'}: {info.impact}</p>
+                                                                            {/* MK #16745: umask 027 leaks into login-shell tooling (community LXC scripts -> /etc 750 -> no DNS); flag it + point at the rollback. */}
+                                                                            {id === 'default_umask' && (
+                                                                                <p className="text-[11px] text-yellow-400/80 mt-1 leading-tight">⚠ {t('cmUmaskToolingNote')}</p>
+                                                                            )}
+                                                                            {/* MK #16745: this cluster is reached by password with no key -> sshd_hardening (prohibit-password) would cut off PegaProx's OWN root SSH, and the rollback needs SSH too. Warn before apply. */}
+                                                                            {id === 'sshd_hardening' && selectedCluster && selectedCluster.has_ssh_key === false && !applied && (
+                                                                                <p className="text-[11px] text-red-400/90 mt-1 leading-tight">⚠ {t('cmSshdRootLockoutNote')}</p>
+                                                                            )}
                                                                             {/* LW: configurable DNS for backup_dns control */}
                                                                             {id === 'backup_dns' && !applied && (
                                                                                 <div className="flex items-center gap-2 mt-2">
@@ -16994,6 +17161,40 @@
                                                                         <Icons.RotateCcw className="w-4 h-4" /> {t('rollbackSelected') || 'Rollback Selected'} ({selectedCount})
                                                                     </button>
                                                                 </div>
+
+                                                                {/* #16745 (A/C) — gated apply confirmation: click-happy users must read + tick before anything touches the node */}
+                                                                {hardenConfirm && (
+                                                                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setHardenConfirm(null)}>
+                                                                        <div className="bg-proxmox-card border border-proxmox-border rounded-xl max-w-lg w-full p-5" onClick={e => e.stopPropagation()}>
+                                                                            <h3 className="text-base font-semibold text-white mb-2 flex items-center gap-2"><Icons.Shield className="w-4 h-4 text-green-400" /> {t('hardenApplyTitle') || 'Apply hardening controls'}</h3>
+                                                                            <p className="text-sm text-gray-400 mb-3">{(t('hardenApplyBody') || 'This applies {n} control(s) to "{node}". System configuration files will be modified; some changes may require a reboot.').replace('{n}', hardenConfirm.toApply.length).replace('{node}', hardenNode)}</p>
+                                                                            {hardenConfirm.needsLockoutAck && (
+                                                                                <div className="rounded-lg bg-red-500/10 border border-red-500/40 p-3 mb-3">
+                                                                                    <p className="text-xs text-red-300 mb-2 leading-snug">⚠ {t('cmSshdRootLockoutNote')}</p>
+                                                                                    <label className="flex items-start gap-2 text-xs text-red-200 cursor-pointer">
+                                                                                        <input type="checkbox" checked={hardenLockoutAck} onChange={e => setHardenLockoutAck(e.target.checked)} className="mt-0.5 accent-red-500" />
+                                                                                        <span>{t('hardenLockoutAck') || "I understand this cuts off PegaProx's own password access to this cluster, and I have console / manual access to recover."}</span>
+                                                                                    </label>
+                                                                                </div>
+                                                                            )}
+                                                                            {hardenConfirm.needsAccessAck && (
+                                                                                <label className="flex items-start gap-2 text-xs text-yellow-200/90 cursor-pointer mb-4">
+                                                                                    <input type="checkbox" checked={hardenAccessAck} onChange={e => setHardenAccessAck(e.target.checked)} className="mt-0.5 accent-yellow-500" />
+                                                                                    <span>{t('hardenAccessAck') || 'I understand these controls change SSH / login access and can lock out remote access if misconfigured.'}</span>
+                                                                                </label>
+                                                                            )}
+                                                                            <div className="flex justify-end gap-2">
+                                                                                <button onClick={() => setHardenConfirm(null)} className="px-4 py-2 rounded-lg bg-proxmox-dark text-gray-400 hover:text-white text-sm">{t('cancel') || 'Cancel'}</button>
+                                                                                <button
+                                                                                    disabled={(hardenConfirm.needsAccessAck && !hardenAccessAck) || (hardenConfirm.needsLockoutAck && !hardenLockoutAck)}
+                                                                                    onClick={() => doApplyHardening(hardenConfirm.toApply, hardenConfirm.needsLockoutAck && hardenLockoutAck)}
+                                                                                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:bg-gray-600 disabled:cursor-not-allowed bg-green-600 hover:bg-green-500">
+                                                                                    {t('hardenApplyBtn') || 'Apply'}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
 
                                                                 {/* MK Apr 2026: id wrapper so PNG export can target the whole thing */}
                                                                 <div id="harden-report-content" className="space-y-4">
@@ -18818,9 +19019,22 @@
                                                                             <td className="p-3 text-gray-300">{disk.size ? formatBytes(disk.size) : '-'}</td>
                                                                             <td className="p-3 text-gray-400 truncate max-w-[200px]">{disk.model || disk.vendor || '-'}</td>
                                                                             <td className="p-3">
-                                                                                <span className={`px-2 py-0.5 rounded text-xs ${disk.health === 'PASSED' || disk.health === 'OK' ? 'bg-green-500/20 text-green-400' : disk.health === 'UNKNOWN' ? 'bg-gray-500/20 text-gray-400' : 'bg-red-500/20 text-red-400'}`}>
-                                                                                    {disk.health || disk.wearout || 'N/A'}
-                                                                                </span>
+                                                                                {(() => {
+                                                                                    // #690 — PBS /disks/list carries SMART health in `status` (PASSED/FAILED/UNKNOWN),
+                                                                                    // not `health`; HDDs have no `wearout`, so the old read showed a bare N/A. Prefer
+                                                                                    // status, fall back to health, then wearout for SSDs.
+                                                                                    // #751 — some PBS builds emit it lowercase ("passed"), so match case-insensitively
+                                                                                    // or a healthy disk turns red.
+                                                                                    const smart = disk.status || disk.health || (disk.wearout != null ? `${disk.wearout}%` : '');
+                                                                                    const su = String(smart).toUpperCase();
+                                                                                    const ok = su === 'PASSED' || su === 'OK';
+                                                                                    const unk = !smart || su === 'UNKNOWN';
+                                                                                    return (
+                                                                                        <span className={`px-2 py-0.5 rounded text-xs ${ok ? 'bg-green-500/20 text-green-400' : unk ? 'bg-gray-500/20 text-gray-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                                                            {smart || 'N/A'}
+                                                                                        </span>
+                                                                                    );
+                                                                                })()}
                                                                             </td>
                                                                         </tr>
                                                                     ))}
@@ -21063,7 +21277,16 @@
                                                                             <option value="vmware">VMware SVGA (recommended)</option>
                                                                             <option value="std">Standard VGA</option>
                                                                             <option value="virtio">VirtIO GPU</option>
+                                                                            <option value="virtio-gl">VirtIO-GPU (virgl)</option>
                                                                             <option value="qxl">QXL (SPICE)</option>
+                                                                            <option value="qxl2">QXL 2 heads</option>
+                                                                            <option value="qxl3">QXL 3 heads</option>
+                                                                            <option value="qxl4">QXL 4 heads</option>
+                                                                            <option value="cirrus">Cirrus Logic</option>
+                                                                            <option value="serial0">Serial 0</option>
+                                                                            <option value="serial1">Serial 1</option>
+                                                                            <option value="serial2">Serial 2</option>
+                                                                            <option value="serial3">Serial 3</option>
                                                                             <option value="none">None (headless)</option>
                                                                         </select>
                                                                     </div>
@@ -22672,6 +22895,7 @@
                             vm={dashCloneVm}
                             nodes={Object.keys(clusterMetrics)}
                             clusterId={dashCloneVm._clusterId || selectedCluster?.id}
+                            storages={clusterDatastores}
                             onClone={handleCloneVm}
                             onClose={() => setDashCloneVm(null)}
                         />
