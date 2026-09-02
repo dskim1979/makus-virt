@@ -1,6 +1,6 @@
 ---
 name: 🐛 Bug Report
-about: Report a bug in PegaProx
+about: Report a bug in Makus Virt
 title: "[Bug] "
 labels: bug
 assignees: ''
@@ -31,7 +31,7 @@ assignees: ''
 
 
 ## Environment
-- **PegaProx Version:** <!-- e.g. 0.6.6 — find in Settings → About -->
+- **Makus Virt Version:** <!-- e.g. 0.6.6 — find in Settings → About -->
 - **Installation Method:** <!-- Docker / Manual (git clone) / Other -->
 - **OS:** <!-- e.g. Debian 12, Ubuntu 24.04 -->
 - **Browser:** <!-- e.g. Firefox 125, Chrome 122 -->
@@ -50,4 +50,4 @@ assignees: ''
 
 ## Checklist
 - [ ] I have searched existing issues to make sure this is not a duplicate
-- [ ] I am using the latest version of PegaProx
+- [ ] I am using the latest version of Makus Virt

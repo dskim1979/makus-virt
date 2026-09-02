@@ -56,7 +56,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ghcr.io/pegaprox/pegaprox-testing
+          images: ghcr.io/dskim1979/makus-virt-testing
           tags: |
             type=raw,value=latest
             type=sha,format=short

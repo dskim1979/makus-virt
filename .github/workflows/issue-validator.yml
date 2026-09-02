@@ -34,7 +34,7 @@ jobs:
               const requiredFields = [
                 { name: 'Describe the bug', check: /describe the bug\s*\n+\s*\S+/i },
                 { name: 'Steps to Reproduce', check: /steps to reproduce\s*\n+\s*\S+/i },
-                { name: 'PegaProx Version', check: /pegaprox version:\s*\S+/i }
+                { name: 'Makus Virt Version', check: /makus virt version:\s*\S+/i }
               ];
               
               const missing = requiredFields.filter(f => !f.check.test(body));
@@ -46,8 +46,7 @@ jobs:
                 message = '👋 Thanks for reporting a bug!\n\n' +
                   'Unfortunately, it looks like some required information is missing.\n\n' +
                   '**Please provide:**\n' + missingList + shortNote + '\n\n' +
-                  '**Why?**\nWe are volunteers maintaining PegaProx in our free time. ' +
-                  'Complete bug reports help us fix issues faster. 🐾\n\n' +
+                  '**Why?**\nComplete bug reports help the maintainers fix issues faster. 🐾\n\n' +
                   'Closing for now — please reopen with the required details or open a new issue.\n\n' +
                   '*This is an automated message.*';
               }
