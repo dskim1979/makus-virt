@@ -4658,7 +4658,15 @@ def get_vm_gpu_utilization(cluster_id, node, vmid):
 
     try:
         exec_url = f"https://{mgr.host}:{mgr.api_port}/api2/json/nodes/{node}/qemu/{vmid}/agent/exec"
-        exec_resp = mgr._api_post(exec_url, data={'command': json.dumps(nvidia_smi_cmd)})
+        # NS: Proxmox's agent/exec API wants `command` as *repeated* form fields
+        # (program, arg1, arg2, ...) — passing the list directly here lets
+        # requests encode it that way. An earlier version JSON-encoded the list
+        # into a single string first, which the guest agent took completely
+        # literally as one program name (confirmed in qemu-ga's own log: it
+        # printed `guest-exec called: "["nvidia-smi", ...]"` — the guest tried
+        # to execute a program whose name is the literal text
+        # '["nvidia-smi",...]', not any real binary, so it always failed).
+        exec_resp = mgr._api_post(exec_url, data={'command': nvidia_smi_cmd})
         if exec_resp.status_code != 200:
             return jsonify({'error': parse_pve_error(exec_resp.text), 'available': False}), 200
         pid = (exec_resp.json().get('data') or {}).get('pid')
