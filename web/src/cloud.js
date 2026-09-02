@@ -2430,7 +2430,7 @@
                         body = <CloudTasks tasks={tasks} t={T} />;
                         break;
                     case 'users':
-                        body = <CloudClassicLauncher title={T('cloud.users') || 'Users'} icon="Users" text={T('cloud.usersClassic') || 'User, group and ACL management is available in the classic Makus Virt layout.'} onExit={onExitCloud} t={T} />;
+                        body = <CloudUsers t={T} addToast={addToast} />;
                         break;
                     case 'settings':
                         body = <CloudClassicLauncher title={T('cloud.settings') || 'Settings'} icon="Settings" text={T('cloud.settingsClassic') || 'Full settings (auth, backups, monitoring, integrations) live in the classic Makus Virt layout.'} onExit={onExitCloud} t={T} />;
