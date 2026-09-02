@@ -595,6 +595,28 @@
                                 <div className="text-lg font-bold text-white">{formatUptime(vm.uptime)}</div>
                                 <div className="text-xs text-gray-500">{vm.status === 'running' ? t('sinceStart') : t('offline')}</div>
                             </div>
+                            {vmGpuStats?.available && vmGpuStats.gpus?.[0] && (() => {
+                                const g = vmGpuStats.gpus[0];
+                                return (
+                                <div className="bg-proxmox-dark rounded-lg p-4">
+                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">🎮 GPU</div>
+                                    <div className="text-lg font-bold text-white">{g.gpu_pct != null ? `${g.gpu_pct.toFixed(0)}%` : '—'}</div>
+                                    <div className="text-xs text-gray-500">
+                                        {g.mem_used_mb != null ? `${(g.mem_used_mb / 1024).toFixed(1)}/${(g.mem_total_mb / 1024).toFixed(1)} GB` : ''}
+                                        {g.temp_c != null ? ` · ${g.temp_c.toFixed(0)}°C` : ''}
+                                    </div>
+                                    <div className="mt-2 h-1.5 rounded-full bg-proxmox-border overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full transition-all"
+                                            style={{
+                                                width: `${Math.min(g.gpu_pct || 0, 100)}%`,
+                                                background: (g.gpu_pct || 0) < 50 ? '#a855f7' : (g.gpu_pct || 0) < 80 ? '#eab308' : '#ef4444'
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Hardware Info Badges */}
@@ -836,6 +858,27 @@
             const isQemu = vm.type === 'qemu';
             const displayName = vm.name || `${isQemu ? 'VM' : 'CT'} ${vm.vmid}`;
             
+
+            // NS: GPU utilization for the Stats Grid — only worth asking when
+            // running and the VM actually has a hostpci entry (checked via the
+            // existing passthrough endpoint before bothering the guest agent).
+            const [vmGpuStats, setVmGpuStats] = useState(null); // null = not checked / no GPU; {available, gpus} once fetched
+            useEffect(() => {
+                let cancelled = false;
+                setVmGpuStats(null);
+                if (!isQemu || vm.status !== 'running') return;
+                (async () => {
+                    try {
+                        const ptRes = await fetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/passthrough`, { credentials: 'include', headers: getAuthHeaders() });
+                        if (!ptRes.ok) return;
+                        const pt = await ptRes.json();
+                        if (cancelled || !(pt.pci?.length > 0)) return;
+                        const utilRes = await fetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/gpu-utilization`, { credentials: 'include', headers: getAuthHeaders() });
+                        if (!cancelled && utilRes.ok) setVmGpuStats(await utilRes.json());
+                    } catch (e) { /* silent — GPU stats are a bonus, not core VM info */ }
+                })();
+                return () => { cancelled = true; };
+            }, [clusterId, vm.node, vm.vmid, vm.status, isQemu]);
             const [haEnabled, setHaEnabled] = useState(false);
             const [haLoading, setHaLoading] = useState(false);
             const [haResources, setHaResources] = useState([]);
