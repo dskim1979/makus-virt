@@ -76,11 +76,55 @@ def _friendly_vendor(vendor_id, vendor_name):
     return known.get(str(vendor_id).lower(), vendor_id or 'Unknown')
 
 
+def _get_node_gpu_assignments(manager, host, port, node, session=None):
+    """pciid -> [{'vmid', 'name', 'mdev'}] for every hostpciN entry across
+    every VM on this node. Shared by the per-VM picker (list_node_gpus, so it
+    doesn't offer an already-claimed card again) and the cluster inventory."""
+    session = session or manager._create_session()
+    assignments = {}
+    try:
+        qemu_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu"
+        qemu_resp = session.get(qemu_url, timeout=15)
+        vms = qemu_resp.json().get('data', []) if qemu_resp.status_code == 200 else []
+    except Exception:
+        return assignments
+
+    for vm in vms:
+        vmid = vm.get('vmid')
+        try:
+            cfg_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu/{vmid}/config"
+            cfg_resp = session.get(cfg_url, timeout=10)
+            config = cfg_resp.json().get('data', {}) if cfg_resp.status_code == 200 else {}
+        except Exception:
+            continue
+        for key, value in config.items():
+            if not key.startswith('hostpci'):
+                continue
+            # value looks like "0000:01:00.0" or "0000:01:00.0,mdev=nvidia-263"
+            parts = str(value).split(',')
+            dev_addr = parts[0].strip()
+            mdev = next((p.split('=', 1)[1] for p in parts[1:] if p.startswith('mdev=')), None)
+            assignments.setdefault(dev_addr, []).append({
+                'vmid': vmid,
+                'name': vm.get('name', f'VM {vmid}'),
+                'mdev': mdev,
+            })
+    return assignments
+
+
 @bp.route('/api/clusters/<cluster_id>/nodes/<node>/gpus', methods=['GET'])
 @require_auth(perms=['node.view'])
 def list_node_gpus(cluster_id, node):
     """GPU-class PCI devices on one node, each flagged with whether Proxmox
-    reports vGPU (mdev) capability for it."""
+    reports vGPU (mdev) capability for it.
+
+    Whole-device (non-vGPU) cards already claimed by another VM are dropped
+    from the list entirely — offering one for a second whole-device
+    passthrough would just fail when the second VM starts, since Proxmox
+    can't hand the same physical device to two guests at once. A vGPU-capable
+    card stays listed even with some slices already handed out elsewhere;
+    /profiles reports the remaining available_instances per profile, and the
+    frontend disables any profile that's fully consumed."""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
     manager, error = get_connected_manager(cluster_id)
@@ -88,6 +132,7 @@ def list_node_gpus(cluster_id, node):
 
     try:
         host, port = manager.host, manager.api_port
+        session = manager._create_session()
         url = f"https://{host}:{port}/api2/json/nodes/{node}/hardware/pci"
         # NS: no query params here on purpose — an earlier version sent
         # params={'pci-class': ''} intending "no filter", but Proxmox appears
@@ -95,7 +140,7 @@ def list_node_gpus(cluster_id, node):
         # the empty string" (i.e. none), so the endpoint always came back
         # empty regardless of what was actually installed. We already filter
         # client-side in _is_gpu(), so just fetch every PCI device unfiltered.
-        r = manager._create_session().get(url, timeout=15)
+        r = session.get(url, timeout=15)
         if r.status_code != 200:
             return jsonify({'error': parse_pve_error(r.text)}), r.status_code
         devices = r.json().get('data', []) or []
@@ -103,11 +148,23 @@ def list_node_gpus(cluster_id, node):
         logging.error(f"[gpu] listing PCI devices on {node} failed: {e}")
         return jsonify({'error': safe_error(e, 'Failed to list PCI devices')}), 500
 
+    assignments = _get_node_gpu_assignments(manager, host, port, node, session)
+
     gpus = []
     for dev in devices:
         if not _is_gpu(dev):
             continue
         pciid = dev.get('id') or dev.get('device_id') or ''
+        vgpu_capable = bool(dev.get('mdev'))
+        existing = assignments.get(pciid, [])
+        # A whole-device (mdev is None) assignment locks the entire card to
+        # that one VM — hide it. mdev-slice assignments never block the card
+        # from showing; capacity is checked per-profile in /profiles instead.
+        if existing and not vgpu_capable and any(a['mdev'] is None for a in existing):
+            continue
+        if existing and vgpu_capable and any(a['mdev'] is None for a in existing):
+            # a whole-device grab on a vGPU-capable card still locks it entirely
+            continue
         gpus.append({
             'pciid': pciid,
             'device_name': dev.get('device_name') or dev.get('device') or 'Unknown GPU',
@@ -116,7 +173,8 @@ def list_node_gpus(cluster_id, node):
             'iommu_group': dev.get('iommugroup'),
             # Proxmox sets mdev=1 on the PCI entry when the host driver exposes
             # mediated-device support for this card.
-            'vgpu_capable': bool(dev.get('mdev')),
+            'vgpu_capable': vgpu_capable,
+            'in_use_by': existing,  # non-empty only for partially-used vGPU cards here
         })
 
     return jsonify({'node': node, 'gpus': gpus})
@@ -207,36 +265,7 @@ def cluster_gpu_inventory(cluster_id):
         if not node_gpus:
             continue
 
-        # VMs on this node + their hostpciN assignments, so we can mark each
-        # GPU as allocated (and to what VM) rather than just "present".
-        vm_assignments = {}  # pciid_prefix -> [{'vmid', 'name', 'mdev'}]
-        try:
-            qemu_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu"
-            qemu_resp = session.get(qemu_url, timeout=15)
-            vms = qemu_resp.json().get('data', []) if qemu_resp.status_code == 200 else []
-        except Exception:
-            vms = []
-
-        for vm in vms:
-            vmid = vm.get('vmid')
-            try:
-                cfg_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu/{vmid}/config"
-                cfg_resp = session.get(cfg_url, timeout=10)
-                config = cfg_resp.json().get('data', {}) if cfg_resp.status_code == 200 else {}
-            except Exception:
-                continue
-            for key, value in config.items():
-                if not key.startswith('hostpci'):
-                    continue
-                # value looks like "0000:01:00.0" or "0000:01:00.0,mdev=nvidia-263"
-                parts = str(value).split(',')
-                dev_addr = parts[0].strip()
-                mdev = next((p.split('=', 1)[1] for p in parts[1:] if p.startswith('mdev=')), None)
-                vm_assignments.setdefault(dev_addr, []).append({
-                    'vmid': vmid,
-                    'name': vm.get('name', f'VM {vmid}'),
-                    'mdev': mdev,
-                })
+        vm_assignments = _get_node_gpu_assignments(manager, host, port, node, session)
 
         for dev in node_gpus:
             pciid = dev.get('id') or ''
