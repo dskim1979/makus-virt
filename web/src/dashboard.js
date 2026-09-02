@@ -13847,7 +13847,7 @@
 
             // NS 2026-06-05 — Cloud skin (Preview): the whole console layout is its own
             // self-contained shell (cloud.js). Mount it instead of the Modern/Corporate
-            // chrome. onExitCloud flips back to Modern so the user is never locked in.
+            // chrome. onExitCloud flips back to Corporate so the user is never locked in.
             if (isCloud) {
                 // bundle the existing dashboard handlers/modal-openers so the Cloud shell
                 // wires the SAME real endpoints (cluster-id threading, confirms, optimistic
@@ -13905,7 +13905,7 @@
                             t={t}
                             authFetch={authFetch}
                             addToast={addToast}
-                            onExitCloud={() => updatePreferences({ ui_layout: 'modern', theme: 'proxmoxDark' })}
+                            onExitCloud={() => updatePreferences({ ui_layout: 'corporate', theme: localStorage.getItem('corp-theme') === 'light' ? 'corporateLight' : 'corporateDark' })}
                             onOpenSettings={() => setShowSettings(true)}
                             onOpenProfile={() => setShowProfile(true)}
                             onLogout={logout}

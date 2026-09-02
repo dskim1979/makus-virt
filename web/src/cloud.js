@@ -445,7 +445,6 @@
                             <span className="cloud-nav-brand-fallback" style={{ display: 'none' }}><Icons.Cloud /></span>
                         </span>
                         {!collapsed && <span className="cloud-nav-brand-text">Makus Virt</span>}
-                        {!collapsed && <span className="cloud-chip cloud-chip-preview">PREVIEW</span>}
                     </div>
                     <div className="cloud-nav-scroll">
                         {groups.map(group => (
@@ -492,7 +491,7 @@
                 { label: '프로필 및 환경설정', icon: 'User', onClick: () => onOpenProfile && onOpenProfile() },
                 isAdmin && { label: '설정', icon: 'Settings', onClick: () => onOpenSettings && onOpenSettings() },
                 { divider: true },
-                (typeof onExitCloud === 'function') && { label: '클라우드 종료 (모던 화면으로)', icon: 'Grid', onClick: onExitCloud },
+                (typeof onExitCloud === 'function') && { label: '클라우드 종료 (기업용 화면으로)', icon: 'Grid', onClick: onExitCloud },
                 (typeof onLogout === 'function') && { label: '로그아웃', icon: 'LogOut', danger: true, onClick: onLogout },
             ].filter(Boolean);
 

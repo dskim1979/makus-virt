@@ -2914,7 +2914,7 @@
                                             {t('layoutStyle') || 'Layout Style'}
                                         </h3>
                                         <p className="text-xs text-gray-400 mb-3">
-                                            기업형(밀도 높은 엔터프라이즈 스타일) 또는 클라우드(카드형, 아직 미리보기 단계) 중에서 선택하세요.
+                                            기업형(밀도 높은 엔터프라이즈 스타일) 또는 클라우드(카드형, 밝은 톤) 중에서 선택하세요.
                                         </p>
                                         <div className="grid grid-cols-2 gap-3">
                                             {/* Corporate layout card */}
@@ -2985,7 +2985,7 @@
                                                     )}
                                                 </div>
                                                 <div className="text-center">
-                                                    <span className="text-xs font-medium inline-flex items-center justify-center gap-1">☁️ Cloud <span className="text-[8px] px-1 rounded" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>PREVIEW</span></span>
+                                                    <span className="text-xs font-medium inline-flex items-center justify-center gap-1">☁️ Cloud</span>
                                                     <p className="text-[10px] text-gray-500 mt-0.5">{t('layoutCloudDesc') || 'Airy card grid, teal'}</p>
                                                 </div>
                                             </button>
