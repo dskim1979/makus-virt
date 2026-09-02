@@ -89,7 +89,13 @@ def list_node_gpus(cluster_id, node):
     try:
         host, port = manager.host, manager.api_port
         url = f"https://{host}:{port}/api2/json/nodes/{node}/hardware/pci"
-        r = manager._create_session().get(url, params={'pci-class': ''}, timeout=15)
+        # NS: no query params here on purpose — an earlier version sent
+        # params={'pci-class': ''} intending "no filter", but Proxmox appears
+        # to treat an empty pci-class value as "only devices whose class is
+        # the empty string" (i.e. none), so the endpoint always came back
+        # empty regardless of what was actually installed. We already filter
+        # client-side in _is_gpu(), so just fetch every PCI device unfiltered.
+        r = manager._create_session().get(url, timeout=15)
         if r.status_code != 200:
             return jsonify({'error': parse_pve_error(r.text)}), r.status_code
         devices = r.json().get('data', []) or []
