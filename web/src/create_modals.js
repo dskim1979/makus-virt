@@ -2914,43 +2914,9 @@
                                             {t('layoutStyle') || 'Layout Style'}
                                         </h3>
                                         <p className="text-xs text-gray-400 mb-3">
-                                            {t('layoutStyleDesc') || 'Choose between modern dashboard or corporate enterprise style.'}
+                                            기업형(밀도 높은 엔터프라이즈 스타일) 또는 클라우드(카드형, 아직 미리보기 단계) 중에서 선택하세요.
                                         </p>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {/* Modern layout card */}
-                                            <button
-                                                onClick={async () => {
-                                                    const result = await updatePreferences({ ui_layout: 'modern', theme: 'proxmoxDark' });
-                                                    if (result.success) addToast(`${t('layoutStyle')}: ${t('layoutModern') || 'Modern'}`, 'success');
-                                                }}
-                                                className={`p-3 rounded-xl border-2 transition-all hover:scale-105 text-left ${
-                                                    (user?.ui_layout || 'modern') === 'modern'
-                                                        ? 'border-proxmox-orange ring-2 ring-proxmox-orange/30'
-                                                        : 'border-proxmox-border hover:border-gray-500'
-                                                }`}
-                                            >
-                                                <div className="h-16 rounded-lg mb-2 relative overflow-hidden bg-proxmox-dark border border-proxmox-border">
-                                                    {/* Modern preview: gradient sidebar, rounded cards */}
-                                                    <div className="absolute left-0 top-0 bottom-0 w-5 bg-gradient-to-b from-proxmox-orange/30 to-purple-500/20" />
-                                                    <div className="absolute right-1.5 top-1.5 left-7 h-2 rounded-full bg-proxmox-orange/40" />
-                                                    <div className="absolute right-1.5 top-5 left-7 bottom-1.5 rounded-lg bg-proxmox-card border border-proxmox-border">
-                                                        <div className="flex gap-1 p-1">
-                                                            <div className="w-2 h-1.5 rounded-full bg-proxmox-orange/50" />
-                                                            <div className="w-2 h-1.5 rounded-full bg-gray-600" />
-                                                            <div className="w-2 h-1.5 rounded-full bg-gray-600" />
-                                                        </div>
-                                                    </div>
-                                                    {(user?.ui_layout || 'modern') === 'modern' && (
-                                                        <div className="absolute top-1 right-1 bg-proxmox-orange rounded-full p-0.5">
-                                                            <Icons.Check className="w-3 h-3 text-white" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="text-center">
-                                                    <span className="text-xs font-medium">{t('layoutModern') || 'Modern'}</span>
-                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t('layoutModernDesc') || 'Cards, animations, gradients'}</p>
-                                                </div>
-                                            </button>
+                                        <div className="grid grid-cols-2 gap-3">
                                             {/* Corporate layout card */}
                                             <button
                                                 onClick={async () => {
