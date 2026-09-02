@@ -1608,6 +1608,27 @@
             const [compareSnap, setCompareSnap] = useState(null);  // { a, b } or null
 
             const isQemu = vm.type === 'qemu';
+
+            // NS: GPU utilization — same pattern as VmDetailPanel. This is a
+            // separate component (Corporate theme's own VM detail screen), so
+            // it needs its own copy of the state/fetch rather than sharing.
+            const [vmGpuStats, setVmGpuStats] = useState(null);
+            useEffect(() => {
+                let cancelled = false;
+                setVmGpuStats(null);
+                if (!isQemu || vm.status !== 'running') return;
+                (async () => {
+                    try {
+                        const ptRes = await fetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/passthrough`, { credentials: 'include', headers: getAuthHeaders() });
+                        if (!ptRes.ok) return;
+                        const pt = await ptRes.json();
+                        if (cancelled || !(pt.pci?.length > 0)) return;
+                        const utilRes = await fetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/gpu-utilization`, { credentials: 'include', headers: getAuthHeaders() });
+                        if (!cancelled && utilRes.ok) setVmGpuStats(await utilRes.json());
+                    } catch (e) { /* silent — GPU stats are a bonus, not core VM info */ }
+                })();
+                return () => { cancelled = true; };
+            }, [clusterId, vm.node, vm.vmid, vm.status, isQemu]);
             const displayName = vm.name || `${isQemu ? 'VM' : 'CT'} ${vm.vmid}`;
             const isRunning = vm.status === 'running';
 
@@ -2286,6 +2307,29 @@
                                                 <span style={{color: '#e9ecef'}}>{vmHwInfo.bios === 'ovmf' ? 'UEFI (OVMF)' : 'SeaBIOS'} • {vmHwInfo.machine} • {vmHwInfo.scsihw}</span>
                                             </div>
                                         )}
+                                        {/* GPU */}
+                                        {vmGpuStats?.available && vmGpuStats.gpus?.[0] && (() => {
+                                            const g = vmGpuStats.gpus[0];
+                                            const gpuPct = g.gpu_pct != null ? Math.round(g.gpu_pct) : 0;
+                                            return (
+                                            <div className="flex items-center gap-2 text-[12px]">
+                                                <span className="w-3.5 h-3.5 flex-shrink-0" style={{fontSize: '11px', lineHeight: '14px'}}>🎮</span>
+                                                <span style={{color: '#adbbc4', width: '60px'}}>GPU</span>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 overflow-hidden" style={{background: 'var(--corp-bar-track)'}}>
+                                                            <div className="h-full" style={{width: `${Math.min(gpuPct, 100)}%`, background: '#a855f7'}}></div>
+                                                        </div>
+                                                        <span style={{color: '#e9ecef', minWidth: '35px'}}>{g.gpu_pct != null ? `${gpuPct}%` : '—'}</span>
+                                                    </div>
+                                                    <div className="text-[11px] mt-0.5" style={{color: '#728b9a'}}>
+                                                        {g.mem_used_mb != null ? `${(g.mem_used_mb / 1024).toFixed(1)}/${(g.mem_total_mb / 1024).toFixed(1)} GB` : ''}
+                                                        {g.temp_c != null ? ` • ${g.temp_c.toFixed(0)}°C` : ''}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
 
