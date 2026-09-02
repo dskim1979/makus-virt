@@ -783,68 +783,6 @@
             return null;
         }
 
-        function _DisabledSponsorSlot({ num }) {
-            const { t } = useTranslation();
-            const [hasImage, setHasImage] = useState(true);
-            
-            // Sponsor URLs - edit these to add sponsor links
-            const sponsorLinks = {
-                1: 'https://socialfurr.com',
-                2: 'https://www.netwolk.ch',
-                3: 'https://expertize.nl/',  // Banner Oranje - Platinum
-                4: 'https://netzware.at/',  // Netzware - Platinum
-                5: 'https://www.occentus.net/',  // Occentus Network - Platinum
-
-                6: null,
-                7: null,
-                8: null
-            };
-            
-            const handleImageError = () => {
-                setHasImage(false);
-            };
-            
-            const url = sponsorLinks[num];
-            const isEmptySlot = url === null;
-            const imageSrc = `/images/sponsors/sponsor${num}.png`;
-
-            if (!hasImage || isEmptySlot) {
-                // Show "Wanted" placeholder
-                return(
-                    <a
-                        href="mailto:sponsor@makusvirt.example.com?subject=Sponsorship%20Inquiry"
-                        className="group"
-                        title={t('becomeSponsor') || 'Become a sponsor'}
-                    >
-                        <div className="w-12 h-12 rounded-lg bg-proxmox-card border border-dashed border-proxmox-border flex flex-col items-center justify-center hover:border-proxmox-orange/50 transition-all hover:scale-105">
-                            <span className="text-sm">🎯</span>
-                        </div>
-                    </a>
-                );
-            }
-
-            const content = (
-                <div className="w-12 h-12 rounded-lg bg-proxmox-card border border-proxmox-border p-1 flex items-center justify-center hover:border-proxmox-orange/50 transition-all hover:scale-105 overflow-hidden">
-                    <img 
-                        src={imageSrc}
-                        alt={`Sponsor ${num}`}
-                        className="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
-                        onError={handleImageError}
-                    />
-                </div>
-            );
-            
-            if (url) {
-                return(
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="group">
-                        {content}
-                    </a>
-                );
-            }
-            
-            return <div className="group">{content}</div>;
-        }
-
         // Notification Toast
         // LW: Simple toast - auto-closes after 3s
         // tried 5s but users complained it was too long

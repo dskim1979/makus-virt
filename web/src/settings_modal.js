@@ -7359,7 +7359,7 @@
                                     {/* GitHub Link */}
                                     <div className="text-center text-sm text-gray-500">
                                         <a 
-                                            href="https://github.com/Makus Virt/project-pegaprox" 
+                                            href="https://github.com/dskim1979/makus-virt" 
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="hover:text-proxmox-orange transition-colors inline-flex items-center gap-1"
@@ -7454,7 +7454,7 @@
                                         </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <a 
-                                                href="https://github.com/Makus Virt/project-pegaprox/issues" 
+                                                href="https://github.com/dskim1979/makus-virt/issues" 
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7474,7 +7474,7 @@
                                                 an Issue" already covers the Q&A use case and Nico answers there.
                                                 If we ever turn Discussions on, restore from git history. */}
                                             <a
-                                                href="https://github.com/Makus Virt/project-pegaprox/wiki"
+                                                href="https://github.com/dskim1979/makus-virt/wiki"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7489,7 +7489,7 @@
                                                 <Icons.ExternalLink className="w-4 h-4 text-gray-500 ml-auto" />
                                             </a>
                                             <a 
-                                                href="https://github.com/Makus Virt/project-pegaprox/releases" 
+                                                href="https://github.com/dskim1979/makus-virt/releases" 
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="flex items-center gap-3 p-4 bg-proxmox-darker rounded-lg hover:bg-proxmox-border/50 transition-colors"
@@ -7550,15 +7550,16 @@
                                         <h2 className="text-3xl font-bold text-white">Makus Virt</h2>
                                         <p className="text-xl text-proxmox-orange mt-1">{PEGAPROX_VERSION}</p>
                                         <p className="text-sm text-gray-400 mt-2">Multi-Cluster Proxmox Management</p>
-                                        <p className="text-xs text-gray-500 mt-1">Build 2026.02 • © 2025-2026 Makus Virt Team</p>
+                                        <p className="text-xs text-gray-500 mt-1">Build 2026.02 • © 2025-2026 PegaProx Team · Portions © 2026 Makus Systems</p>
                                     </div>
                                     
                                     {/* Team */}
                                     <div className="bg-proxmox-dark border border-proxmox-border rounded-xl p-6">
-                                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                        <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
                                             <Icons.Users />
                                             {t('developmentTeam') || 'Development Team'}
                                         </h3>
+                                        <p className="text-xs text-gray-500 mb-4">원본 PegaProx 프로젝트 개발팀 — Makus Virt는 이분들의 작업을 포크하여 유지보수합니다.</p>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div className="bg-proxmox-darker rounded-lg p-4 text-center">
                                                 <div className="w-12 h-12 rounded-full bg-proxmox-orange/20 flex items-center justify-center mx-auto mb-2">
@@ -7642,37 +7643,10 @@
                                                 </div>
                                             </div>
                                             
-                                            {/* Translations */}
-                                            <div className="bg-proxmox-darker rounded-lg p-4">
-                                                <div className="flex items-start gap-4">
-                                                    <div className="w-12 h-12 rounded-lg bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
-                                                        <Icons.Globe className="w-6 h-6 text-yellow-400" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-medium text-white">Community Translations</h4>
-                                                        <p className="text-sm text-gray-400 mt-1">
-                                                            Thanks to community contributors for helping translate Makus Virt into multiple languages.
-                                                        </p>
-                                                        <div className="flex flex-wrap gap-2 mt-2 text-[12px]">
-                                                            <a href="https://github.com/ColombianJoker" target="_blank" rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-proxmox-dark text-gray-300 hover:text-white transition-colors">
-                                                                <Icons.Github className="w-3 h-3" />
-                                                                <strong>ColombianJoker</strong> — Spanish (Latin America)
-                                                            </a>
-                                                            <a href="https://github.com/IMNotMax" target="_blank" rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-proxmox-dark text-gray-300 hover:text-white transition-colors">
-                                                                <Icons.Github className="w-3 h-3" />
-                                                                <strong>IMNotMax</strong> — French
-                                                            </a>
-                                                            <a href="https://github.com/FernandoRD" target="_blank" rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-proxmox-dark text-gray-300 hover:text-white transition-colors">
-                                                                <Icons.Github className="w-3 h-3" />
-                                                                <strong>FernandoRD</strong> — Portuguese
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            {/* Translations section removed — Makus Virt ships Korean only,
+                                                so crediting the original PegaProx's ES/FR/PT translators here
+                                                would be misleading (their work isn't shipped in this build). */}
+
 
                                             {/* Other Credits */}
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-sm">
@@ -7703,17 +7677,12 @@
                                             {t('links') || 'Links'}
                                         </h3>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                            <a href="https://makusvirt.example.com" target="_blank" rel="noopener noreferrer"
-                                                className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
-                                                <Icons.Globe className="text-proxmox-orange" />
-                                                <span className="text-sm text-gray-300">makusvirt.example.com</span>
-                                            </a>
-                                            <a href="https://github.com/Makus Virt/project-pegaprox" target="_blank" rel="noopener noreferrer"
+                                            <a href="https://github.com/dskim1979/makus-virt" target="_blank" rel="noopener noreferrer"
                                                 className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
                                                 <Icons.Github className="text-gray-400" />
                                                 <span className="text-sm text-gray-300">GitHub</span>
                                             </a>
-                                            <a href="https://docs.makusvirt.example.com" target="_blank" rel="noopener noreferrer"
+                                            <a href="https://github.com/dskim1979/makus-virt#readme" target="_blank" rel="noopener noreferrer"
                                                 className="flex items-center gap-2 p-3 bg-proxmox-darker rounded-lg hover:bg-proxmox-hover transition-colors">
                                                 <Icons.Book className="text-blue-400" />
                                                 <span className="text-sm text-gray-300">Documentation</span>
@@ -7724,8 +7693,8 @@
                                     {/* License */}
                                     <div className="text-center text-sm text-gray-500 space-y-1">
                                         <p>Makus Virt is open source software licensed under the AGPL-3.0 License.</p>
-                                        <p>Made with ❤️ in Austria and Germany</p>
-                                        <p>© 2025-2026 Makus Virt Team</p>
+                                        <p>Forked from PegaProx, originally made with ❤️ in Austria and Germany</p>
+                                        <p>© 2025-2026 PegaProx Team · Portions © 2026 Makus Systems</p>
                                     </div>
                                 </div>
                             )}
