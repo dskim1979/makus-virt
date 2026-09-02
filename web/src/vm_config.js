@@ -221,6 +221,7 @@
             const [availableUsb, setAvailableUsb] = useState([]);
             const [allNodeGpus, setAllNodeGpus] = useState([]); // NS: unfiltered (include_allocated=1), just for labeling hostpci entries that are GPUs
             const [usedSerialPaths, setUsedSerialPaths] = useState([]);
+            const [vmGpuUtil, setVmGpuUtil] = useState(null); // NS: from inside the guest via qemu-guest-agent, not the host
             const [showAddPci, setShowAddPci] = useState(false);
             const [showAddUsb, setShowAddUsb] = useState(false);
             const [showAddSerial, setShowAddSerial] = useState(false);
@@ -393,6 +394,19 @@
                     const gpuRes = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/gpus?include_allocated=1`);
                     if (gpuRes && gpuRes.ok) {
                         setAllNodeGpus((await gpuRes.json()).gpus || []);
+                    }
+
+                    // NS: utilization for a passed-through GPU can only be read from *inside*
+                    // the guest (the host can't see a vfio-pci-owned card) — only worth asking
+                    // when the VM is actually running and has a hostpci entry.
+                    if (vm.status === 'running' && ptRes && ptRes.ok) {
+                        const ptData = passthrough.pci?.length ? passthrough : await (await authFetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/passthrough`)).json();
+                        if (ptData?.pci?.length > 0) {
+                            const utilRes = await authFetch(`${API_URL}/clusters/${clusterId}/vms/${vm.node}/qemu/${vm.vmid}/gpu-utilization`);
+                            if (utilRes && utilRes.ok) {
+                                setVmGpuUtil(await utilRes.json());
+                            }
+                        }
                     }
 
                     // Serial device paths already claimed by another VM on this node
@@ -2560,8 +2574,10 @@
                                                                     {passthrough.pci.map((dev, idx) => {
                                                                         const pciAddr = String(dev.value).split(',')[0].trim();
                                                                         const gpuMatch = allNodeGpus.find(g => g.pciid === pciAddr);
+                                                                        const guestUtil = vmGpuUtil?.available ? vmGpuUtil.gpus?.[0] : null;
                                                                         return (
-                                                                        <div key={idx} className="flex items-center justify-between p-2 bg-proxmox-dark rounded text-sm">
+                                                                        <div key={idx} className="p-2 bg-proxmox-dark rounded text-sm">
+                                                                        <div className="flex items-center justify-between">
                                                                             {gpuMatch ? (
                                                                                 <span className="text-gray-300 flex items-center gap-1.5">
                                                                                     🎮 GPU: {gpuMatch.vendor} {gpuMatch.device_name}
@@ -2576,6 +2592,20 @@
                                                                             >
                                                                                 <Icons.Trash className="w-3 h-3" />
                                                                             </button>
+                                                                        </div>
+                                                                        {gpuMatch && (
+                                                                            <div className="mt-1.5 text-xs text-gray-500">
+                                                                                {guestUtil ? (
+                                                                                    <>GPU {guestUtil.gpu_pct != null ? `${guestUtil.gpu_pct.toFixed(0)}%` : '—'} · MEM {guestUtil.mem_pct != null ? `${guestUtil.mem_pct.toFixed(0)}%` : '—'}
+                                                                                    {guestUtil.mem_used_mb != null && ` · ${(guestUtil.mem_used_mb / 1024).toFixed(1)}/${(guestUtil.mem_total_mb / 1024).toFixed(1)} GB`}
+                                                                                    {guestUtil.temp_c != null && ` · ${guestUtil.temp_c.toFixed(0)}°C`}</>
+                                                                                ) : vm.status !== 'running' ? (
+                                                                                    'VM이 꺼져있어 사용률을 확인할 수 없습니다'
+                                                                                ) : (
+                                                                                    '사용률 확인 불가 — VM 안에 게스트 에이전트/NVIDIA 드라이버가 설치되어 있는지 확인하세요'
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                         </div>
                                                                         );
                                                                     })}

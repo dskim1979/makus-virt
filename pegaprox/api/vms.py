@@ -4632,6 +4632,83 @@ def get_vm_guest_file_read_api(cluster_id, node, vm_type, vmid):
         return jsonify({'error': safe_error(e)}), 500
 
 
+@bp.route('/api/clusters/<cluster_id>/vms/<node>/qemu/<int:vmid>/gpu-utilization', methods=['GET'])
+@require_auth(perms=['vm.view'])
+def get_vm_gpu_utilization(cluster_id, node, vmid):
+    """NVIDIA GPU utilization from *inside* a running VM, via the QEMU guest
+    agent's exec channel — no SSH, no network reachability to the guest
+    needed, works for Windows guests too. This is the only reliable way to
+    read utilization for a passed-through GPU: once vfio-pci owns the card,
+    the Proxmox *host* can't see it with nvidia-smi at all (the guest driver
+    owns it), so this has to run inside the guest.
+
+    Requires: qemu-guest-agent running in the guest, and the NVIDIA driver
+    installed in the guest (which passthrough needs anyway to use the card).
+    """
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    denied = _require_vm_access(cluster_id, vmid, 'vm.view', 'qemu')
+    if denied: return denied
+
+    mgr = cluster_managers[cluster_id]
+    nvidia_smi_cmd = ['nvidia-smi', '--query-gpu=index,utilization.gpu,utilization.memory,'
+                       'memory.used,memory.total,temperature.gpu', '--format=csv,noheader,nounits']
+
+    try:
+        exec_url = f"https://{mgr.host}:{mgr.api_port}/api2/json/nodes/{node}/qemu/{vmid}/agent/exec"
+        exec_resp = mgr._api_post(exec_url, data={'command': json.dumps(nvidia_smi_cmd)})
+        if exec_resp.status_code != 200:
+            return jsonify({'error': parse_pve_error(exec_resp.text), 'available': False}), 200
+        pid = (exec_resp.json().get('data') or {}).get('pid')
+        if not pid:
+            return jsonify({'error': 'guest agent did not return a pid', 'available': False}), 200
+
+        # exec is async — poll exec-status until the process exits. nvidia-smi
+        # is near-instant; 5s total budget is generous, not a real wait in the
+        # common case.
+        status_url = f"https://{mgr.host}:{mgr.api_port}/api2/json/nodes/{node}/qemu/{vmid}/agent/exec-status"
+        data = {}
+        for _ in range(10):
+            status_resp = mgr._api_get(status_url, params={'pid': pid})
+            if status_resp.status_code != 200:
+                break
+            data = status_resp.json().get('data') or {}
+            if data.get('exited'):
+                break
+            time.sleep(0.5)
+
+        if not data.get('exited'):
+            return jsonify({'error': 'nvidia-smi did not finish in time', 'available': False}), 200
+        if data.get('exitcode') not in (0, None):
+            return jsonify({'error': f"nvidia-smi exited {data.get('exitcode')} — is the NVIDIA driver installed in this VM?", 'available': False}), 200
+
+        out = data.get('out-data', '')
+        gpus = []
+        for line in out.strip().splitlines():
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) != 6:
+                continue
+            idx, gpu_pct, mem_pct, mem_used, mem_total, temp = parts
+
+            def _f(v):
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return None
+            gpus.append({
+                'index': idx,
+                'gpu_pct': _f(gpu_pct), 'mem_pct': _f(mem_pct),
+                'mem_used_mb': _f(mem_used), 'mem_total_mb': _f(mem_total),
+                'temp_c': _f(temp),
+            })
+        return jsonify({'available': True, 'gpus': gpus})
+    except Exception as e:
+        logging.debug(f"[gpu] guest-agent utilization query failed for VM {vmid}: {e}")
+        return jsonify({'error': safe_error(e, 'Guest agent query failed'), 'available': False}), 200
+
+
 @bp.route('/api/clusters/<cluster_id>/vms/<node>/<vm_type>/<int:vmid>/rrd/<timeframe>', methods=['GET'])
 @require_auth(perms=['vm.view'])
 def get_vm_rrd_api(cluster_id, node, vm_type, vmid, timeframe):
