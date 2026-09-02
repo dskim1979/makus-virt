@@ -57,6 +57,11 @@ def load_server_settings():
         'acme_dns_rfc2136_algorithm': 'hmac-sha512',
         'acme_dns_rfc2136_ttl': 60,
         'acme_dns_propagation_seconds': 30,
+        'acme_dns_cloudflare_token': '',
+        'acme_dns_cloudflare_zone': '',
+        'acme_dns_cloudflare_zone_id': '',
+        'acme_dns_cloudflare_account_id': '',
+        'acme_allow_private_ca': False,  # #685 — opt-in to reach a private/internal ACME CA (mirrors oidc_allow_private_ip)
         'logo_url': '',
         'app_name': 'PegaProx',
         # HTTP redirect port - NS Jan 2026
@@ -214,7 +219,7 @@ def decrypt_secret_setting(value, *, label='secret'):
 
 
 def acme_dns_config_from_settings(settings):
-    """Build an RFC 2136 DNS config, decrypting the TSIG secret only for use."""
+    """Build DNS-01 provider config, decrypting secrets only for use."""
     settings = settings or {}
     return {
         'nameserver': settings.get('acme_dns_rfc2136_nameserver', ''),
@@ -228,6 +233,13 @@ def acme_dns_config_from_settings(settings):
         'algorithm': settings.get('acme_dns_rfc2136_algorithm', 'hmac-sha512'),
         'ttl': settings.get('acme_dns_rfc2136_ttl', 60),
         'propagation_seconds': settings.get('acme_dns_propagation_seconds', 30),
+        'token': decrypt_secret_setting(
+            settings.get('acme_dns_cloudflare_token', ''),
+            label='ACME Cloudflare token'
+        ),
+        'cloudflare_zone': settings.get('acme_dns_cloudflare_zone', ''),
+        'zone_id': settings.get('acme_dns_cloudflare_zone_id', ''),
+        'account_id': settings.get('acme_dns_cloudflare_account_id', ''),
     }
 
 
@@ -369,6 +381,15 @@ def check_cluster_access(cluster_id):
         except Exception:
             from pegaprox.utils.auth import load_users
             user = load_users().get(request.session['user'], {})
+    # #491 — for an API token, floor the acting role to the token's grant (like build_authz_user)
+    # so an admin-owned scoped token can't reach clusters outside its scope. Done inline (a copy,
+    # not mutating g.current_user) to avoid the whole-table load_users() this hot path deliberately
+    # skips; get_user_clusters now honors effective_role.
+    if request.session.get('api_token') and isinstance(user, dict) and 'effective_role' not in user:
+        from pegaprox.models.permissions import ROLE_ADMIN, ROLE_USER, ROLE_VIEWER
+        _h = {ROLE_ADMIN: 3, ROLE_USER: 2, ROLE_VIEWER: 1}
+        _eff = min(_h.get(request.session.get('role'), 1), _h.get(user.get('role'), 1))
+        user = {**user, 'effective_role': next((r for r, lvl in _h.items() if lvl == _eff), ROLE_VIEWER)}
     allowed = get_user_clusters(user)
     if allowed is not None and cluster_id not in allowed:
         # #248: check VM ACLs as fallback — users with VM-level access can reach the cluster
@@ -403,21 +424,23 @@ def check_pbs_access(pbs_id):
     - User has access to at least one of the PBS's linked clusters
     """
     from flask import request, jsonify
-    from pegaprox.utils.auth import load_users
+    from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import get_user_clusters
     from pegaprox.globals import pbs_managers
     from pegaprox.models.permissions import ROLE_ADMIN
-    
+
     # Check if PBS exists
     if pbs_id not in pbs_managers:
         return False, (jsonify({'error': 'PBS server not found'}), 404)
-    
+
     pbs_mgr = pbs_managers[pbs_id]
-    users = load_users()
-    user = users.get(request.session['user'], {})
-    
+    # #491 — floor an admin-owned scoped API token to its effective_role so a viewer/user token
+    # can't ride the owner's stored admin role past the linked-cluster tenant gate below (mirrors
+    # check_cluster_access). get_user_clusters() already honors effective_role.
+    user = build_authz_user(request.session.get('user', ''), request.session)
+
     # Admins have full access
-    if user.get('role') == ROLE_ADMIN:
+    if user.get('effective_role', user.get('role')) == ROLE_ADMIN:
         return True, None
     
     # Get PBS linked clusters
@@ -450,15 +473,16 @@ def check_vmware_access(vmware_id):
     all-cluster (get_user_clusters None), or the caller reaches one of the server's linked clusters.
     Returns (True, None) or (False, error_response)."""
     from flask import request, jsonify
-    from pegaprox.utils.auth import load_users
+    from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import get_user_clusters
     from pegaprox.globals import vmware_managers
     from pegaprox.models.permissions import ROLE_ADMIN
 
     if vmware_id not in vmware_managers:
         return False, (jsonify({'error': 'VMware server not found'}), 404)
-    user = load_users().get(request.session.get('user', ''), {})
-    if user.get('role') == ROLE_ADMIN:
+    # #491 — floor an admin-owned scoped API token to its effective_role (mirrors check_cluster_access).
+    user = build_authz_user(request.session.get('user', ''), request.session)
+    if user.get('effective_role', user.get('role')) == ROLE_ADMIN:
         return True, None
     linked = getattr(vmware_managers[vmware_id], 'linked_clusters', None) or []
     if not linked:

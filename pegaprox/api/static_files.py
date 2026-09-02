@@ -319,15 +319,27 @@ def get_vms_without_pool(cluster_id):
         
         # Get pool membership
         membership = get_pool_membership_cache(cluster_id)
-        
+
+        # NS Aug 2026 (Aikido #469089182) — only list unpooled VMs the caller may actually see.
+        # A pool-scoped user reaches the cluster via the pool fallback but must not enumerate
+        # every unpooled VM's metadata; admins pass user_can_access_vm unchanged.
+        from pegaprox.utils.auth import build_authz_user
+        from pegaprox.utils.rbac import user_can_access_vm
+        _user = build_authz_user(request.session.get('user', ''), request.session)
+
         # Filter VMs not in any pool
         vms_without_pool = []
         for vm in all_vms:
             vmid = vm.get('vmid')
             vm_type = vm.get('type', 'qemu')
             key = f"{vmid}:{vm_type}"
-            
-            if key not in membership:
+
+            try:
+                vmid_int = int(vmid)
+            except (TypeError, ValueError):
+                continue  # a single malformed vmid must skip this row, not 500 the whole endpoint
+
+            if key not in membership and user_can_access_vm(_user, cluster_id, vmid_int, 'vm.view'):
                 vms_without_pool.append({
                     'vmid': vmid,
                     'name': vm.get('name', f'VM {vmid}'),
@@ -421,6 +433,13 @@ def get_user_perms(username):
         return jsonify({'error': 'User not found'}), 404
     
     user = users[username]
+    # NS Aug 2026 (AI-pentest) — a tenant-scoped admin.users holder must not read RBAC metadata for a
+    # user in ANOTHER tenant (cross-tenant disclosure + existence oracle). Mirror the user PUT/DELETE
+    # siblings; a global admin (session role ROLE_ADMIN) still sees everyone.
+    if request.session.get('role') != ROLE_ADMIN:
+        _caller = users.get(request.session.get('user', ''), {})
+        if user.get('tenant_id', DEFAULT_TENANT_ID) != _caller.get('tenant_id', DEFAULT_TENANT_ID):
+            return jsonify({'error': 'Access denied'}), 403
     tenant_id = request.args.get('tenant_id', user.get('tenant_id', DEFAULT_TENANT_ID))
     
     effective = get_user_permissions(user, tenant_id)

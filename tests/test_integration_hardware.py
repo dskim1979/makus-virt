@@ -406,6 +406,33 @@ def test_read_after_consent_returns_hardware_200(api, seed, monkeypatch):
     _current_mgr()._ssh_run_command_output.assert_called_once()
 
 
+# --- #686 E2E through the /hardware route: rollup reflects live state + surfaces the contributor ---
+_SEL_DEASSERTED = SAMPLE + "12 | 03/01/2026 | 10:00:00 | Power Supply PSU2 | Failure detected | Deasserted\n"
+_SEL_ASSERTED = SAMPLE + "12 | 08/13/2026 | 10:00:00 | Power Supply PSU2 | Failure detected | Asserted\n"
+
+
+def test_e2e_old_deasserted_sel_does_not_latch_node_critical_686(api, seed, monkeypatch):
+    # green sensors + a resolved (deasserted) critical SEL entry -> node reads OK through the route
+    _consent_on(api, seed, monkeypatch)
+    admin = seed.user('root', role='admin', tenant_id='default')
+    api.set_manager(CID, _mgr(api, _get_node_ip='10.0.0.9', _ssh_run_command_output=_SEL_DEASSERTED))
+    body = api.as_user(admin).get(HW_ROUTE).get_json()
+    assert body['available'] is True
+    assert body['health'] == 'ok'
+    assert body['health_reasons'] == []
+
+
+def test_e2e_active_asserted_sel_no_longer_latches_critical_714(api, seed, monkeypatch):
+    # #714 — an active (asserted) critical SEL entry no longer forces Critical while the live
+    # sensors read green; the SEL is history, not current state (matches the Redfish rollup).
+    _consent_on(api, seed, monkeypatch)
+    admin = seed.user('root', role='admin', tenant_id='default')
+    api.set_manager(CID, _mgr(api, _get_node_ip='10.0.0.9', _ssh_run_command_output=_SEL_ASSERTED))
+    body = api.as_user(admin).get(HW_ROUTE).get_json()
+    assert body['health'] == 'ok'
+    assert all(r['source'] != 'event' for r in body['health_reasons'])
+
+
 def test_read_bad_node_name_is_400(api, seed, monkeypatch):
     _consent_on(api, seed, monkeypatch)
     admin = seed.user('root', role='admin', tenant_id='default')

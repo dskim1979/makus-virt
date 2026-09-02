@@ -136,8 +136,10 @@
                 agent: true,
                 efi_storage: '',     // Storage for EFI disk
                 efi_pre_enroll: true, // Pre-enroll Microsoft keys
+                efi_format: '',      // #678 — EFI disk format ('' = storage default)
                 tpm_storage: '',     // Storage for TPM state
                 tpm_version: 'v2.0', // TPM version
+                tpm_format: '',      // #678 — TPM state format ('' = storage default)
                 ha_enabled: false,   // MK: Enable Proxmox native HA
                 ha_group: '',        // MK: HA group name
                 
@@ -338,6 +340,10 @@
                 { value: 'virtio', label: 'VirtIO-GPU' },
                 { value: 'virtio-gl', label: 'VirtIO-GPU (virgl)' },
                 { value: 'cirrus', label: 'Cirrus Logic' },
+                { value: 'serial0', label: 'Serial 0' },
+                { value: 'serial1', label: 'Serial 1' },
+                { value: 'serial2', label: 'Serial 2' },
+                { value: 'serial3', label: 'Serial 3' },
                 { value: 'none', label: 'None (headless)' },
             ];
 
@@ -1115,13 +1121,20 @@
                                                         {diskStorages.map(s => <option key={s.storage} value={s.storage}>{s.storage}</option>)}
                                                     </select>
                                                 </div>
-                                                <div className="flex items-end">
-                                                    <label className="flex items-center gap-2 text-sm text-gray-300">
-                                                        <input type="checkbox" checked={config.efi_pre_enroll} onChange={e => setConfig({...config, efi_pre_enroll: e.target.checked})} className="rounded" />
-                                                        {t('preEnrollKeys')}
-                                                    </label>
+                                                <div>
+                                                    {/* #678 — EFI disk format (raw/qcow2), like Proxmox; '' keeps the storage default */}
+                                                    <label className="block text-sm text-gray-400 mb-1">{t('format') || 'Format'}</label>
+                                                    <select value={config.efi_format || ''} onChange={e => setConfig({...config, efi_format: e.target.value})}
+                                                        className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg text-white">
+                                                        <option value="">{t('storageDefault') || 'Storage default'}</option>
+                                                        {getAllowedFormats(config.efi_storage || config.storage).map(f => <option key={f} value={f}>{f}</option>)}
+                                                    </select>
                                                 </div>
                                             </div>
+                                            <label className="flex items-center gap-2 text-sm text-gray-300">
+                                                <input type="checkbox" checked={config.efi_pre_enroll} onChange={e => setConfig({...config, efi_pre_enroll: e.target.checked})} className="rounded" />
+                                                {t('preEnrollKeys')}
+                                            </label>
                                         </div>
                                     )}
                                     
@@ -1149,6 +1162,15 @@
                                                         className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg text-white">
                                                         <option value="v2.0">TPM 2.0 ({t('recommended')})</option>
                                                         <option value="v1.2">TPM 1.2</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    {/* #678 — TPM state format, same optional format= as the EFI disk */}
+                                                    <label className="block text-sm text-gray-400 mb-1">{t('format') || 'Format'}</label>
+                                                    <select value={config.tpm_format || ''} onChange={e => setConfig({...config, tpm_format: e.target.value})}
+                                                        className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg text-white">
+                                                        <option value="">{t('storageDefault') || 'Storage default'}</option>
+                                                        {getAllowedFormats(config.tpm_storage).map(f => <option key={f} value={f}>{f}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
@@ -1925,14 +1947,14 @@
                     if (rc.cluster_type === 'xcpng') {
                         setXcpConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, dry_run: rc.dry_run || false }));
                     } else {
-                        setConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', api_port: rc.api_port || 8006, user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, migration_tolerance: rc.migration_tolerance || 10, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, balance_containers: rc.balance_containers || false, balance_local_disks: rc.balance_local_disks || false, dry_run: rc.dry_run || false, ssh_key: '' }));
+                        setConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', api_port: rc.api_port || 8006, node_ui_suffix: rc.node_ui_suffix || '', user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, migration_tolerance: rc.migration_tolerance || 10, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, balance_containers: rc.balance_containers || false, balance_local_disks: rc.balance_local_disks || false, dry_run: rc.dry_run || false, ssh_key: '' }));
                     }
                 }
             }, [isOpen, initialType, reconfigureConfig]);
             
             // Proxmox config
             const [config, setConfig] = useState({
-                name: '', host: '', api_port: 8006, user: 'root@pam', pass: '',
+                name: '', host: '', api_port: 8006, node_ui_suffix: '', user: 'root@pam', pass: '',
                 ssl_verification: false, migration_threshold: 20, migration_tolerance: 10, check_interval: 300,
                 auto_migrate: false, balance_containers: false, balance_local_disks: false,
                 dry_run: false, ssh_key: '',
@@ -2037,6 +2059,15 @@
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-proxmox-orange transition-colors"
                                         placeholder="8006" />
                                     <p className="mt-1 text-xs text-gray-500">{t('apiPortHint') || 'Default 8006. Override only if PVE listens on a non-standard port. Direct TLS only — no reverse-proxy support.'}</p>
+                                </div>
+                                {/* MK Aug 2026 (#689) — optional FQDN suffix for "Open in Proxmox" node links */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">{t('nodeUiSuffix') || 'Node URL suffix'}</label>
+                                    <input type="text" value={config.node_ui_suffix || ''}
+                                        onChange={e => setConfig({...config, node_ui_suffix: e.target.value})}
+                                        className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-proxmox-orange transition-colors"
+                                        placeholder="example.local" />
+                                    <p className="mt-1 text-xs text-gray-500">{t('nodeUiSuffixHint') || 'Optional. "Open in Proxmox" node links use <node>.<suffix>:8006 (e.g. pve01.example.local). Empty = use the node IP.'}</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -2804,6 +2835,10 @@
                                         </div>
                                     </div>
 
+                                    {/* #742: the theme grid is hidden in the Corporate layout — corporate
+                                        light/dark is driven by the toggle in the top bar, so the personal
+                                        themes here don't apply there and would look "ignored". */}
+                                    {(user?.ui_layout !== 'corporate') && (<>
                                     <div>
                                         <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
                                             <Icons.Palette />
@@ -2870,6 +2905,7 @@
                                             );
                                         })}
                                     </div>
+                                    </>)}
                                     
                                     {/* LW: Feb 2026 - Layout Selector (Modern vs Corporate) */}
                                     <div className="pt-4 border-t border-proxmox-border">

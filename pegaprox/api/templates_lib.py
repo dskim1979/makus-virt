@@ -304,6 +304,16 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
         # Even fields we think are safe (vmid is int-cast, storage matches a
         # narrow whitelist on PVE side) are quoted as defense-in-depth so
         # custom-template URLs / names can't break out of the qm command line.
+        # NS Aug 2026 (Aikido #469089270) — re-assert the SSRF gate at the wget sink itself.
+        # add_custom_template validates on entry, but built-in catalog entries and any image_url
+        # loaded straight from the DB reach this wget without that check; gate here so the node
+        # never fetches a URL that skipped it. allow_private=True keeps air-gapped mirrors working.
+        from pegaprox.utils.url_security import sanitize_outbound_url, SsrfError
+        try:
+            sanitize_outbound_url(tpl['image_url'], allowed_schemes=('https', 'http'), allow_private=True)
+        except SsrfError as _se:
+            raise RuntimeError(f"image_url rejected by SSRF guard: {_se}")
+
         vmid_i = int(vmid)
         q_img_path = shlex.quote(img_path)
         q_url = shlex.quote(tpl['image_url'])
@@ -469,6 +479,17 @@ def delete_custom_template(tpl_id):
         return jsonify({'error': 'cannot delete built-in template'}), 400
     try:
         c = get_db().conn.cursor()
+        # NS Aug 2026 (AI-pentest) — object-level authz: the catalog is world-readable, so without an
+        # owner check any vm.create holder could enumerate ids and wipe other users'/tenants' custom
+        # templates. Only the creator (or an admin) may delete.
+        c.execute('SELECT created_by FROM custom_cloud_templates WHERE id = ?', (tpl_id,))
+        _row = c.fetchone()
+        if _row is None:
+            return jsonify({'error': 'not found'}), 404
+        _owner = (_row['created_by'] if hasattr(_row, 'keys') else _row[0]) or ''
+        from pegaprox.models.permissions import ROLE_ADMIN
+        if _owner != _current_user() and request.session.get('role') != ROLE_ADMIN:
+            return jsonify({'error': 'Access denied'}), 403
         c.execute('DELETE FROM custom_cloud_templates WHERE id = ?', (tpl_id,))
         get_db().conn.commit()
         if c.rowcount == 0:
