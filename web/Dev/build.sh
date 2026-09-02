@@ -64,6 +64,7 @@ SRC_FILES=(
     worldmap.js
     cloud.js
     cloud_users.js
+    cloud_settings.js
     dashboard.js
 )
 

@@ -2432,7 +2432,7 @@
                         body = <CloudUsers t={T} addToast={addToast} />;
                         break;
                     case 'settings':
-                        body = <CloudClassicLauncher title={'설정'} icon="Settings" text={'전체 설정(인증, 백업, 모니터링, 연동)은 클래식 Makus Virt 레이아웃에서 이용 가능합니다.'} onExit={onExitCloud} t={T} />;
+                        body = <CloudSettings t={T} addToast={addToast} />;
                         break;
                     default:
                         body = <CloudDashboard clusters={safeClusters} resources={safeResources} metrics={clusterMetrics} dcStatus={dcStatus} tasks={tasks} onNav={selectSection} t={T} />;
