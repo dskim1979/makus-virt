@@ -44,8 +44,27 @@ def _valid_pciid(pciid):
 
 
 def _is_gpu(dev):
-    cls = str(dev.get('class', '')).lower().replace('0x', '').zfill(4)
-    return cls in _GPU_PCI_CLASSES
+    """True if this /nodes/{node}/hardware/pci entry is a GPU.
+
+    NS: Proxmox reports 'class' as a 6-hex-digit string — class + subclass +
+    prog-if, e.g. '030000' for VGA compatible controller, '030200' for a
+    headless 3D/compute card — not the bare 4-digit class+subclass we
+    originally compared against. That earlier version did an exact-string
+    match against ('0300', '0302'), which a real 6-digit value can never
+    equal, so no card was ever detected (confirmed against a live cluster —
+    a passed-through GPU didn't show up in the inventory or the VM's GPU
+    picker at all). Compares only the first 4 hex digits (class+subclass),
+    ignoring prog-if, and tolerates the class arriving as an int, with or
+    without a '0x' prefix, or with leading zeros dropped.
+    """
+    raw = dev.get('class')
+    if raw is None:
+        return False
+    cls = format(raw, 'x') if isinstance(raw, int) else str(raw)
+    cls = cls.lower().replace('0x', '').strip()
+    if len(cls) < 6:
+        cls = cls.zfill(6)  # pad short/leading-zero-stripped values to the full 6 digits
+    return cls[:4] in _GPU_PCI_CLASSES
 
 
 def _friendly_vendor(vendor_id, vendor_name):
