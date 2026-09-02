@@ -372,62 +372,62 @@
         // ── side nav (collapsible, grouped) ────────────────────────
         function CloudSideNav({ active, onSelect, isAdmin, collapsed, onToggle }) {
             const groups = [
-                { label: 'DASHBOARD', items: [{ id: 'overview', label: 'Overview', icon: 'Grid' }] },
-                { label: 'COMPUTE', items: [
+                { label: '대시보드', items: [{ id: 'overview', label: '개요', icon: 'Grid' }] },
+                { label: '컴퓨팅', items: [
                     { id: 'vms', label: '가상 머신', icon: 'Server' },
-                    { id: 'containers', label: 'Containers', icon: 'Box' },
+                    { id: 'containers', label: '컨테이너', icon: 'Box' },
                 ] },
-                { label: 'STORAGE', items: [
-                    { id: 'datastores', label: 'Datastores', icon: 'Database' },
-                    { id: 'storage', label: 'Storage Config', icon: 'HardDrive' },
-                    { id: 'pools', label: 'Resource Pools', icon: 'Layers' },
+                { label: '스토리지', items: [
+                    { id: 'datastores', label: '데이터스토어', icon: 'Database' },
+                    { id: 'storage', label: '스토리지 설정', icon: 'HardDrive' },
+                    { id: 'pools', label: '리소스 풀', icon: 'Layers' },
                     { id: 'ceph', label: 'Ceph', icon: 'Database' },
                 ] },
-                { label: 'NETWORK', items: [
-                    { id: 'networks', label: 'Networks', icon: 'Network' },
+                { label: '네트워크', items: [
+                    { id: 'networks', label: '네트워크', icon: 'Network' },
                     { id: 'sdn', label: 'SDN', icon: 'Globe' },
-                    { id: 'firewall', label: 'Firewall', icon: 'Lock' },
-                    { id: 'topology', label: 'Topology', icon: 'Share2' },
+                    { id: 'firewall', label: '방화벽', icon: 'Lock' },
+                    { id: 'topology', label: '토폴로지', icon: 'Share2' },
                 ] },
-                { label: 'DATA PROTECTION', items: [
-                    { id: 'backups', label: 'Backups', icon: 'Archive' },
-                    { id: 'replication', label: 'Replication', icon: 'Copy' },
-                    { id: 'pbs', label: 'Backup Servers', icon: 'Server' },
-                    { id: 'siterecovery', label: 'Site Recovery', icon: 'LifeBuoy' },
+                { label: '데이터 보호', items: [
+                    { id: 'backups', label: '백업', icon: 'Archive' },
+                    { id: 'replication', label: '복제', icon: 'Copy' },
+                    { id: 'pbs', label: '백업 서버', icon: 'Server' },
+                    { id: 'siterecovery', label: '사이트 복구', icon: 'LifeBuoy' },
                 ] },
-                { label: 'AUTOMATION', items: [
-                    { id: 'schedules', label: 'Schedules', icon: 'Clock' },
-                    { id: 'scripts', label: 'Scripts', icon: 'Terminal' },
-                    { id: 'snapshotpolicies', label: 'Snapshot Policies', icon: 'Camera' },
-                    { id: 'templates', label: 'Templates', icon: 'Copy' },
-                    { id: 'alerts', label: 'Alert Channels', icon: 'Bell' },
+                { label: '자동화', items: [
+                    { id: 'schedules', label: '예약', icon: 'Clock' },
+                    { id: 'scripts', label: '스크립트', icon: 'Terminal' },
+                    { id: 'snapshotpolicies', label: '스냅샷 정책', icon: 'Camera' },
+                    { id: 'templates', label: '템플릿', icon: 'Copy' },
+                    { id: 'alerts', label: '알림 채널', icon: 'Bell' },
                 ] },
-                { label: 'INFRASTRUCTURE', items: [
-                    { id: 'clusters', label: 'Clusters', icon: 'Cloud' },
-                    { id: 'nodes', label: 'Hosts', icon: 'Cpu' },
-                    { id: 'ha', label: 'High Availability', icon: 'Shield' },
-                    { id: 'updates', label: 'Update Manager', icon: 'Download' },
+                { label: '인프라', items: [
+                    { id: 'clusters', label: '클러스터', icon: 'Cloud' },
+                    { id: 'nodes', label: '호스트', icon: 'Cpu' },
+                    { id: 'ha', label: '고가용성', icon: 'Shield' },
+                    { id: 'updates', label: '업데이트 관리자', icon: 'Download' },
                 ] },
-                { label: 'MONITORING', items: [{ id: 'monitoring', label: 'Monitoring', icon: 'Activity' }] },
-                { label: 'REPORTS', items: [
-                    { id: 'insights', label: 'Insights', icon: 'Zap' },
-                    { id: 'costs', label: 'Costs', icon: 'DollarSign' },
-                    { id: 'power', label: 'Power & Carbon', icon: 'Zap' },
-                    { id: 'apihealth', label: 'API Health', icon: 'Activity' },
-                    { id: 'cve', label: 'CVE Scanner', icon: 'Shield' },
+                { label: '모니터링', items: [{ id: 'monitoring', label: '모니터링', icon: 'Activity' }] },
+                { label: '리포트', items: [
+                    { id: 'insights', label: '인사이트', icon: 'Zap' },
+                    { id: 'costs', label: '비용', icon: 'DollarSign' },
+                    { id: 'power', label: '전력 & 탄소', icon: 'Zap' },
+                    { id: 'apihealth', label: 'API 상태', icon: 'Activity' },
+                    { id: 'cve', label: 'CVE 스캐너', icon: 'Shield' },
                 ] },
-                { label: 'ACTIVITY', items: [{ id: 'tasks', label: 'Tasks', icon: 'ClipboardList' }] },
+                { label: '활동', items: [{ id: 'tasks', label: '작업', icon: 'ClipboardList' }] },
             ];
             if (isAdmin) {
-                groups.push({ label: 'GOVERNANCE', items: [
-                    { id: 'compliance', label: 'Compliance', icon: 'Shield' },
-                    { id: 'drift', label: 'Config Drift', icon: 'Activity' },
+                groups.push({ label: '거버넌스', items: [
+                    { id: 'compliance', label: '준수', icon: 'Shield' },
+                    { id: 'drift', label: '설정 드리프트', icon: 'Activity' },
                     { id: 'siem', label: 'SIEM', icon: 'AlertTriangle' },
                 ] });
-                groups.push({ label: 'SYSTEM', items: [
-                    { id: 'plugins', label: 'Plugins', icon: 'Box' },
-                    { id: 'users', label: 'Users', icon: 'Users' },
-                    { id: 'settings', label: 'Settings', icon: 'Settings' },
+                groups.push({ label: '시스템', items: [
+                    { id: 'plugins', label: '플러그인', icon: 'Box' },
+                    { id: 'users', label: '사용자', icon: 'Users' },
+                    { id: 'settings', label: '설정', icon: 'Settings' },
                 ] });
             }
             return (
@@ -470,7 +470,7 @@
                             </div>
                         ))}
                     </div>
-                    <button type="button" className="cloud-nav-collapse" onClick={onToggle} title={collapsed ? 'Expand' : 'Collapse'}>
+                    <button type="button" className="cloud-nav-collapse" onClick={onToggle} title={collapsed ? '펼치기' : '접기'}>
                         {collapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
                     </button>
                 </nav>
@@ -572,12 +572,12 @@
             const recentTasks = (Array.isArray(tasks) ? tasks : []).slice(0, 6);
 
             const kpis = [
-                { icon: 'Server', value: vms.length, label: '가상 머신', accent: '#6366f1', sub: `${vms.filter(v => v.status === 'running').length} running`, nav: 'vms' },
-                { icon: 'Box', value: cts.length, label: '컨테이너', accent: '#14b8a6', sub: `${cts.filter(v => v.status === 'running').length} running`, nav: 'containers' },
-                { icon: 'Cpu', value: nodeNames.length, label: '호스트', accent: '#a855f7', sub: `${connected}/${safeClusters.length} clusters`, nav: 'nodes' },
-                { icon: 'Activity', value: running.length, label: '실행 중', accent: '#22c55e', sub: `${safeRes.length} total`, nav: null },
+                { icon: 'Server', value: vms.length, label: '가상 머신', accent: '#6366f1', sub: `${vms.filter(v => v.status === 'running').length}개 실행 중`, nav: 'vms' },
+                { icon: 'Box', value: cts.length, label: '컨테이너', accent: '#14b8a6', sub: `${cts.filter(v => v.status === 'running').length}개 실행 중`, nav: 'containers' },
+                { icon: 'Cpu', value: nodeNames.length, label: '호스트', accent: '#a855f7', sub: `클러스터 ${connected}/${safeClusters.length}`, nav: 'nodes' },
+                { icon: 'Activity', value: running.length, label: '실행 중', accent: '#22c55e', sub: `전체 ${safeRes.length}개`, nav: null },
                 { icon: 'Cpu', value: vcpu, label: 'vCPU', accent: '#0ea5e9', sub: null, nav: null },
-                { icon: 'MemoryStick', value: cloudBytesToGiB(ramAllocB).toFixed(1) + ' GiB', label: 'RAM', accent: '#f59e0b', sub: null, nav: null },
+                { icon: 'MemoryStick', value: cloudBytesToGiB(ramAllocB).toFixed(1) + ' GiB', label: 'RAM 할당됨', accent: '#f59e0b', sub: null, nav: null },
             ];
 
             return (
