@@ -13794,7 +13794,7 @@
             }
 
             return (
-                <div className={`min-h-screen bg-proxmox-darker text-white ${isCorporate ? 'pb-7' : ''}`}>
+                <div className={`min-h-screen bg-proxmox-darker text-white flex flex-col ${isCorporate ? 'pb-7' : ''}`}>
                     {/* LW: Password Expiry Warning */}
                     <PasswordExpiryBanner onChangePassword={() => setShowProfile(true)} />
                     
@@ -14297,8 +14297,8 @@
                         );
                     })()}
 
-                    <div className={`relative ${isCorporate ? 'max-w-full mx-0 px-0 py-0' : 'max-w-[1600px] mx-auto px-6 py-6'}`}>
-                        <div className={`flex ${isCorporate ? 'gap-0' : 'gap-6'}`}>
+                    <div className={`relative flex-1 flex flex-col ${isCorporate ? 'max-w-full mx-0 px-0 py-0' : 'max-w-[1600px] mx-auto px-6 py-6 w-full'}`}>
+                        <div className={`flex flex-1 ${isCorporate ? 'gap-0' : 'gap-6'}`}>
                             {/* LW: Feb 2026 - sidebar, resizable in corporate */}
                             <div className={`${isCorporate ? 'flex-shrink-0 corporate-sidebar' : 'w-72 flex-shrink-0'}`} style={isCorporate ? {width: sidebarWidth + 'px'} : undefined}>
                                 <div className={`sticky top-6 ${isCorporate ? 'space-y-0.5 px-1 py-2' : 'space-y-3 pr-1'} pb-4`} style={{ maxHeight: 'calc(100vh - 3rem)', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'thin', scrollbarColor: '#4a4a4a transparent' }}>
