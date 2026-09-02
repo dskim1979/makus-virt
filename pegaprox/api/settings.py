@@ -869,15 +869,15 @@ def perform_pegaprox_update():
             has_sudo = shutil.which('sudo') is not None
 
             try:
-                result = subprocess.run(['systemctl', 'is-active', 'pegaprox'],
+                result = subprocess.run(['systemctl', 'is-active', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')],
                                        capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     if is_root:
-                        subprocess.run(['systemctl', 'restart', 'pegaprox'], timeout=30)
+                        subprocess.run(['systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')], timeout=30)
                         return
                     elif has_sudo:
                         result = subprocess.run(
-                            ['sudo', '-n', 'systemctl', 'restart', 'pegaprox'],
+                            ['sudo', '-n', 'systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')],
                             capture_output=True, text=True, timeout=30)
                         if result.returncode == 0:
                             return
@@ -1044,15 +1044,15 @@ def rollback_pegaprox_update():
             has_sudo = shutil.which('sudo') is not None
             
             try:
-                result = subprocess.run(['systemctl', 'is-active', 'pegaprox'], 
+                result = subprocess.run(['systemctl', 'is-active', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')], 
                                        capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     if is_root:
-                        subprocess.run(['systemctl', 'restart', 'pegaprox'], timeout=30)
+                        subprocess.run(['systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')], timeout=30)
                         return
                     elif has_sudo:
                         result = subprocess.run(
-                            ['sudo', '-n', 'systemctl', 'restart', 'pegaprox'],
+                            ['sudo', '-n', 'systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')],
                             capture_output=True, text=True, timeout=30
                         )
                         if result.returncode == 0:
@@ -1960,16 +1960,16 @@ def restart_server():
             has_sudo = shutil.which('sudo') is not None
             
             try:
-                result = subprocess.run(['systemctl', 'is-active', 'pegaprox'],
+                result = subprocess.run(['systemctl', 'is-active', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')],
                                        capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     if is_root:
-                        subprocess.run(['systemctl', 'restart', 'pegaprox'], 
+                        subprocess.run(['systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')], 
                                       capture_output=True, timeout=30)
                         return
                     elif has_sudo:
                         result = subprocess.run(
-                            ['sudo', '-n', 'systemctl', 'restart', 'pegaprox'],
+                            ['sudo', '-n', 'systemctl', 'restart', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt')],
                             capture_output=True, text=True, timeout=30
                         )
                         if result.returncode == 0:
@@ -3696,7 +3696,7 @@ def generate_support_bundle():
                 journal_err = None
                 try:
                     cp = subprocess.run(
-                        ['journalctl', '-u', 'pegaprox',
+                        ['journalctl', '-u', os.environ.get('MAKUS_VIRT_SYSTEMD_SERVICE', 'makus-virt'),
                          '--since', '24 hours ago',
                          '-n', '1000',
                          '--no-pager', '--output=short'],
