@@ -408,7 +408,7 @@ Makus Virt는 이 요건을 그대로 준수하며, 수정된 소스 전체를 �
 ## 💬 Support
 
 **Makus Virt (이 포크) 관련 문의:**
-- 📧 Email: support@makusvirt.example.com
+- 📧 Email: support@makussystems.co.kr
 - 🐛 Issues: [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
 
 **원본 PegaProx 커뮤니티/코어 기능 문의:**
