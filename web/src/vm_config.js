@@ -5268,7 +5268,7 @@
                                                                                         const res = await authFetch(`${API_URL}/clusters/${clusterId}/smbios-autoconfig`);
                                                                                         const settings = res?.ok ? await res.json() : {};
                                                                                         const mfg = sanitize(settings.manufacturer) || 'Proxmox';
-                                                                                        const prod = sanitize(settings.product) || 'PegaProxManagment';
+                                                                                        const prod = sanitize(settings.product) || 'MakusVirtManagement';
                                                                                         const ver = sanitize(settings.version) || 'v1';
                                                                                         const fam = sanitize(settings.family) || 'ProxmoxVE';
                                                                                         const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(2, 14);
@@ -5280,7 +5280,7 @@
                                                                                         const base = smbios.uuid ? `uuid=${smbios.uuid},` : '';
                                                                                         const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(2, 14);
                                                                                         const randomPart = Math.floor(Math.random() * 9000 + 1000);
-                                                                                        handleChange('options', 'smbios1', `${base}manufacturer=Proxmox,product=PegaProxManagment,version=v1,serial=PVE${timestamp}${randomPart},family=ProxmoxVE`);
+                                                                                        handleChange('options', 'smbios1', `${base}manufacturer=Proxmox,product=MakusVirtManagement,version=v1,serial=PVE${timestamp}${randomPart},family=ProxmoxVE`);
                                                                                     }
                                                                                 }}
                                                                                 className="px-2 py-1 bg-proxmox-orange/20 border border-proxmox-orange/50 rounded text-xs text-proxmox-orange hover:bg-proxmox-orange/30"

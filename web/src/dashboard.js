@@ -16960,7 +16960,7 @@
                                                                             {id === 'default_umask' && (
                                                                                 <p className="text-[11px] text-yellow-400/80 mt-1 leading-tight">⚠ {t('cmUmaskToolingNote')}</p>
                                                                             )}
-                                                                            {/* MK #16745: this cluster is reached by password with no key -> sshd_hardening (prohibit-password) would cut off PegaProx's OWN root SSH, and the rollback needs SSH too. Warn before apply. */}
+                                                                            {/* MK #16745: this cluster is reached by password with no key -> sshd_hardening (prohibit-password) would cut off Makus Virt's OWN root SSH, and the rollback needs SSH too. Warn before apply. */}
                                                                             {id === 'sshd_hardening' && selectedCluster && selectedCluster.has_ssh_key === false && !applied && (
                                                                                 <p className="text-[11px] text-red-400/90 mt-1 leading-tight">⚠ {t('cmSshdRootLockoutNote')}</p>
                                                                             )}
@@ -17173,7 +17173,7 @@
                                                                                     <p className="text-xs text-red-300 mb-2 leading-snug">⚠ {t('cmSshdRootLockoutNote')}</p>
                                                                                     <label className="flex items-start gap-2 text-xs text-red-200 cursor-pointer">
                                                                                         <input type="checkbox" checked={hardenLockoutAck} onChange={e => setHardenLockoutAck(e.target.checked)} className="mt-0.5 accent-red-500" />
-                                                                                        <span>{t('hardenLockoutAck') || "I understand this cuts off PegaProx's own password access to this cluster, and I have console / manual access to recover."}</span>
+                                                                                        <span>{t('hardenLockoutAck') || "I understand this cuts off Makus Virt's own password access to this cluster, and I have console / manual access to recover."}</span>
                                                                                     </label>
                                                                                 </div>
                                                                             )}
