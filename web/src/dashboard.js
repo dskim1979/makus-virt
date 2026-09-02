@@ -545,6 +545,53 @@
             );
         }
 
+        // GPU/vGPU summary card for the cluster overview grid — same self-fetching
+        // pattern as CapacityOutlookCard, just reads /gpu-inventory instead.
+        function GpuOverviewCard({ clusterId, t, getAuthHeaders }) {
+            const [data, setData] = useState(null);
+
+            useEffect(() => {
+                if (!clusterId) { setData(null); return; }
+                let aborted = false;
+                const load = async () => {
+                    try {
+                        const r = await fetch(`${API_URL}/clusters/${clusterId}/gpu-inventory`, {
+                            credentials: 'include', headers: getAuthHeaders()
+                        });
+                        if (!aborted && r.ok) setData(await r.json());
+                    } catch (e) {}
+                };
+                load();
+                const iv = setInterval(load, 60000);
+                return () => { aborted = true; clearInterval(iv); };
+            }, [clusterId]);
+
+            // No GPUs at all on this cluster — skip the card entirely rather than
+            // show a permanent "0/0" tile on every install without one.
+            if (data && data.summary.total_gpus === 0) return null;
+
+            const s = data?.summary;
+            const value = s ? `${s.allocated}/${s.total_gpus}` : '…';
+            const pct = s && s.total_gpus > 0 ? (s.allocated / s.total_gpus * 100) : 0;
+            const color = pct >= 90 ? 'var(--color-error)' : pct >= 70 ? 'var(--color-warning)' : 'var(--corp-accent)';
+            const sub = s
+                ? `${t('gpuFree') || '여유'} ${s.free} · vGPU ${s.vgpu_capable_count}`
+                : (t('loading') || 'loading…');
+
+            return (
+                <div className="corp-overview-card">
+                    <div className="corp-stat-icon" style={{width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0}}>
+                        <Icons.Cpu className="w-6 h-6" style={{color}} />
+                    </div>
+                    <div style={{flex: 1, minWidth: 0}}>
+                        <div className="corp-overview-label">GPU</div>
+                        <div className="corp-overview-value" style={{color}}>{value}</div>
+                        <div className="corp-overview-sub">{sub}</div>
+                    </div>
+                </div>
+            );
+        }
+
         // LW Apr 2026 — Global command palette. Opens on Ctrl/Cmd+K.
         // Indexes: clusters, VMs, storage (from resources), and a curated action list.
         // Keyboard-first: ↑/↓ to move, enter to pick, esc to close.
@@ -15294,6 +15341,7 @@
                                                                 </div>
                                                             </div>
                                                             <CapacityOutlookCard clusterId={selectedCluster?.id} t={t} getAuthHeaders={getAuthHeaders} />
+                                                            <GpuOverviewCard clusterId={selectedCluster?.id} t={t} getAuthHeaders={getAuthHeaders} />
                                                         </div>
                                                     );
                                                 })()}
