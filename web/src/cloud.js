@@ -346,26 +346,26 @@
             const paused = r.status === 'paused' || r.status === 'suspended';
             const isCt = r.type === 'lxc';
             return [
-                (!running && !paused) && { label: t('start') || 'Start', icon: 'Play', onClick: () => act.vmAction(r, 'start') },
-                paused && { label: t('resume') || 'Resume', icon: 'PlayCircle', onClick: () => act.vmAction(r, 'resume') },
-                running && { label: t('shutdown') || 'Shutdown', icon: 'Power', onClick: () => act.vmAction(r, 'shutdown') },
-                running && { label: t('reboot') || 'Reboot', icon: 'RotateCw', onClick: () => act.vmAction(r, 'reboot') },
-                (running && !isCt) && { label: t('suspend') || 'Suspend', icon: 'Pause', onClick: () => act.vmAction(r, 'suspend') },
-                running && { label: t('stop') || 'Stop', icon: 'Square', onClick: () => act.vmAction(r, 'stop') },
-                running && { label: t('forceStop') || 'Force stop', icon: 'StopCircle', danger: true, onClick: () => act.forceStop(r) },
+                (!running && !paused) && { label: '시작', icon: 'Play', onClick: () => act.vmAction(r, 'start') },
+                paused && { label: '재개', icon: 'PlayCircle', onClick: () => act.vmAction(r, 'resume') },
+                running && { label: '종료', icon: 'Power', onClick: () => act.vmAction(r, 'shutdown') },
+                running && { label: '재부팅', icon: 'RotateCw', onClick: () => act.vmAction(r, 'reboot') },
+                (running && !isCt) && { label: '일시중지', icon: 'Pause', onClick: () => act.vmAction(r, 'suspend') },
+                running && { label: '중지', icon: 'Square', onClick: () => act.vmAction(r, 'stop') },
+                running && { label: '강제 중지', icon: 'StopCircle', danger: true, onClick: () => act.forceStop(r) },
                 { divider: true },
-                { label: t('console') || 'Console', icon: 'Monitor', onClick: () => act.openConsole(r) },
-                (running && !isCt) && { label: t('spiceConsole') || 'SPICE', icon: 'ExternalLink', onClick: () => act.openSpice(r) },
-                isCt && { label: t('shell') || 'Shell', icon: 'Terminal', onClick: () => act.openLxcShell(r) },
-                { label: t('snapshots') || 'Snapshot', icon: 'Camera', onClick: () => act.snapshot(r) },
-                { label: t('metrics') || 'Metrics', icon: 'BarChart', onClick: () => act.openMetrics(r) },
+                { label: '콘솔', icon: 'Monitor', onClick: () => act.openConsole(r) },
+                (running && !isCt) && { label: 'SPICE', icon: 'ExternalLink', onClick: () => act.openSpice(r) },
+                isCt && { label: '셸', icon: 'Terminal', onClick: () => act.openLxcShell(r) },
+                { label: '스냅샷', icon: 'Camera', onClick: () => act.snapshot(r) },
+                { label: '지표', icon: 'BarChart', onClick: () => act.openMetrics(r) },
                 { divider: true },
-                { label: t('edit') || 'Edit / Hardware', icon: 'Cog', onClick: () => act.openConfig(r) },
-                { label: t('migrate') || 'Migrate', icon: 'Send', onClick: () => act.migrate(r) },
-                act.multiCluster && { label: t('cloud.crossMigrate') || 'Migrate to cluster…', icon: 'Send', onClick: () => act.crossMigrate(r) },
-                { label: t('clone') || 'Clone', icon: 'Copy', onClick: () => act.clone(r) },
+                { label: '편집 / 하드웨어', icon: 'Cog', onClick: () => act.openConfig(r) },
+                { label: '마이그레이션', icon: 'Send', onClick: () => act.migrate(r) },
+                act.multiCluster && { label: '클러스터로 마이그레이션…', icon: 'Send', onClick: () => act.crossMigrate(r) },
+                { label: '복제', icon: 'Copy', onClick: () => act.clone(r) },
                 { divider: true },
-                { label: t('delete') || 'Delete', icon: 'Trash2', danger: true, onClick: () => act.del(r) },
+                { label: '삭제', icon: 'Trash2', danger: true, onClick: () => act.del(r) },
             ].filter(Boolean);
         }
 
@@ -374,7 +374,7 @@
             const groups = [
                 { label: 'DASHBOARD', items: [{ id: 'overview', label: 'Overview', icon: 'Grid' }] },
                 { label: 'COMPUTE', items: [
-                    { id: 'vms', label: 'Virtual Machines', icon: 'Server' },
+                    { id: 'vms', label: '가상 머신', icon: 'Server' },
                     { id: 'containers', label: 'Containers', icon: 'Box' },
                 ] },
                 { label: 'STORAGE', items: [
@@ -489,11 +489,11 @@
             const uname = (currentUser && (currentUser.username || currentUser.name)) || 'User';
             const initial = (uname[0] || 'U').toUpperCase();
             const userMenu = [
-                { label: t('cloud.profile') || 'Profile & preferences', icon: 'User', onClick: () => onOpenProfile && onOpenProfile() },
-                isAdmin && { label: t('cloud.settings') || 'Settings', icon: 'Settings', onClick: () => onOpenSettings && onOpenSettings() },
+                { label: '프로필 및 환경설정', icon: 'User', onClick: () => onOpenProfile && onOpenProfile() },
+                isAdmin && { label: '설정', icon: 'Settings', onClick: () => onOpenSettings && onOpenSettings() },
                 { divider: true },
-                (typeof onExitCloud === 'function') && { label: t('cloud.exit') || 'Exit Cloud (Modern view)', icon: 'Grid', onClick: onExitCloud },
-                (typeof onLogout === 'function') && { label: t('logout') || 'Sign out', icon: 'LogOut', danger: true, onClick: onLogout },
+                (typeof onExitCloud === 'function') && { label: '클라우드 종료 (모던 화면으로)', icon: 'Grid', onClick: onExitCloud },
+                (typeof onLogout === 'function') && { label: '로그아웃', icon: 'LogOut', danger: true, onClick: onLogout },
             ].filter(Boolean);
 
             return (
@@ -520,8 +520,8 @@
                         )}
                         <div className="cloud-lang"><LanguageSwitcher /></div>
                         <CloudIconBtn icon={theme === 'light' ? 'Moon' : 'Sun'} title={theme === 'light' ? 'Dark theme' : 'Light theme'} onClick={onToggleTheme} />
-                        <CloudIconBtn icon="RefreshCw" title={t('cloud.refresh') || 'Refresh'} onClick={onRefresh} />
-                        {isAdmin && <CloudIconBtn icon="Settings" title={t('cloud.settings') || 'Settings'} onClick={() => onOpenSettings && onOpenSettings()} />}
+                        <CloudIconBtn icon="RefreshCw" title={'새로고침'} onClick={onRefresh} />
+                        {isAdmin && <CloudIconBtn icon="Settings" title={'설정'} onClick={() => onOpenSettings && onOpenSettings()} />}
                         <CloudActionMenu
                             items={userMenu}
                             label={uname}
@@ -572,19 +572,19 @@
             const recentTasks = (Array.isArray(tasks) ? tasks : []).slice(0, 6);
 
             const kpis = [
-                { icon: 'Server', value: vms.length, label: t('cloud.vms') || 'Virtual Machines', accent: '#6366f1', sub: `${vms.filter(v => v.status === 'running').length} running`, nav: 'vms' },
-                { icon: 'Box', value: cts.length, label: t('cloud.containers') || 'Containers', accent: '#14b8a6', sub: `${cts.filter(v => v.status === 'running').length} running`, nav: 'containers' },
-                { icon: 'Cpu', value: nodeNames.length, label: t('cloud.hosts') || 'Hosts', accent: '#a855f7', sub: `${connected}/${safeClusters.length} clusters`, nav: 'nodes' },
-                { icon: 'Activity', value: running.length, label: t('cloud.running') || 'Running guests', accent: '#22c55e', sub: `${safeRes.length} total`, nav: null },
-                { icon: 'Cpu', value: vcpu, label: t('cloud.vcpu') || 'vCPU allocated', accent: '#0ea5e9', sub: null, nav: null },
-                { icon: 'MemoryStick', value: cloudBytesToGiB(ramAllocB).toFixed(1) + ' GiB', label: t('cloud.ram') || 'RAM allocated', accent: '#f59e0b', sub: null, nav: null },
+                { icon: 'Server', value: vms.length, label: '가상 머신', accent: '#6366f1', sub: `${vms.filter(v => v.status === 'running').length} running`, nav: 'vms' },
+                { icon: 'Box', value: cts.length, label: '컨테이너', accent: '#14b8a6', sub: `${cts.filter(v => v.status === 'running').length} running`, nav: 'containers' },
+                { icon: 'Cpu', value: nodeNames.length, label: '호스트', accent: '#a855f7', sub: `${connected}/${safeClusters.length} clusters`, nav: 'nodes' },
+                { icon: 'Activity', value: running.length, label: '실행 중', accent: '#22c55e', sub: `${safeRes.length} total`, nav: null },
+                { icon: 'Cpu', value: vcpu, label: 'vCPU', accent: '#0ea5e9', sub: null, nav: null },
+                { icon: 'MemoryStick', value: cloudBytesToGiB(ramAllocB).toFixed(1) + ' GiB', label: 'RAM', accent: '#f59e0b', sub: null, nav: null },
             ];
 
             return (
                 <div className="cloud-body">
                     <CloudPageHeader
-                        title={t('cloud.overview') || 'Overview'}
-                        sub={`${connected} / ${safeClusters.length} ${t('cloud.clustersConnected') || 'clusters connected'} · ${safeRes.length} ${t('cloud.guestsShort') || 'guests'}`}
+                        title={'개요'}
+                        sub={`${connected} / ${safeClusters.length} ${'클러스터 연결됨'} · ${safeRes.length} ${'게스트'}`}
                     />
                     <div className="cloud-kpi-grid">
                         {kpis.map((k, i) => (
@@ -595,35 +595,35 @@
 
                     <div className="cloud-dash-grid">
                         <div className="cloud-card cloud-util-card">
-                            <CloudSectionTitle>{t('cloud.utilization') || 'Cluster utilization'}</CloudSectionTitle>
+                            <CloudSectionTitle>{'클러스터 사용률'}</CloudSectionTitle>
                             <div className="cloud-util-body">
                                 <div className="cloud-util-gauges">
-                                    <CloudGauge pct={cpuAvg} color="var(--cloud-accent)" label={t('cloud.avgCpu') || 'Avg CPU'} sub={`${nodeNames.length} hosts`} />
-                                    <CloudGauge pct={memAvg} color="#a855f7" label={t('cloud.avgRam') || 'Avg RAM'} sub={dcStatus?.resources?.memory ? cloudFmtBytes(dcStatus.resources.memory.used) : null} />
+                                    <CloudGauge pct={cpuAvg} color="var(--cloud-accent)" label={'평균 CPU'} sub={`${nodeNames.length} hosts`} />
+                                    <CloudGauge pct={memAvg} color="#a855f7" label={'평균 RAM'} sub={dcStatus?.resources?.memory ? cloudFmtBytes(dcStatus.resources.memory.used) : null} />
                                 </div>
                                 <div className="cloud-util-breakdown">
-                                    <div className="cloud-util-row"><span>{t('cloud.running') || 'Running'}</span><span>{running.length} / {safeRes.length}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.vcpu') || 'vCPU allocated'}</span><span>{vcpu}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.ram') || 'RAM allocated'}</span><span>{cloudBytesToGiB(ramAllocB).toFixed(1)} GiB</span></div>
+                                    <div className="cloud-util-row"><span>{'실행 중'}</span><span>{running.length} / {safeRes.length}</span></div>
+                                    <div className="cloud-util-row"><span>{'vCPU'}</span><span>{vcpu}</span></div>
+                                    <div className="cloud-util-row"><span>{'RAM'}</span><span>{cloudBytesToGiB(ramAllocB).toFixed(1)} GiB</span></div>
                                     {dcStatus?.resources?.storage && (
-                                        <div className="cloud-util-row"><span>{t('cloud.storage') || 'Storage used'}</span><span>{cloudFmtBytes(dcStatus.resources.storage.used)} / {cloudFmtBytes(dcStatus.resources.storage.total)}</span></div>
+                                        <div className="cloud-util-row"><span>{'스토리지'}</span><span>{cloudFmtBytes(dcStatus.resources.storage.used)} / {cloudFmtBytes(dcStatus.resources.storage.total)}</span></div>
                                     )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="cloud-card">
-                            <CloudSectionTitle>{t('cloud.topMem') || 'Top memory consumers'}</CloudSectionTitle>
+                            <CloudSectionTitle>{'메모리 사용량 상위'}</CloudSectionTitle>
                             <CloudBarChart rows={topMem} color="#6366f1" />
                         </div>
                     </div>
 
                     <div className="cloud-card">
-                        <CloudSectionTitle right={<button type="button" className="cloud-link-btn" onClick={() => onNav('tasks')}>{t('cloud.viewAll') || 'View all'}</button>}>
-                            {t('cloud.recentTasks') || 'Recent activity'}
+                        <CloudSectionTitle right={<button type="button" className="cloud-link-btn" onClick={() => onNav('tasks')}>{'전체 보기'}</button>}>
+                            {'최근 활동'}
                         </CloudSectionTitle>
                         {recentTasks.length === 0 ? (
-                            <div className="cloud-empty">{t('cloud.noTasks') || 'No recent tasks.'}</div>
+                            <div className="cloud-empty">{'작업 없음'}</div>
                         ) : (
                             <div className="cloud-tasklist">
                                 {recentTasks.map((tk, i) => (
@@ -655,7 +655,7 @@
             // (without clusterId here a same-VMID guest in another cluster would inherit the selection)
             React.useEffect(() => { setChecked({}); setPage(0); }, [kind, clusterId]);
 
-            const title = kind === 'lxc' ? (t('cloud.containers') || 'Containers') : (t('cloud.vms') || 'Virtual Machines');
+            const title = kind === 'lxc' ? ('컨테이너') : ('가상 머신');
             const RowIcon = kind === 'lxc' ? (Icons.Box || Icons.Container) : Icons.Server;
 
             const q = query.trim().toLowerCase();
@@ -704,9 +704,9 @@
 
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={title} sub={`${safe.length} ${kind === 'lxc' ? (t('cloud.containers') || 'containers') : (t('cloud.vms') || 'virtual machines')}`}>
+                    <CloudPageHeader title={title} sub={`${safe.length} ${kind === 'lxc' ? ('컨테이너') : ('가상 머신')}`}>
                         <button type="button" className="cloud-btn cloud-btn-primary" onClick={() => onCreate(kind === 'lxc' ? 'lxc' : 'qemu')}>
-                            <Icons.Plus /> {kind === 'lxc' ? (t('newContainer') || 'New Container') : (t('newVm') || 'New VM')}
+                            <Icons.Plus /> {kind === 'lxc' ? ('새 컨테이너') : ('새 VM')}
                         </button>
                     </CloudPageHeader>
 
@@ -715,12 +715,12 @@
                             <div className="cloud-toolbar-left">
                                 {selCount > 0 ? (
                                     <div className="cloud-bulkbar">
-                                        <span className="cloud-sel-note">{selCount} {t('cloud.selected') || 'selected'}</span>
-                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('start')}><Icons.Play /> {t('start') || 'Start'}</button>
-                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('shutdown')}><Icons.Power /> {t('shutdown') || 'Shutdown'}</button>
-                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('reboot')}><Icons.RotateCw /> {t('reboot') || 'Reboot'}</button>
-                                        <button type="button" className="cloud-btn cloud-btn-sm cloud-btn-danger" onClick={() => bulk('stop')}><Icons.Square /> {t('stop') || 'Stop'}</button>
-                                        <button type="button" className="cloud-sel-clear" onClick={() => setChecked({})}>{t('cloud.clear') || 'Clear'}</button>
+                                        <span className="cloud-sel-note">{selCount} {'개 선택됨'}</span>
+                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('start')}><Icons.Play /> {'시작'}</button>
+                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('shutdown')}><Icons.Power /> {'종료'}</button>
+                                        <button type="button" className="cloud-btn cloud-btn-sm" onClick={() => bulk('reboot')}><Icons.RotateCw /> {'재부팅'}</button>
+                                        <button type="button" className="cloud-btn cloud-btn-sm cloud-btn-danger" onClick={() => bulk('stop')}><Icons.Square /> {'중지'}</button>
+                                        <button type="button" className="cloud-sel-clear" onClick={() => setChecked({})}>{'지우기'}</button>
                                     </div>
                                 ) : (
                                     <>
@@ -728,7 +728,7 @@
                                         <div className="cloud-segment">
                                             {['all', 'running', 'stopped'].map(s => (
                                                 <button type="button" key={s} className={'cloud-segment-btn' + (statusFilter === s ? ' is-active' : '')} onClick={() => { setStatusFilter(s); setPage(0); }}>
-                                                    {s === 'all' ? (t('cloud.all') || 'All') : s === 'running' ? (t('cloud.running') || 'Running') : (t('cloud.stopped') || 'Stopped')}
+                                                    {s === 'all' ? ('전체') : s === 'running' ? ('실행 중') : ('중지됨')}
                                                 </button>
                                             ))}
                                         </div>
@@ -736,7 +736,7 @@
                                 )}
                             </div>
                             <div className="cloud-toolbar-right">
-                                <CloudSearch value={query} onChange={(v) => { setQuery(v); setPage(0); }} placeholder={t('cloud.searchGuests') || 'Search name, ID, host…'} />
+                                <CloudSearch value={query} onChange={(v) => { setQuery(v); setPage(0); }} placeholder={'이름, ID, 호스트 검색…'} />
                             </div>
                         </div>
 
@@ -744,28 +744,28 @@
                             <div className="cloud-filterchips">
                                 {statusFilter !== 'all' && (
                                     <span className="cloud-filterchip">
-                                        {(t('cloud.colStatus') || 'Status')}: {statusFilter === 'running' ? (t('cloud.running') || 'Running') : (t('cloud.stopped') || 'Stopped')}
+                                        {('상태')}: {statusFilter === 'running' ? ('실행 중') : ('중지됨')}
                                         <button type="button" onClick={() => { setStatusFilter('all'); setPage(0); }} aria-label="Remove filter"><Icons.X /></button>
                                     </span>
                                 )}
                                 {q && (
                                     <span className="cloud-filterchip">
-                                        {(t('cloud.search') || 'Search')}: “{query}”
+                                        {('검색')}: “{query}”
                                         <button type="button" onClick={() => { setQuery(''); setPage(0); }} aria-label="Remove filter"><Icons.X /></button>
                                     </span>
                                 )}
-                                <button type="button" className="cloud-clearfilters" onClick={() => { setStatusFilter('all'); setQuery(''); setPage(0); }}>{t('cloud.clearFilters') || 'Clear all filters'}</button>
+                                <button type="button" className="cloud-clearfilters" onClick={() => { setStatusFilter('all'); setQuery(''); setPage(0); }}>{'필터 전체 해제'}</button>
                             </div>
                         )}
 
                         {total === 0 ? (
                             <CloudEmpty
                                 icon={kind === 'lxc' ? 'Box' : 'Server'}
-                                title={(q || statusFilter !== 'all') ? (t('cloud.noMatch') || 'No matches') : (kind === 'lxc' ? (t('cloud.noContainers') || 'No containers yet') : (t('cloud.noVms') || 'No virtual machines yet'))}
-                                text={(q || statusFilter !== 'all') ? (t('cloud.adjustFilters') || 'Try adjusting your search or filters.') : null}
+                                title={(q || statusFilter !== 'all') ? ('일치하는 항목 없음') : (kind === 'lxc' ? ('아직 컨테이너가 없습니다') : ('아직 가상 머신이 없습니다'))}
+                                text={(q || statusFilter !== 'all') ? ('검색어나 필터를 조정해보세요.') : null}
                                 action={!(q || statusFilter !== 'all') ? (
                                     <button type="button" className="cloud-btn cloud-btn-primary" onClick={() => onCreate(kind === 'lxc' ? 'lxc' : 'qemu')}>
-                                        <Icons.Plus /> {kind === 'lxc' ? (t('newContainer') || 'New Container') : (t('newVm') || 'New VM')}
+                                        <Icons.Plus /> {kind === 'lxc' ? ('새 컨테이너') : ('새 VM')}
                                     </button>
                                 ) : null}
                             />
@@ -775,12 +775,12 @@
                                     <thead>
                                         <tr>
                                             <th className="cloud-th-check"><input type="checkbox" checked={pageAllOn} onChange={toggleAllPage} aria-label="Select page" /></th>
-                                            <SortTh k="name">{t('cloud.colName') || 'Name'}</SortTh>
-                                            <SortTh k="vmid">{t('cloud.colId') || 'ID'}</SortTh>
-                                            <SortTh k="status">{t('cloud.colStatus') || 'Status'}</SortTh>
-                                            <SortTh k="node">{t('cloud.colNode') || 'Host'}</SortTh>
-                                            <SortTh k="cpu">{t('cloud.colCpu') || 'CPU'}</SortTh>
-                                            <SortTh k="mem">{t('cloud.colRam') || 'RAM'}</SortTh>
+                                            <SortTh k="name">{'이름'}</SortTh>
+                                            <SortTh k="vmid">{'ID'}</SortTh>
+                                            <SortTh k="status">{'상태'}</SortTh>
+                                            <SortTh k="node">{'호스트'}</SortTh>
+                                            <SortTh k="cpu">{'CPU'}</SortTh>
+                                            <SortTh k="mem">{'RAM'}</SortTh>
                                             <th className="cloud-th-actions"></th>
                                         </tr>
                                     </thead>
@@ -847,23 +847,23 @@
             const tags = cloudTagList(r.tags);
 
             const tabs = [
-                { id: 'info', label: t('cloud.tabInfo') || 'Info' },
-                { id: 'capacity', label: t('cloud.tabCapacity') || 'Capacity' },
-                { id: 'network', label: t('cloud.tabNetwork') || 'Network' },
+                { id: 'info', label: '정보' },
+                { id: 'capacity', label: '용량' },
+                { id: 'network', label: '네트워크' },
             ];
 
             // primary action buttons in the bar (contextual) + full kebab
             const primary = running
                 ? [
-                    { label: t('shutdown') || 'Shutdown', icon: 'Power', onClick: () => act.vmAction(r, 'shutdown') },
-                    { label: t('reboot') || 'Reboot', icon: 'RotateCw', onClick: () => act.vmAction(r, 'reboot') },
+                    { label: '종료', icon: 'Power', onClick: () => act.vmAction(r, 'shutdown') },
+                    { label: '재부팅', icon: 'RotateCw', onClick: () => act.vmAction(r, 'reboot') },
                 ]
-                : [{ label: t('start') || 'Start', icon: 'Play', primary: true, onClick: () => act.vmAction(r, 'start') }];
+                : [{ label: '시작', icon: 'Play', primary: true, onClick: () => act.vmAction(r, 'start') }];
 
             return (
                 <div className="cloud-body">
                     <div className="cloud-detail-head">
-                        <button type="button" className="cloud-icon-btn cloud-back-btn" onClick={onBack} title={t('cloud.back') || 'Back'}><Icons.ArrowLeft /></button>
+                        <button type="button" className="cloud-icon-btn cloud-back-btn" onClick={onBack} title={'뒤로'}><Icons.ArrowLeft /></button>
                         <span className="cloud-detail-icon">{isCt ? <Icons.Box /> : <Icons.Server />}</span>
                         <div className="cloud-detail-titlewrap">
                             <h1 className="cloud-detail-title">{r.name || ('guest-' + (r.vmid != null ? r.vmid : ''))}</h1>
@@ -878,11 +878,11 @@
                                     {React.createElement(Icons[b.icon] || Icons.Box)} {b.label}
                                 </button>
                             ))}
-                            <button type="button" className="cloud-btn" onClick={() => act.openConsole(r)}><Icons.Monitor /> {t('console') || 'Console'}</button>
+                            <button type="button" className="cloud-btn" onClick={() => act.openConsole(r)}><Icons.Monitor /> {'콘솔'}</button>
                             {r.status === 'running' && r.type === 'qemu' && (
-                                <button type="button" className="cloud-btn" onClick={() => act.openSpice(r)} title={t('spiceConsoleHint') || 'Download a virt-viewer file (audio / USB / multi-monitor)'}><Icons.ExternalLink /> {t('spiceConsole') || 'SPICE'}</button>
+                                <button type="button" className="cloud-btn" onClick={() => act.openSpice(r)} title={'virt-viewer 파일 다운로드 (오디오/USB/멀티모니터 지원)'}><Icons.ExternalLink /> {'SPICE'}</button>
                             )}
-                            <CloudActionMenu items={cloudVmActionItems(r, act, t)} triggerLabel={t('cloud.actions') || 'Actions'} label="Actions" />
+                            <CloudActionMenu items={cloudVmActionItems(r, act, t)} triggerLabel={'작업'} label="Actions" />
                         </div>
                     </div>
 
@@ -894,29 +894,29 @@
 
                     {tab === 'info' && (
                         <div className="cloud-kv-grid">
-                            <CloudKVPanel title={t('cloud.information') || 'Information'}>
-                                <CloudKVRow label={t('cloud.colId') || 'ID'} value={r.vmid} />
-                                <CloudKVRow label={t('cloud.colName') || 'Name'} value={r.name} />
-                                <CloudKVRow label={t('cloud.type') || 'Type'} value={isCt ? 'Container (LXC)' : 'Virtual Machine'} />
-                                <CloudKVRow label={t('cloud.colStatus') || 'Status'} value={<CloudStatusChip status={r.status} />} />
-                                <CloudKVRow label={t('cloud.colNode') || 'Host'} value={r.node} />
-                                <CloudKVRow label={t('cloud.uptime') || 'Uptime'} value={cloudFmtUptime(r.uptime)} />
-                                {r.pool && <CloudKVRow label={t('cloud.pool') || 'Pool'} value={r.pool} />}
-                                {r.template ? <CloudKVRow label={t('cloud.template') || 'Template'} value="Yes" /> : null}
+                            <CloudKVPanel title={'정보'}>
+                                <CloudKVRow label={'ID'} value={r.vmid} />
+                                <CloudKVRow label={'이름'} value={r.name} />
+                                <CloudKVRow label={'유형'} value={isCt ? 'Container (LXC)' : 'Virtual Machine'} />
+                                <CloudKVRow label={'상태'} value={<CloudStatusChip status={r.status} />} />
+                                <CloudKVRow label={'호스트'} value={r.node} />
+                                <CloudKVRow label={'가동 시간'} value={cloudFmtUptime(r.uptime)} />
+                                {r.pool && <CloudKVRow label={'풀'} value={r.pool} />}
+                                {r.template ? <CloudKVRow label={'템플릿'} value="Yes" /> : null}
                             </CloudKVPanel>
-                            <CloudKVPanel title={t('cloud.tabCapacity') || 'Capacity'}>
-                                <CloudKVRow label={t('cloud.vcpu') || 'vCPU'} value={Number(r.maxcpu) || '—'} />
-                                <CloudKVRow label={t('cloud.colCpu') || 'CPU usage'} value={cpuP + '%'} />
-                                <CloudKVRow label={t('cloud.ram') || 'Memory'} value={memMax ? cloudFmtBytes(memMax) : '—'} />
-                                <CloudKVRow label={t('cloud.ramInUse') || 'Memory used'} value={`${cloudFmtBytes(memUse)} (${memP}%)`} />
-                                {diskMax > 0 && <CloudKVRow label={t('cloud.disk') || 'Disk'} value={`${cloudFmtBytes(diskUse)} / ${cloudFmtBytes(diskMax)}`} />}
+                            <CloudKVPanel title={'용량'}>
+                                <CloudKVRow label={'vCPU'} value={Number(r.maxcpu) || '—'} />
+                                <CloudKVRow label={'CPU'} value={cpuP + '%'} />
+                                <CloudKVRow label={'RAM'} value={memMax ? cloudFmtBytes(memMax) : '—'} />
+                                <CloudKVRow label={'사용 중인 메모리'} value={`${cloudFmtBytes(memUse)} (${memP}%)`} />
+                                {diskMax > 0 && <CloudKVRow label={'디스크'} value={`${cloudFmtBytes(diskUse)} / ${cloudFmtBytes(diskMax)}`} />}
                             </CloudKVPanel>
-                            <CloudKVPanel title={t('cloud.tabNetwork') || 'Network'}>
-                                <CloudKVRow label={t('cloud.ip') || 'IP address'} value={r.ip || (Array.isArray(r.ip_addresses) ? r.ip_addresses[0] : null)} />
-                                <CloudKVRow label={t('cloud.colNode') || 'Host'} value={r.node} />
+                            <CloudKVPanel title={'네트워크'}>
+                                <CloudKVRow label={'IP 주소'} value={r.ip || (Array.isArray(r.ip_addresses) ? r.ip_addresses[0] : null)} />
+                                <CloudKVRow label={'호스트'} value={r.node} />
                             </CloudKVPanel>
                             {tags.length > 0 && (
-                                <CloudKVPanel title={t('cloud.tags') || 'Tags'}>
+                                <CloudKVPanel title={'태그'}>
                                     <div className="cloud-tag-wrap">
                                         {tags.map((tg, i) => <span className="cloud-chip cloud-chip-tag" key={i}><Icons.Tag /> {tg}</span>)}
                                     </div>
@@ -928,36 +928,36 @@
                     {tab === 'capacity' && (
                         <div className="cloud-card">
                             <div className="cloud-meter-block">
-                                <div className="cloud-meter-label">{t('cloud.colCpu') || 'CPU'} · {cpuP}%</div>
+                                <div className="cloud-meter-label">{'CPU'} · {cpuP}%</div>
                                 <div className="cloud-meter cloud-meter-lg"><div style={{ width: cpuP + '%', background: 'var(--cloud-accent)' }} /></div>
-                                <div className="cloud-meter-sub">{Number(r.maxcpu) || 0} {t('cloud.cores') || 'vCPU'}</div>
+                                <div className="cloud-meter-sub">{Number(r.maxcpu) || 0} {'vCPU'}</div>
                             </div>
                             <div className="cloud-meter-block">
-                                <div className="cloud-meter-label">{t('cloud.ram') || 'Memory'} · {memP}%</div>
+                                <div className="cloud-meter-label">{'RAM'} · {memP}%</div>
                                 <div className="cloud-meter cloud-meter-lg"><div style={{ width: memP + '%', background: '#a855f7' }} /></div>
                                 <div className="cloud-meter-sub">{cloudFmtBytes(memUse)} / {cloudFmtBytes(memMax)}</div>
                             </div>
                             {diskMax > 0 && (
                                 <div className="cloud-meter-block">
-                                    <div className="cloud-meter-label">{t('cloud.disk') || 'Disk'} · {Math.round(diskUse / diskMax * 100)}%</div>
+                                    <div className="cloud-meter-label">{'디스크'} · {Math.round(diskUse / diskMax * 100)}%</div>
                                     <div className="cloud-meter cloud-meter-lg"><div style={{ width: Math.round(diskUse / diskMax * 100) + '%', background: '#0ea5e9' }} /></div>
                                     <div className="cloud-meter-sub">{cloudFmtBytes(diskUse)} / {cloudFmtBytes(diskMax)}</div>
                                 </div>
                             )}
-                            <button type="button" className="cloud-btn" onClick={() => act.openMetrics(r)} style={{ marginTop: 'var(--space-md)' }}><Icons.BarChart /> {t('cloud.openMetrics') || 'Open detailed metrics'}</button>
+                            <button type="button" className="cloud-btn" onClick={() => act.openMetrics(r)} style={{ marginTop: 'var(--space-md)' }}><Icons.BarChart /> {'상세 지표 열기'}</button>
                         </div>
                     )}
 
                     {tab === 'network' && (
                         <div className="cloud-card">
                             <div className="cloud-kv-panel">
-                                <CloudKVRow label={t('cloud.ip') || 'IP address'} value={r.ip || (t('cloud.noIp') || 'Not reported (guest agent required)')} />
+                                <CloudKVRow label={'IP 주소'} value={r.ip || ('보고되지 않음 (게스트 에이전트 필요)')} />
                                 {Array.isArray(r.ip_addresses) && r.ip_addresses.length > 1 && (
-                                    <CloudKVRow label={t('cloud.allIps') || 'All IPs'} value={r.ip_addresses.join(', ')} />
+                                    <CloudKVRow label={'모든 IP'} value={r.ip_addresses.join(', ')} />
                                 )}
-                                <CloudKVRow label={t('cloud.colNode') || 'Host'} value={r.node} />
+                                <CloudKVRow label={'호스트'} value={r.node} />
                             </div>
-                            <button type="button" className="cloud-btn" onClick={() => act.openConfig(r)} style={{ marginTop: 'var(--space-md)' }}><Icons.Cog /> {t('cloud.editHardware') || 'Edit network hardware'}</button>
+                            <button type="button" className="cloud-btn" onClick={() => act.openConfig(r)} style={{ marginTop: 'var(--space-md)' }}><Icons.Cog /> {'네트워크 하드웨어 편집'}</button>
                         </div>
                     )}
                 </div>
@@ -978,18 +978,18 @@
 
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.datastores') || 'Datastores'} sub={`${list.length} ${t('cloud.datastores') || 'datastores'}`} />
+                    <CloudPageHeader title={'데이터스토어'} sub={`${list.length} ${'데이터스토어'}`} />
                     <div className="cloud-card cloud-table-card">
                         <div className="cloud-toolbar">
-                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.Database /></span><span className="cloud-toolbar-title">{t('cloud.datastores') || 'Datastores'}</span><span className="cloud-count-chip">{view.length}</span></div>
-                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={t('cloud.searchStorage') || 'Search storage…'} /></div>
+                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.Database /></span><span className="cloud-toolbar-title">{'데이터스토어'}</span><span className="cloud-count-chip">{view.length}</span></div>
+                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={'스토리지 검색…'} /></div>
                         </div>
-                        {view.length === 0 ? <CloudEmpty icon="Database" title={t('cloud.noDatastores') || 'No datastores'} /> : (
+                        {view.length === 0 ? <CloudEmpty icon="Database" title={'데이터스토어 없음'} /> : (
                             <div className="cloud-table-scroll">
                                 <table className="cloud-table">
                                     <thead><tr>
-                                        <th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colType') || 'Type'}</th><th>{t('cloud.colScope') || 'Scope'}</th>
-                                        <th>{t('cloud.colContent') || 'Content'}</th><th>{t('cloud.colUsage') || 'Usage'}</th><th>{t('cloud.colStatus') || 'Status'}</th>
+                                        <th>{'이름'}</th><th>{'유형'}</th><th>{'범위'}</th>
+                                        <th>{'콘텐츠'}</th><th>{'사용량'}</th><th>{'상태'}</th>
                                     </tr></thead>
                                     <tbody>
                                         {view.map((d, i) => {
@@ -1024,18 +1024,18 @@
             const view = q ? list.filter(n => (n.name || '').toLowerCase().includes(q) || (n.type || '').toLowerCase().includes(q)) : list;
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.networks') || 'Networks'} sub={`${list.length} ${t('cloud.networks') || 'networks'}`} />
+                    <CloudPageHeader title={'네트워크'} sub={`${list.length} ${'네트워크'}`} />
                     <div className="cloud-card cloud-table-card">
                         <div className="cloud-toolbar">
-                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.Network /></span><span className="cloud-toolbar-title">{t('cloud.networks') || 'Networks'}</span><span className="cloud-count-chip">{view.length}</span></div>
-                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={t('cloud.searchNet') || 'Search bridge…'} /></div>
+                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.Network /></span><span className="cloud-toolbar-title">{'네트워크'}</span><span className="cloud-count-chip">{view.length}</span></div>
+                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={'브릿지 검색…'} /></div>
                         </div>
-                        {view.length === 0 ? <CloudEmpty icon="Network" title={t('cloud.noNetworks') || 'No networks'} /> : (
+                        {view.length === 0 ? <CloudEmpty icon="Network" title={'네트워크 없음'} /> : (
                             <div className="cloud-table-scroll">
                                 <table className="cloud-table">
                                     <thead><tr>
-                                        <th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colType') || 'Type'}</th><th>{t('cloud.colCidr') || 'CIDR'}</th>
-                                        <th>{t('cloud.colGateway') || 'Gateway'}</th><th>{t('cloud.colGuests') || 'Guests'}</th><th>{t('cloud.colNodes') || 'Hosts'}</th><th>{t('cloud.colStatus') || 'Status'}</th>
+                                        <th>{'이름'}</th><th>{'유형'}</th><th>{'CIDR'}</th>
+                                        <th>{'게이트웨이'}</th><th>{'게스트'}</th><th>{'노드'}</th><th>{'상태'}</th>
                                     </tr></thead>
                                     <tbody>
                                         {view.map((nw, i) => (
@@ -1064,8 +1064,8 @@
             const res = Array.isArray(resources) ? resources : [];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.clustersTitle') || 'Clusters'} sub={`${safe.filter(c => c.connected).length} / ${safe.length} ${t('cloud.online') || 'online'}`} />
-                    {safe.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Cloud" title={t('cloud.noClusters') || 'No clusters configured'} /></div> : (
+                    <CloudPageHeader title={'클러스터'} sub={`${safe.filter(c => c.connected).length} / ${safe.length} ${'온라인'}`} />
+                    {safe.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Cloud" title={'구성된 클러스터가 없습니다'} /></div> : (
                         <div className="cloud-card-grid">
                             {safe.map(c => {
                                 const cid = c && (c.id != null ? c.id : c.name);
@@ -1090,9 +1090,9 @@
                                             {dc?.hardware?.health === 'warning' && <span className="cloud-chip cloud-chip-warn">{(t && t('degradedHardware')) || 'Degraded HW'}{dc.hardware.degraded ? ` (${dc.hardware.degraded})` : ''}</span>}
                                         </div>
                                         <div className="cloud-cluster-stats">
-                                            <div><span className="cloud-cluster-stat-num">{nodes ? nodes.online : '—'}{nodes ? `/${nodes.total}` : ''}</span><span className="cloud-cluster-stat-lbl">{t('cloud.hosts') || 'Hosts'}</span></div>
-                                            <div><span className="cloud-cluster-stat-num">{dcGuests != null ? dcGuests : '—'}</span><span className="cloud-cluster-stat-lbl">{t('cloud.guestsShort') || 'Guests'}</span></div>
-                                            {dc?.resources?.memory && <div><span className="cloud-cluster-stat-num">{Math.round(dc.resources.memory.percent)}%</span><span className="cloud-cluster-stat-lbl">{t('cloud.ram') || 'RAM'}</span></div>}
+                                            <div><span className="cloud-cluster-stat-num">{nodes ? nodes.online : '—'}{nodes ? `/${nodes.total}` : ''}</span><span className="cloud-cluster-stat-lbl">{'호스트'}</span></div>
+                                            <div><span className="cloud-cluster-stat-num">{dcGuests != null ? dcGuests : '—'}</span><span className="cloud-cluster-stat-lbl">{'게스트'}</span></div>
+                                            {dc?.resources?.memory && <div><span className="cloud-cluster-stat-num">{Math.round(dc.resources.memory.percent)}%</span><span className="cloud-cluster-stat-lbl">{'RAM'}</span></div>}
                                         </div>
                                     </div>
                                 );
@@ -1109,8 +1109,8 @@
             const names = Object.keys(map).sort();
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.hosts') || 'Hosts'} sub={`${names.length} ${t('cloud.hosts') || 'hosts'}`} />
-                    {names.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Cpu" title={t('cloud.noNodes') || 'No host data'} text={t('cloud.selectCluster') || 'Select a connected cluster.'} /></div> : (
+                    <CloudPageHeader title={'호스트'} sub={`${names.length} ${'호스트'}`} />
+                    {names.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Cpu" title={'호스트 데이터 없음'} text={'연결된 클러스터를 선택하세요.'} /></div> : (
                         <div className="cloud-card-grid cloud-card-grid-wide">
                             {names.map(name => {
                                 const m = map[name] || {};
@@ -1120,15 +1120,15 @@
                                 const diskP = Math.round(Number(m.disk_percent) || 0);
                                 const maint = m.maintenance_mode;
                                 const nodeActions = isAdmin ? [
-                                    { label: t('cloud.manageHost') || 'Manage host', icon: 'Cog', onClick: () => act.configNode(name) },
+                                    { label: '호스트 관리', icon: 'Cog', onClick: () => act.configNode(name) },
                                     { divider: true },
                                     maint
-                                        ? { label: t('disableMaintenance') || 'Disable maintenance', icon: 'Wrench', onClick: () => act.maintenanceToggle(name, false) }
-                                        : { label: t('startingMaintenanceMode') || 'Maintenance mode', icon: 'Wrench', onClick: () => act.maintenanceToggle(name, true) },
-                                    { label: t('cloud.update') || 'Update (apt)', icon: 'Download', onClick: () => act.startUpdate(name, false) },
+                                        ? { label: '유지보수 모드 해제', icon: 'Wrench', onClick: () => act.maintenanceToggle(name, false) }
+                                        : { label: '유지보수 모드', icon: 'Wrench', onClick: () => act.maintenanceToggle(name, true) },
+                                    { label: '업데이트 (apt)', icon: 'Download', onClick: () => act.startUpdate(name, false) },
                                     { divider: true },
-                                    { label: t('rebootNode') || 'Reboot', icon: 'RotateCw', danger: true, onClick: () => act.nodeAction(name, 'reboot') },
-                                    { label: t('shutdownNode') || 'Shutdown', icon: 'Power', danger: true, onClick: () => act.nodeAction(name, 'shutdown') },
+                                    { label: '재부팅', icon: 'RotateCw', danger: true, onClick: () => act.nodeAction(name, 'reboot') },
+                                    { label: '종료', icon: 'Power', danger: true, onClick: () => act.nodeAction(name, 'shutdown') },
                                 ] : [];
                                 return (
                                     <div className="cloud-card cloud-node-card" key={name}>
@@ -1141,9 +1141,9 @@
                                             </div>
                                         </div>
                                         <div className="cloud-node-meters">
-                                            <CloudUsageBar pct={cpuP} leftLabel={`${t('cloud.colCpu') || 'CPU'}`} rightLabel={`${cpuP}%`} />
-                                            <CloudUsageBar pct={memP} color="#a855f7" leftLabel={`${t('cloud.ram') || 'RAM'}`} rightLabel={m.mem_total ? `${cloudFmtBytes(m.mem_used)} / ${cloudFmtBytes(m.mem_total)}` : `${memP}%`} />
-                                            {m.disk_total ? <CloudUsageBar pct={diskP} color="#0ea5e9" leftLabel={`${t('cloud.disk') || 'Disk'}`} rightLabel={`${cloudFmtBytes(m.disk_used)} / ${cloudFmtBytes(m.disk_total)}`} /> : null}
+                                            <CloudUsageBar pct={cpuP} leftLabel={`${'CPU'}`} rightLabel={`${cpuP}%`} />
+                                            <CloudUsageBar pct={memP} color="#a855f7" leftLabel={`${'RAM'}`} rightLabel={m.mem_total ? `${cloudFmtBytes(m.mem_used)} / ${cloudFmtBytes(m.mem_total)}` : `${memP}%`} />
+                                            {m.disk_total ? <CloudUsageBar pct={diskP} color="#0ea5e9" leftLabel={`${'디스크'}`} rightLabel={`${cloudFmtBytes(m.disk_used)} / ${cloudFmtBytes(m.disk_total)}`} /> : null}
                                         </div>
                                         <div className="cloud-node-foot">
                                             {m.uptime ? <span><Icons.Clock /> {cloudFmtUptime(m.uptime)}</span> : null}
@@ -1164,17 +1164,17 @@
             const list = Array.isArray(pools) ? pools : [];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.pools') || 'Resource Pools'} sub={`${list.length} ${t('cloud.pools') || 'pools'}`} />
-                    {list.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Layers" title={t('cloud.noPools') || 'No resource pools'} /></div> : (
+                    <CloudPageHeader title={'리소스 풀'} sub={`${list.length} ${'리소스 풀'}`} />
+                    {list.length === 0 ? <div className="cloud-card"><CloudEmpty icon="Layers" title={'리소스 풀 없음'} /></div> : (
                         <div className="cloud-card-grid">
                             {list.map((p, i) => (
                                 <div className="cloud-card cloud-pool-card" key={(p.poolid || 'pool') + '-' + i}>
                                     <div className="cloud-cluster-head"><span className="cloud-cluster-name"><Icons.Layers /> {p.poolid || '—'}</span></div>
                                     {p.comment ? <div className="cloud-cluster-host" style={{ fontFamily: 'inherit' }}>{p.comment}</div> : null}
                                     <div className="cloud-cluster-stats">
-                                        <div><span className="cloud-cluster-stat-num">{p.vms != null ? p.vms : 0}</span><span className="cloud-cluster-stat-lbl">{t('cloud.guestsShort') || 'Guests'}</span></div>
-                                        <div><span className="cloud-cluster-stat-num">{p.storage != null ? p.storage : 0}</span><span className="cloud-cluster-stat-lbl">{t('cloud.storage') || 'Storage'}</span></div>
-                                        <div><span className="cloud-cluster-stat-num">{p.member_count != null ? p.member_count : (Array.isArray(p.members) ? p.members.length : 0)}</span><span className="cloud-cluster-stat-lbl">{t('cloud.members') || 'Members'}</span></div>
+                                        <div><span className="cloud-cluster-stat-num">{p.vms != null ? p.vms : 0}</span><span className="cloud-cluster-stat-lbl">{'게스트'}</span></div>
+                                        <div><span className="cloud-cluster-stat-num">{p.storage != null ? p.storage : 0}</span><span className="cloud-cluster-stat-lbl">{'스토리지'}</span></div>
+                                        <div><span className="cloud-cluster-stat-num">{p.member_count != null ? p.member_count : (Array.isArray(p.members) ? p.members.length : 0)}</span><span className="cloud-cluster-stat-lbl">{'구성원'}</span></div>
                                     </div>
                                 </div>
                             ))}
@@ -1192,18 +1192,18 @@
             const view = q ? list.filter(tk => (tk.type || '').toLowerCase().includes(q) || (tk.id || '').toLowerCase().includes(q) || (tk.node || '').toLowerCase().includes(q)) : list;
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.tasks') || 'Tasks'} sub={`${list.length} ${t('cloud.recent') || 'recent'}`} />
+                    <CloudPageHeader title={'작업'} sub={`${list.length} ${'최근'}`} />
                     <div className="cloud-card cloud-table-card">
                         <div className="cloud-toolbar">
-                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.ClipboardList /></span><span className="cloud-toolbar-title">{t('cloud.tasks') || 'Tasks'}</span><span className="cloud-count-chip">{view.length}</span></div>
-                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={t('cloud.searchTasks') || 'Search task…'} /></div>
+                            <div className="cloud-toolbar-left"><span className="cloud-toolbar-icon"><Icons.ClipboardList /></span><span className="cloud-toolbar-title">{'작업'}</span><span className="cloud-count-chip">{view.length}</span></div>
+                            <div className="cloud-toolbar-right"><CloudSearch value={query} onChange={setQuery} placeholder={'작업 검색…'} /></div>
                         </div>
-                        {view.length === 0 ? <CloudEmpty icon="ClipboardList" title={t('cloud.noTasks') || 'No tasks'} /> : (
+                        {view.length === 0 ? <CloudEmpty icon="ClipboardList" title={'작업 없음'} /> : (
                             <div className="cloud-table-scroll">
                                 <table className="cloud-table">
                                     <thead><tr>
-                                        <th>{t('cloud.colStatus') || 'Status'}</th><th>{t('cloud.colType') || 'Type'}</th><th>{t('cloud.colTarget') || 'Target'}</th>
-                                        <th>{t('cloud.colNode') || 'Host'}</th><th>{t('cloud.colUser') || 'User'}</th><th>{t('cloud.colTime') || 'Started'}</th>
+                                        <th>{'상태'}</th><th>{'유형'}</th><th>{'대상'}</th>
+                                        <th>{'호스트'}</th><th>{'사용자'}</th><th>{'시간'}</th>
                                     </tr></thead>
                                     <tbody>
                                         {view.map((tk, i) => {
@@ -1241,7 +1241,7 @@
                         <div className="cloud-launcher-icon"><Ico /></div>
                         <div className="cloud-launcher-text">{text}</div>
                         {typeof onExit === 'function' && (
-                            <button type="button" className="cloud-btn cloud-btn-primary" onClick={onExit}><Icons.ExternalLink /> {t('cloud.openClassic') || 'Open in classic layout'}</button>
+                            <button type="button" className="cloud-btn cloud-btn-primary" onClick={onExit}><Icons.ExternalLink /> {'클래식 레이아웃에서 열기'}</button>
                         )}
                     </div>
                 </div>
@@ -1270,8 +1270,8 @@
             return { data, loading, err, reload };
         }
         function CloudSectionState({ loading, err, empty, emptyIcon, emptyTitle, emptyText, t, children }) {
-            if (loading) return <div className="cloud-card"><div className="cloud-empty">{t('loading') || 'Loading…'}</div></div>;
-            if (err) return <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={t('cloud.loadFail') || 'Could not load'} text={err} /></div>;
+            if (loading) return <div className="cloud-card"><div className="cloud-empty">{'불러오는 중…'}</div></div>;
+            if (err) return <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={'불러오지 못했습니다'} text={err} /></div>;
             if (empty) return <div className="cloud-card"><CloudEmpty icon={emptyIcon || 'Box'} title={emptyTitle} text={emptyText} /></div>;
             return children;
         }
@@ -1303,35 +1303,35 @@
             const active = jobs.filter(j => Number(j.enabled) === 1 || j.enabled === true).length;
             const failed = jobs.filter(j => (j['last-run-status'] || '').toLowerCase().indexOf('err') >= 0).length;
             const kpis = [
-                { icon: 'Archive', value: jobs.length, label: t('cloud.bkpJobs') || 'Backup jobs', accent: '#6366f1' },
-                { icon: 'CheckCircle', value: active, label: t('cloud.bkpActive') || 'Enabled', accent: '#22c55e' },
-                { icon: failed ? 'XCircle' : 'Shield', value: failed, label: t('cloud.bkpFailed') || 'Failed last run', accent: failed ? '#ef4444' : '#14b8a6' },
+                { icon: 'Archive', value: jobs.length, label: '백업 작업', accent: '#6366f1' },
+                { icon: 'CheckCircle', value: active, label: '활성화됨', accent: '#22c55e' },
+                { icon: failed ? 'XCircle' : 'Shield', value: failed, label: '최근 실행 실패', accent: failed ? '#ef4444' : '#14b8a6' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.backups') || 'Backups'} sub={t('cloud.backupsSub') || 'Scheduled backup jobs'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'백업'} sub={'예약된 백업 작업'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!jobs.length} emptyIcon="Archive" emptyTitle={t('cloud.noBackups') || 'No backup jobs configured'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!jobs.length} emptyIcon="Archive" emptyTitle={'구성된 백업 작업이 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Archive />, title: t('cloud.backups') || 'Backups', count: jobs.length })}
+                            {cloudHead({ icon: <Icons.Archive />, title: '백업', count: jobs.length })}
                             <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('cloud.colSchedule') || 'Schedule'}</th><th>{t('cloud.colGuests') || 'Guests'}</th><th>{t('cloud.colStorage') || 'Storage'}</th><th>{t('cloud.colMode') || 'Mode'}</th><th>{t('cloud.colStatus') || 'Status'}</th><th>{t('cloud.colState') || 'State'}</th><th style={{ textAlign: 'right' }}>{t('cloud.colActions') || ''}</th></tr></thead>
+                                <thead><tr><th>{'일정'}</th><th>{'게스트'}</th><th>{'스토리지'}</th><th>{'모드'}</th><th>{'상태'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}>{''}</th></tr></thead>
                                 <tbody>{jobs.map((j, i) => {
                                     const st = (j['last-run-status'] || '').toLowerCase();
                                     const ok = st === 'ok' || st === 'OK'.toLowerCase();
                                     return (<tr className="cloud-table-row cloud-table-row-static" key={j.id || i}>
                                         <td className="cloud-table-mono">{j.schedule || '—'}</td>
-                                        <td>{(Number(j.all) === 1) ? <span className="cloud-chip cloud-chip-soft">{t('cloud.allGuests') || 'All guests'}</span> : <span className="cloud-table-mono">{j.vmid || '—'}</span>}</td>
+                                        <td>{(Number(j.all) === 1) ? <span className="cloud-chip cloud-chip-soft">{'전체 게스트'}</span> : <span className="cloud-table-mono">{j.vmid || '—'}</span>}</td>
                                         <td>{j.storage || '—'}</td>
                                         <td className="cloud-cell-muted">{j.mode || 'snapshot'}{j.compress && j.compress !== '0' ? ' · ' + j.compress : ''}</td>
                                         <td>{st ? (ok ? <span className="cloud-chip cloud-chip-ok">OK</span> : <span className="cloud-chip cloud-chip-err">{j['last-run-status']}</span>) : <span className="cloud-cell-muted">—</span>}</td>
                                         <td>{(Number(j.enabled) === 1 || j.enabled === true) ? <CloudConnChip connected={true} t={t} /> : <CloudConnChip connected={false} t={t} />}</td>
                                         <CloudRowActions>
-                                            <CloudIconBtn icon="Play" title={t('cloud.runNow') || 'Run now'} onClick={() => mut.run('r' + j.id, 'POST', `/api/clusters/${clusterId}/datacenter/backup/${j.id}/run`)} />
-                                            <CloudIconBtn icon="Power" title={(Number(j.enabled) === 1 || j.enabled === true) ? (t('disable') || 'Disable') : (t('enable') || 'Enable')} onClick={() => mut.run('t' + j.id, 'PUT', `/api/clusters/${clusterId}/datacenter/backup/${j.id}`, { enabled: (Number(j.enabled) === 1 || j.enabled === true) ? 0 : 1 })} />
-                                            <CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('d' + j.id, 'DELETE', `/api/clusters/${clusterId}/datacenter/backup/${j.id}`, undefined, (t('cloud.confirmDelBackup') || 'Delete this backup job?'))} />
+                                            <CloudIconBtn icon="Play" title={'지금 실행'} onClick={() => mut.run('r' + j.id, 'POST', `/api/clusters/${clusterId}/datacenter/backup/${j.id}/run`)} />
+                                            <CloudIconBtn icon="Power" title={(Number(j.enabled) === 1 || j.enabled === true) ? ('비활성화') : ('활성화')} onClick={() => mut.run('t' + j.id, 'PUT', `/api/clusters/${clusterId}/datacenter/backup/${j.id}`, { enabled: (Number(j.enabled) === 1 || j.enabled === true) ? 0 : 1 })} />
+                                            <CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('d' + j.id, 'DELETE', `/api/clusters/${clusterId}/datacenter/backup/${j.id}`, undefined, ('이 백업 작업을 삭제하시겠습니까?'))} />
                                         </CloudRowActions>
                                     </tr>);
                                 })}</tbody>
@@ -1350,37 +1350,37 @@
             const inn = rules.filter(r => (r.type || '').toLowerCase() === 'in').length;
             const out = rules.filter(r => (r.type || '').toLowerCase() === 'out').length;
             const kpis = [
-                { icon: 'Shield', value: rules.length, label: t('cloud.fwRules') || 'Rules', accent: '#6366f1' },
-                { icon: 'Lock', value: inn, label: t('cloud.fwIn') || 'Inbound', accent: '#0ea5e9' },
-                { icon: 'Globe', value: out, label: t('cloud.fwOut') || 'Outbound', accent: '#a855f7' },
+                { icon: 'Shield', value: rules.length, label: '규칙', accent: '#6366f1' },
+                { icon: 'Lock', value: inn, label: '인바운드', accent: '#0ea5e9' },
+                { icon: 'Globe', value: out, label: '아웃바운드', accent: '#a855f7' },
             ];
             const actChip = a => { const u = (a || '').toUpperCase(); const cls = u === 'ACCEPT' ? 'cloud-chip-ok' : (u === 'DROP' || u === 'REJECT') ? 'cloud-chip-err' : 'cloud-chip-soft'; return <span className={'cloud-chip ' + cls}>{u || '—'}</span>; };
             const [showNew, setShowNew] = React.useState(false);
             const [form, setForm] = React.useState({ type: 'in', action: 'ACCEPT', proto: '', dport: '', source: '', dest: '', comment: '' });
             const submitNew = () => {
-                if (!clusterId) { window.alert(t('cloud.noClusterSel') || 'No cluster selected.'); return; }
+                if (!clusterId) { window.alert('선택된 클러스터가 없습니다.'); return; }
                 const body = { type: form.type, action: form.action, enable: 1 };
                 ['proto', 'dport', 'source', 'dest', 'comment'].forEach(k => { if (String(form[k]).trim()) body[k] = String(form[k]).trim(); });
                 // Guard against an unconstrained ACCEPT rule (no proto/port/source/dest = allow-all).
                 const constrained = ['proto', 'dport', 'source', 'dest'].some(k => body[k]);
                 if (form.action === 'ACCEPT' && !constrained) {
-                    if (!window.confirm(t('cloud.fwAllowAllWarn') || 'This ACCEPT rule matches ALL traffic (no protocol, port, source or destination set). Create this allow-all rule anyway?')) return;
+                    if (!window.confirm('이 ACCEPT 규칙은 프로토콜/포트/출발지/목적지 조건 없이 모든 트래픽에 일치합니다. 이 전체 허용 규칙을 그대로 생성하시겠습니까?')) return;
                 }
                 mut.run('newrule', 'POST', `/api/clusters/${clusterId}/datacenter/firewall/rules`, body);
                 setShowNew(false); setForm({ type: 'in', action: 'ACCEPT', proto: '', dport: '', source: '', dest: '', comment: '' });
             };
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.firewall') || 'Firewall'} sub={t('cloud.firewallSub') || 'Datacenter firewall rules'}>
-                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {t('cloud.newRule') || 'New rule'}</button>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'방화벽'} sub={'데이터센터 방화벽 규칙'}>
+                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {'새 방화벽 규칙'}</button>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!rules.length} emptyIcon="Shield" emptyTitle={t('cloud.noFwRules') || 'No datacenter firewall rules'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!rules.length} emptyIcon="Shield" emptyTitle={'데이터센터 방화벽 규칙이 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Shield />, title: t('cloud.firewall') || 'Firewall', count: rules.length })}
+                            {cloudHead({ icon: <Icons.Shield />, title: '방화벽', count: rules.length })}
                             <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>#</th><th>{t('cloud.colDir') || 'Dir'}</th><th>{t('cloud.colAction') || 'Action'}</th><th>{t('cloud.colProto') || 'Proto'}</th><th>{t('cloud.colPort') || 'Port'}</th><th>{t('cloud.colSource') || 'Source'}</th><th>{t('cloud.colDest') || 'Dest'}</th><th>{t('cloud.colComment') || 'Comment'}</th><th>{t('cloud.colState') || 'State'}</th><th style={{ textAlign: 'right' }}>{t('cloud.colActions') || ''}</th></tr></thead>
+                                <thead><tr><th>#</th><th>{'방향'}</th><th>{'동작'}</th><th>{'프로토콜'}</th><th>{'목적지 포트'}</th><th>{'출발지'}</th><th>{'목적지'}</th><th>{'설명'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}>{''}</th></tr></thead>
                                 <tbody>{rules.map((r, i) => (<tr className="cloud-table-row cloud-table-row-static" key={r.pos != null ? r.pos : i}>
                                     <td className="cloud-cell-muted">{r.pos != null ? r.pos : i}</td>
                                     <td><span className="cloud-chip cloud-chip-soft">{(r.type || '').toUpperCase() || '—'}</span></td>
@@ -1392,28 +1392,28 @@
                                     <td className="cloud-cell-muted">{r.comment || ''}</td>
                                     <td>{(Number(r.enable) === 1 || r.enable === true) ? <CloudConnChip connected={true} t={t} /> : <CloudConnChip connected={false} t={t} />}</td>
                                     <CloudRowActions>
-                                        <CloudIconBtn icon="Power" title={(Number(r.enable) === 1 || r.enable === true) ? (t('disable') || 'Disable') : (t('enable') || 'Enable')} onClick={() => mut.run('t' + r.pos, 'PUT', `/api/clusters/${clusterId}/datacenter/firewall/rules/${r.pos}`, { enable: (Number(r.enable) === 1 || r.enable === true) ? 0 : 1 })} />
-                                        <CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('d' + r.pos, 'DELETE', `/api/clusters/${clusterId}/datacenter/firewall/rules/${r.pos}`, undefined, (t('cloud.confirmDelRule') || 'Delete this firewall rule?'))} />
+                                        <CloudIconBtn icon="Power" title={(Number(r.enable) === 1 || r.enable === true) ? ('비활성화') : ('활성화')} onClick={() => mut.run('t' + r.pos, 'PUT', `/api/clusters/${clusterId}/datacenter/firewall/rules/${r.pos}`, { enable: (Number(r.enable) === 1 || r.enable === true) ? 0 : 1 })} />
+                                        <CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('d' + r.pos, 'DELETE', `/api/clusters/${clusterId}/datacenter/firewall/rules/${r.pos}`, undefined, ('이 방화벽 규칙을 삭제하시겠습니까?'))} />
                                     </CloudRowActions>
                                 </tr>))}</tbody>
                             </table></div>
                         </div>
                     </CloudSectionState>
                     {showNew && (
-                        <CloudModal title={t('cloud.newRule') || 'New firewall rule'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={t('create') || 'Create'} t={t}>
+                        <CloudModal title={'새 방화벽 규칙'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={'생성'} t={t}>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('cloud.colDir') || 'Direction'}><select className="cloud-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="in">in</option><option value="out">out</option></select></CloudField>
-                                <CloudField label={t('cloud.colAction') || 'Action'}><select className="cloud-input" value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>{['ACCEPT', 'DROP', 'REJECT'].map(a => <option key={a} value={a}>{a}</option>)}</select></CloudField>
+                                <CloudField label={'방향'}><select className="cloud-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="in">in</option><option value="out">out</option></select></CloudField>
+                                <CloudField label={'동작'}><select className="cloud-input" value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>{['ACCEPT', 'DROP', 'REJECT'].map(a => <option key={a} value={a}>{a}</option>)}</select></CloudField>
                             </div>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('cloud.colProto') || 'Protocol'}><input className="cloud-input" value={form.proto} onChange={e => setForm({ ...form, proto: e.target.value })} placeholder="tcp" /></CloudField>
-                                <CloudField label={t('cloud.colPort') || 'Dest port'}><input className="cloud-input" value={form.dport} onChange={e => setForm({ ...form, dport: e.target.value })} placeholder="22" /></CloudField>
+                                <CloudField label={'프로토콜'}><input className="cloud-input" value={form.proto} onChange={e => setForm({ ...form, proto: e.target.value })} placeholder="tcp" /></CloudField>
+                                <CloudField label={'목적지 포트'}><input className="cloud-input" value={form.dport} onChange={e => setForm({ ...form, dport: e.target.value })} placeholder="22" /></CloudField>
                             </div>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('cloud.colSource') || 'Source'}><input className="cloud-input" value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="0.0.0.0/0" /></CloudField>
-                                <CloudField label={t('cloud.colDest') || 'Dest'}><input className="cloud-input" value={form.dest} onChange={e => setForm({ ...form, dest: e.target.value })} /></CloudField>
+                                <CloudField label={'출발지'}><input className="cloud-input" value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="0.0.0.0/0" /></CloudField>
+                                <CloudField label={'목적지'}><input className="cloud-input" value={form.dest} onChange={e => setForm({ ...form, dest: e.target.value })} /></CloudField>
                             </div>
-                            <CloudField label={t('cloud.colComment') || 'Comment'}><input className="cloud-input" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} /></CloudField>
+                            <CloudField label={'설명'}><input className="cloud-input" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} /></CloudField>
                         </CloudModal>
                     )}
                 </div>
@@ -1427,21 +1427,21 @@
             const shared = list.filter(s => Number(s.shared) === 1 || s.shared === true).length;
             const types = new Set(list.map(s => s.type).filter(Boolean));
             const kpis = [
-                { icon: 'Database', value: list.length, label: t('cloud.stStorages') || 'Storages', accent: '#6366f1' },
-                { icon: 'Layers', value: shared, label: t('cloud.stShared') || 'Shared', accent: '#14b8a6' },
-                { icon: 'HardDrive', value: types.size, label: t('cloud.stTypes') || 'Types', accent: '#a855f7' },
+                { icon: 'Database', value: list.length, label: '스토리지', accent: '#6366f1' },
+                { icon: 'Layers', value: shared, label: '공유됨', accent: '#14b8a6' },
+                { icon: 'HardDrive', value: types.size, label: '유형', accent: '#a855f7' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.storageConfig') || 'Storage'} sub={t('cloud.storageConfigSub') || 'Datacenter storage configuration'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'스토리지'} sub={'데이터센터 스토리지 구성'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Database" emptyTitle={t('cloud.noStorage') || 'No storage configured'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Database" emptyTitle={'구성된 스토리지가 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Database />, title: t('cloud.storageConfig') || 'Storage', count: list.length })}
+                            {cloudHead({ icon: <Icons.Database />, title: '스토리지', count: list.length })}
                             <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colType') || 'Type'}</th><th>{t('cloud.colContent') || 'Content'}</th><th>{t('cloud.colTarget') || 'Target'}</th><th>{t('cloud.colShared') || 'Shared'}</th><th>{t('cloud.colState') || 'State'}</th></tr></thead>
+                                <thead><tr><th>{'이름'}</th><th>{'유형'}</th><th>{'콘텐츠'}</th><th>{'대상'}</th><th>{'공유됨'}</th><th>{'상태'}</th></tr></thead>
                                 <tbody>{list.map((s, i) => (<tr className="cloud-table-row cloud-table-row-static" key={s.storage || i}>
                                     <td><span className="cloud-table-name"><span className="cloud-table-name-icon"><Icons.HardDrive /></span>{s.storage || '—'}</span></td>
                                     <td className="cloud-table-mono">{s.type || '—'}</td>
@@ -1463,15 +1463,15 @@
             const list = Array.isArray(data) ? data : [];
             const online = list.filter(p => p.connected).length;
             const kpis = [
-                { icon: 'Server', value: list.length, label: t('cloud.pbsServers') || 'PBS servers', accent: '#6366f1' },
-                { icon: online === list.length && list.length ? 'CheckCircle' : 'AlertTriangle', value: `${online}/${list.length}`, label: t('cloud.pbsOnline') || 'Online', accent: online === list.length ? '#22c55e' : '#f59e0b' },
+                { icon: 'Server', value: list.length, label: 'PBS 서버', accent: '#6366f1' },
+                { icon: online === list.length && list.length ? 'CheckCircle' : 'AlertTriangle', value: `${online}/${list.length}`, label: '온라인', accent: online === list.length ? '#22c55e' : '#f59e0b' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.pbs') || 'Backup Servers'} sub={t('cloud.pbsSub') || 'Proxmox Backup Server targets'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'백업 서버'} sub={'Proxmox Backup Server 대상'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Server" emptyTitle={t('cloud.noPbs') || 'No backup servers configured'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Server" emptyTitle={'구성된 백업 서버가 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         <div className="cloud-card-grid">{list.map((p, i) => (
                             <div className="cloud-card" key={p.id || i}>
@@ -1481,9 +1481,9 @@
                                     <span style={{ marginLeft: 'auto' }}><CloudConnChip connected={!!p.connected} t={t} /></span>
                                 </div>
                                 <div className="cloud-util-breakdown">
-                                    <div className="cloud-util-row"><span>{t('cloud.colHost') || 'Host'}</span><span className="cloud-table-mono">{p.host || '—'}:{p.port || 8007}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.colClusters') || 'Linked clusters'}</span><span>{Array.isArray(p.linked_clusters) ? p.linked_clusters.length : (p.linked_clusters || 0)}</span></div>
-                                    {p.last_error ? <div className="cloud-util-row"><span>{t('cloud.colError') || 'Last error'}</span><span className="cloud-cell-muted" style={{ color: '#ef4444' }}>{String(p.last_error).slice(0, 60)}</span></div> : null}
+                                    <div className="cloud-util-row"><span>{'호스트'}</span><span className="cloud-table-mono">{p.host || '—'}:{p.port || 8007}</span></div>
+                                    <div className="cloud-util-row"><span>{'연결된 클러스터'}</span><span>{Array.isArray(p.linked_clusters) ? p.linked_clusters.length : (p.linked_clusters || 0)}</span></div>
+                                    {p.last_error ? <div className="cloud-util-row"><span>{'마지막 오류'}</span><span className="cloud-cell-muted" style={{ color: '#ef4444' }}>{String(p.last_error).slice(0, 60)}</span></div> : null}
                                 </div>
                             </div>
                         ))}</div>
@@ -1498,28 +1498,28 @@
             const list = Array.isArray(data) ? data : [];
             const auto = list.filter(p => p.auto_failover).length;
             const kpis = [
-                { icon: 'LifeBuoy', value: list.length, label: t('cloud.srPlans') || 'Recovery plans', accent: '#6366f1' },
-                { icon: 'RefreshCw', value: auto, label: t('cloud.srAuto') || 'Auto-failover', accent: '#f59e0b' },
+                { icon: 'LifeBuoy', value: list.length, label: '복구 계획', accent: '#6366f1' },
+                { icon: 'RefreshCw', value: auto, label: '자동', accent: '#f59e0b' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.siteRecovery') || 'Site Recovery'} sub={t('cloud.siteRecoverySub') || 'Disaster-recovery plans'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'사이트 복구'} sub={'재해 복구 계획'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="LifeBuoy" emptyTitle={t('cloud.noSrPlans') || 'No recovery plans'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="LifeBuoy" emptyTitle={'복구 계획이 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         <div className="cloud-card-grid">{list.map((p, i) => (
                             <div className="cloud-card" key={p.id || i}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                                     <span style={{ display: 'inline-flex' }}><Icons.LifeBuoy /></span>
                                     <strong>{p.name || ('plan-' + i)}</strong>
-                                    {p.auto_failover ? <span className="cloud-chip cloud-chip-soft" style={{ marginLeft: 'auto' }}>{t('cloud.srAuto') || 'Auto'}</span> : null}
+                                    {p.auto_failover ? <span className="cloud-chip cloud-chip-soft" style={{ marginLeft: 'auto' }}>{'자동'}</span> : null}
                                 </div>
                                 <div className="cloud-util-breakdown">
-                                    <div className="cloud-util-row"><span>{t('cloud.colSource') || 'Source'}</span><span className="cloud-table-mono">{p.source_cluster || '—'}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.srTimeout') || 'Failover timeout'}</span><span>{p.failover_timeout != null ? p.failover_timeout + 's' : '—'}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.srLastTest') || 'Last test'}</span><span>{p.last_test ? cloudRelTime(p.last_test) : (t('cloud.never') || 'never')}</span></div>
-                                    <div className="cloud-util-row"><span>{t('cloud.srLastFailover') || 'Last failover'}</span><span>{p.last_failover ? cloudRelTime(p.last_failover) : (t('cloud.never') || 'never')}</span></div>
+                                    <div className="cloud-util-row"><span>{'출발지'}</span><span className="cloud-table-mono">{p.source_cluster || '—'}</span></div>
+                                    <div className="cloud-util-row"><span>{'장애조치 제한시간'}</span><span>{p.failover_timeout != null ? p.failover_timeout + 's' : '—'}</span></div>
+                                    <div className="cloud-util-row"><span>{'마지막 테스트'}</span><span>{p.last_test ? cloudRelTime(p.last_test) : ('없음')}</span></div>
+                                    <div className="cloud-util-row"><span>{'마지막 장애조치'}</span><span>{p.last_failover ? cloudRelTime(p.last_failover) : ('없음')}</span></div>
                                 </div>
                             </div>
                         ))}</div>
@@ -1544,23 +1544,23 @@
             const _healthRaw = (c.status && (c.status.health || c.status.health_status)) || c.health || 'unknown';
             const health = (_healthRaw && typeof _healthRaw === 'object') ? (_healthRaw.status || _healthRaw.health_status || 'unknown') : _healthRaw;
             const kpis = [
-                { icon: 'Heart', value: String(health).toUpperCase(), label: t('cloud.cephHealth') || 'Health', accent: /ok|healthy/i.test(String(health)) ? '#22c55e' : '#f59e0b' },
-                { icon: 'Database', value: mons.length, label: t('cloud.cephMons') || 'Monitors', accent: '#6366f1' },
-                { icon: 'HardDrive', value: `${osdUp}/${osds.length}`, label: t('cloud.cephOsds') || 'OSDs up', accent: '#0ea5e9' },
-                { icon: 'Layers', value: pools.length, label: t('cloud.cephPools') || 'Pools', accent: '#a855f7' },
+                { icon: 'Heart', value: String(health).toUpperCase(), label: '상태', accent: /ok|healthy/i.test(String(health)) ? '#22c55e' : '#f59e0b' },
+                { icon: 'Database', value: mons.length, label: '모니터', accent: '#6366f1' },
+                { icon: 'HardDrive', value: `${osdUp}/${osds.length}`, label: 'OSD 정상', accent: '#0ea5e9' },
+                { icon: 'Layers', value: pools.length, label: '풀', accent: '#a855f7' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.ceph') || 'Ceph'} sub={t('cloud.cephSub') || 'Distributed storage'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'Ceph'} sub={'분산 스토리지'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={notAvail} emptyIcon="Database" emptyTitle={t('cloud.cephNA') || 'Ceph is not configured on this cluster'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={notAvail} emptyIcon="Database" emptyTitle={'이 클러스터엔 Ceph가 구성되어 있지 않습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         {pools.length ? (
                             <div className="cloud-card cloud-table-card">
-                                {cloudHead({ icon: <Icons.Layers />, title: t('cloud.cephPools') || 'Pools', count: pools.length })}
+                                {cloudHead({ icon: <Icons.Layers />, title: '풀', count: pools.length })}
                                 <div className="cloud-table-scroll"><table className="cloud-table">
-                                    <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colSize') || 'Size'}</th><th>PG</th><th>{t('cloud.colUsage') || 'Usage'}</th></tr></thead>
+                                    <thead><tr><th>{'이름'}</th><th>{'크기'}</th><th>PG</th><th>{'사용량'}</th></tr></thead>
                                     <tbody>{pools.map((p, i) => (<tr className="cloud-table-row cloud-table-row-static" key={p.pool_name || p.name || i}>
                                         <td>{p.pool_name || p.name || '—'}</td>
                                         <td className="cloud-table-mono">{p.size != null ? p.size : '—'}</td>
@@ -1581,12 +1581,12 @@
             return (
                 <div className="cloud-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
                     <div className="cloud-card" style={{ width: 'min(460px,92vw)', padding: 0 }} onClick={e => e.stopPropagation()}>
-                        {cloudHead({ icon: <Icons.Plus />, title, right: <CloudIconBtn icon="X" title={t('close') || 'Close'} onClick={onClose} /> })}
+                        {cloudHead({ icon: <Icons.Plus />, title, right: <CloudIconBtn icon="X" title={'닫기'} onClick={onClose} /> })}
                         <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
                             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
                             <div className="cloud-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--cloud-divider)' }}>
-                                <button type="button" className="cloud-link-btn" onClick={onClose}>{t('cancel') || 'Cancel'}</button>
-                                <button type="submit" className="cloud-btn-primary">{submitLabel || (t('create') || 'Create')}</button>
+                                <button type="button" className="cloud-link-btn" onClick={onClose}>{'취소'}</button>
+                                <button type="submit" className="cloud-btn-primary">{submitLabel || ('생성')}</button>
                             </div>
                         </form>
                     </div>
@@ -1611,7 +1611,7 @@
             const [zForm, setZForm] = React.useState({ zone: '', type: 'vlan', bridge: '', peers: '', controller: '' });
             const [vForm, setVForm] = React.useState({ vnet: '', zone: '' });
             const submitZone = () => {
-                if (!clusterId) { window.alert(t('cloud.noClusterSel') || 'No cluster selected.'); return; }
+                if (!clusterId) { window.alert('선택된 클러스터가 없습니다.'); return; }
                 const body = { zone: zForm.zone.trim(), type: zForm.type };
                 if (zForm.type === 'vlan' || zForm.type === 'qinq') body.bridge = zForm.bridge.trim();
                 if (zForm.type === 'vxlan') body.peers = zForm.peers.trim();
@@ -1620,13 +1620,13 @@
                 mut.run('addzone', 'POST', `${base}/zones`, body); setModal(null); setZForm({ zone: '', type: 'vlan', bridge: '', peers: '', controller: '' });
             };
             const submitVnet = () => {
-                if (!clusterId) { window.alert(t('cloud.noClusterSel') || 'No cluster selected.'); return; }
+                if (!clusterId) { window.alert('선택된 클러스터가 없습니다.'); return; }
                 if (!vForm.vnet.trim() || !vForm.zone) return;
                 mut.run('addvnet', 'POST', `${base}/vnets`, { vnet: vForm.vnet.trim(), zone: vForm.zone }); setModal(null); setVForm({ vnet: '', zone: '' });
             };
             const [sForm, setSForm] = React.useState({ vnet: '', subnet: '', gateway: '', dhcp: 'none', snat: false });
             const submitSubnet = () => {
-                if (!clusterId) { window.alert(t('cloud.noClusterSel') || 'No cluster selected.'); return; }
+                if (!clusterId) { window.alert('선택된 클러스터가 없습니다.'); return; }
                 if (!sForm.vnet || !sForm.subnet.trim()) return;
                 const body = { subnet: sForm.subnet.trim(), snat: sForm.snat ? 1 : 0 };
                 if (sForm.gateway.trim()) body.gateway = sForm.gateway.trim();
@@ -1634,84 +1634,84 @@
                 mut.run('addsubnet', 'POST', `${base}/vnets/${sForm.vnet}/subnets`, body); setModal(null); setSForm({ vnet: '', subnet: '', gateway: '', dhcp: 'none', snat: false });
             };
             const kpis = [
-                { icon: 'Globe', value: zones.length, label: t('cloud.sdnZones') || 'Zones', accent: '#6366f1' },
-                { icon: 'Network', value: vnets.length, label: t('cloud.sdnVnets') || 'VNets', accent: '#14b8a6' },
-                { icon: 'Layers', value: subnets.length, label: t('cloud.sdnSubnets') || 'Subnets', accent: '#a855f7' },
-                { icon: 'Settings', value: controllers.length, label: t('cloud.sdnControllers') || 'Controllers', accent: '#0ea5e9' },
+                { icon: 'Globe', value: zones.length, label: '영역', accent: '#6366f1' },
+                { icon: 'Network', value: vnets.length, label: 'VNet', accent: '#14b8a6' },
+                { icon: 'Layers', value: subnets.length, label: '서브넷', accent: '#a855f7' },
+                { icon: 'Settings', value: controllers.length, label: '컨트롤러', accent: '#0ea5e9' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.sdn') || 'SDN'} sub={t('cloud.sdnSub') || 'Software-defined networking'}>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'SDN'} sub={'소프트웨어 정의 네트워킹'}>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={notAvail} emptyIcon="Network" emptyTitle={t('cloud.sdnNA') || 'SDN is not configured on this cluster'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={notAvail} emptyIcon="Network" emptyTitle={'이 클러스터엔 SDN이 구성되어 있지 않습니다'} t={t}>
                         {s.pending ? (
                             <div className="cloud-card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderLeft: '3px solid #eab308' }}>
                                 <Icons.AlertTriangle />
-                                <span style={{ flex: 1 }}>{t('cloud.sdnPending') || 'You have unapplied SDN changes.'}</span>
-                                <button type="button" className="cloud-btn-primary" onClick={() => mut.run('apply', 'POST', `${base}/apply`)}>{t('cloud.applySDN') || 'Apply'}</button>
+                                <span style={{ flex: 1 }}>{'적용되지 않은 SDN 변경사항이 있습니다.'}</span>
+                                <button type="button" className="cloud-btn-primary" onClick={() => mut.run('apply', 'POST', `${base}/apply`)}>{'적용'}</button>
                             </div>
                         ) : null}
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
 
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Globe />, title: t('cloud.sdnZones') || 'Zones', count: zones.length, right: <button type="button" className="cloud-link-btn" onClick={() => setModal('zone')}><Icons.Plus /> {t('cloud.addZone') || 'Add zone'}</button> })}
+                            {cloudHead({ icon: <Icons.Globe />, title: '영역', count: zones.length, right: <button type="button" className="cloud-link-btn" onClick={() => setModal('zone')}><Icons.Plus /> {'영역 추가'}</button> })}
                             {zones.length ? <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colType') || 'Type'}</th><th>MTU</th><th>{t('cloud.colNodes') || 'Nodes'}</th><th>{t('cloud.colState') || 'State'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+                                <thead><tr><th>{'이름'}</th><th>{'유형'}</th><th>MTU</th><th>{'노드'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
                                 <tbody>{zones.map((z, i) => (<tr className="cloud-table-row cloud-table-row-static" key={z.zone || i}>
                                     <td>{z.zone || z.name || '—'}</td><td className="cloud-table-mono">{z.type || '—'}</td><td className="cloud-cell-muted">{z.mtu || '—'}</td><td className="cloud-cell-muted">{z.nodes || '—'}</td>
                                     <td><span className="cloud-chip cloud-chip-soft">{z.state || z.status || 'ok'}</span></td>
-                                    <CloudRowActions><CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('dz' + (z.zone), 'DELETE', `${base}/zones/${z.zone}`, undefined, (t('cloud.confirmDelZone') || 'Delete this zone?'))} /></CloudRowActions>
+                                    <CloudRowActions><CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('dz' + (z.zone), 'DELETE', `${base}/zones/${z.zone}`, undefined, ('이 영역을 삭제하시겠습니까?'))} /></CloudRowActions>
                                 </tr>))}</tbody>
-                            </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{t('cloud.noZones') || 'No zones.'}</div>}
+                            </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{'영역이 없습니다.'}</div>}
                         </div>
 
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Network />, title: t('cloud.sdnVnets') || 'VNets', count: vnets.length, right: <button type="button" className="cloud-link-btn" onClick={() => setModal('vnet')}><Icons.Plus /> {t('cloud.addVnet') || 'Add VNet'}</button> })}
+                            {cloudHead({ icon: <Icons.Network />, title: 'VNet', count: vnets.length, right: <button type="button" className="cloud-link-btn" onClick={() => setModal('vnet')}><Icons.Plus /> {'VNet 추가'}</button> })}
                             {vnets.length ? <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.sdnZone') || 'Zone'}</th><th>{t('cloud.colTag') || 'Tag'}</th><th>{t('cloud.colAlias') || 'Alias'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+                                <thead><tr><th>{'이름'}</th><th>{'영역'}</th><th>{'태그'}</th><th>{'별칭'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
                                 <tbody>{vnets.map((v, i) => (<tr className="cloud-table-row cloud-table-row-static" key={v.vnet || i}>
                                     <td>{v.vnet || '—'}</td><td className="cloud-cell-muted">{v.zone || '—'}</td><td className="cloud-table-mono">{v.tag || '—'}</td><td className="cloud-cell-muted">{v.alias || '—'}</td>
-                                    <CloudRowActions><CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('dv' + v.vnet, 'DELETE', `${base}/vnets/${v.vnet}`, undefined, (t('cloud.confirmDelVnet') || 'Delete this VNet?'))} /></CloudRowActions>
+                                    <CloudRowActions><CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('dv' + v.vnet, 'DELETE', `${base}/vnets/${v.vnet}`, undefined, ('이 VNet을 삭제하시겠습니까?'))} /></CloudRowActions>
                                 </tr>))}</tbody>
-                            </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{t('cloud.noVnets') || 'No VNets.'}</div>}
+                            </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{'VNet이 없습니다.'}</div>}
                         </div>
 
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Layers />, title: t('cloud.sdnSubnets') || 'Subnets', count: subnets.length, right: vnets.length ? <button type="button" className="cloud-link-btn" onClick={() => setModal('subnet')}><Icons.Plus /> {t('cloud.addSubnet') || 'Add subnet'}</button> : null })}
+                            {cloudHead({ icon: <Icons.Layers />, title: '서브넷', count: subnets.length, right: vnets.length ? <button type="button" className="cloud-link-btn" onClick={() => setModal('subnet')}><Icons.Plus /> {'서브넷 추가'}</button> : null })}
                             {subnets.length ? <div className="cloud-table-scroll"><table className="cloud-table">
-                                    <thead><tr><th>CIDR</th><th>{t('cloud.colGateway') || 'Gateway'}</th><th>DHCP</th><th>SNAT</th><th>{t('cloud.sdnVnet') || 'VNet'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+                                    <thead><tr><th>CIDR</th><th>{'게이트웨이'}</th><th>DHCP</th><th>SNAT</th><th>{'VNet'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
                                     <tbody>{subnets.map((sn, i) => (<tr className="cloud-table-row cloud-table-row-static" key={(sn.subnet || i)}>
                                         <td className="cloud-table-mono">{sn.subnet || sn.cidr || '—'}</td><td className="cloud-cell-muted">{sn.gateway || '—'}</td><td className="cloud-cell-muted">{sn.dhcp || 'none'}</td>
                                         <td>{(Number(sn.snat) === 1 || sn.snat === true) ? <span className="cloud-chip cloud-chip-ok">on</span> : <span className="cloud-cell-muted">off</span>}</td>
                                         <td className="cloud-cell-muted">{sn.vnet || '—'}</td>
-                                        <CloudRowActions>{sn.vnet ? <CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('ds' + (sn.subnet), 'DELETE', `${base}/vnets/${sn.vnet}/subnets/${encodeURIComponent(sn.subnet)}`, undefined, (t('cloud.confirmDelSubnet') || 'Delete this subnet?'))} /> : null}</CloudRowActions>
+                                        <CloudRowActions>{sn.vnet ? <CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('ds' + (sn.subnet), 'DELETE', `${base}/vnets/${sn.vnet}/subnets/${encodeURIComponent(sn.subnet)}`, undefined, ('이 서브넷을 삭제하시겠습니까?'))} /> : null}</CloudRowActions>
                                     </tr>))}</tbody>
-                                </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{vnets.length ? (t('cloud.noSubnets') || 'No subnets.') : (t('cloud.subnetsNeedVnet') || 'Create a VNet first.')}</div>}
+                                </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{vnets.length ? ('서브넷이 없습니다.') : ('먼저 VNet을 생성하세요.')}</div>}
                         </div>
                     </CloudSectionState>
 
                     {modal === 'zone' && (
-                        <CloudModal title={t('cloud.addZone') || 'Add zone'} onClose={() => setModal(null)} onSubmit={submitZone} submitLabel={t('create') || 'Create'} t={t}>
-                            <CloudField label={t('cloud.zoneName') || 'Zone ID'}><input className="cloud-input" value={zForm.zone} onChange={e => setZForm({ ...zForm, zone: e.target.value })} placeholder="zone1" maxLength={8} /></CloudField>
-                            <CloudField label={t('cloud.colType') || 'Type'}><select className="cloud-input" value={zForm.type} onChange={e => setZForm({ ...zForm, type: e.target.value })}>{['simple', 'vlan', 'qinq', 'vxlan', 'evpn'].map(x => <option key={x} value={x}>{x}</option>)}</select></CloudField>
-                            {(zForm.type === 'vlan' || zForm.type === 'qinq') && <CloudField label={t('cloud.zoneBridge') || 'Bridge'}><input className="cloud-input" value={zForm.bridge} onChange={e => setZForm({ ...zForm, bridge: e.target.value })} placeholder="vmbr0" /></CloudField>}
-                            {zForm.type === 'vxlan' && <CloudField label={t('cloud.zonePeers') || 'Peers (comma-sep IPs)'}><input className="cloud-input" value={zForm.peers} onChange={e => setZForm({ ...zForm, peers: e.target.value })} placeholder="10.0.0.1,10.0.0.2" /></CloudField>}
-                            {zForm.type === 'evpn' && <CloudField label={t('cloud.zoneController') || 'Controller'}><input className="cloud-input" value={zForm.controller} onChange={e => setZForm({ ...zForm, controller: e.target.value })} /></CloudField>}
+                        <CloudModal title={'영역 추가'} onClose={() => setModal(null)} onSubmit={submitZone} submitLabel={'생성'} t={t}>
+                            <CloudField label={'영역 ID'}><input className="cloud-input" value={zForm.zone} onChange={e => setZForm({ ...zForm, zone: e.target.value })} placeholder="zone1" maxLength={8} /></CloudField>
+                            <CloudField label={'유형'}><select className="cloud-input" value={zForm.type} onChange={e => setZForm({ ...zForm, type: e.target.value })}>{['simple', 'vlan', 'qinq', 'vxlan', 'evpn'].map(x => <option key={x} value={x}>{x}</option>)}</select></CloudField>
+                            {(zForm.type === 'vlan' || zForm.type === 'qinq') && <CloudField label={'브릿지'}><input className="cloud-input" value={zForm.bridge} onChange={e => setZForm({ ...zForm, bridge: e.target.value })} placeholder="vmbr0" /></CloudField>}
+                            {zForm.type === 'vxlan' && <CloudField label={'피어 (쉼표로 구분된 IP)'}><input className="cloud-input" value={zForm.peers} onChange={e => setZForm({ ...zForm, peers: e.target.value })} placeholder="10.0.0.1,10.0.0.2" /></CloudField>}
+                            {zForm.type === 'evpn' && <CloudField label={'컨트롤러'}><input className="cloud-input" value={zForm.controller} onChange={e => setZForm({ ...zForm, controller: e.target.value })} /></CloudField>}
                         </CloudModal>
                     )}
                     {modal === 'vnet' && (
-                        <CloudModal title={t('cloud.addVnet') || 'Add VNet'} onClose={() => setModal(null)} onSubmit={submitVnet} submitLabel={t('create') || 'Create'} t={t}>
-                            <CloudField label={t('cloud.vnetName') || 'VNet ID'}><input className="cloud-input" value={vForm.vnet} onChange={e => setVForm({ ...vForm, vnet: e.target.value })} placeholder="vnet1" maxLength={8} /></CloudField>
-                            <CloudField label={t('cloud.sdnZone') || 'Zone'}><select className="cloud-input" value={vForm.zone} onChange={e => setVForm({ ...vForm, zone: e.target.value })}><option value="">—</option>{zones.map(z => <option key={z.zone} value={z.zone}>{z.zone}</option>)}</select></CloudField>
+                        <CloudModal title={'VNet 추가'} onClose={() => setModal(null)} onSubmit={submitVnet} submitLabel={'생성'} t={t}>
+                            <CloudField label={'VNet ID'}><input className="cloud-input" value={vForm.vnet} onChange={e => setVForm({ ...vForm, vnet: e.target.value })} placeholder="vnet1" maxLength={8} /></CloudField>
+                            <CloudField label={'영역'}><select className="cloud-input" value={vForm.zone} onChange={e => setVForm({ ...vForm, zone: e.target.value })}><option value="">—</option>{zones.map(z => <option key={z.zone} value={z.zone}>{z.zone}</option>)}</select></CloudField>
                         </CloudModal>
                     )}
                     {modal === 'subnet' && (
-                        <CloudModal title={t('cloud.addSubnet') || 'Add subnet'} onClose={() => setModal(null)} onSubmit={submitSubnet} submitLabel={t('create') || 'Create'} t={t}>
-                            <CloudField label={t('cloud.sdnVnet') || 'VNet'}><select className="cloud-input" value={sForm.vnet} onChange={e => setSForm({ ...sForm, vnet: e.target.value })}><option value="">—</option>{vnets.map(v => <option key={v.vnet} value={v.vnet}>{v.vnet}</option>)}</select></CloudField>
+                        <CloudModal title={'서브넷 추가'} onClose={() => setModal(null)} onSubmit={submitSubnet} submitLabel={'생성'} t={t}>
+                            <CloudField label={'VNet'}><select className="cloud-input" value={sForm.vnet} onChange={e => setSForm({ ...sForm, vnet: e.target.value })}><option value="">—</option>{vnets.map(v => <option key={v.vnet} value={v.vnet}>{v.vnet}</option>)}</select></CloudField>
                             <CloudField label={'CIDR'}><input className="cloud-input" value={sForm.subnet} onChange={e => setSForm({ ...sForm, subnet: e.target.value })} placeholder="10.0.10.0/24" /></CloudField>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('cloud.colGateway') || 'Gateway'}><input className="cloud-input" value={sForm.gateway} onChange={e => setSForm({ ...sForm, gateway: e.target.value })} placeholder="10.0.10.1" /></CloudField>
+                                <CloudField label={'게이트웨이'}><input className="cloud-input" value={sForm.gateway} onChange={e => setSForm({ ...sForm, gateway: e.target.value })} placeholder="10.0.10.1" /></CloudField>
                                 <CloudField label={'DHCP'}><select className="cloud-input" value={sForm.dhcp} onChange={e => setSForm({ ...sForm, dhcp: e.target.value })}>{['none', 'dnsmasq'].map(x => <option key={x} value={x}>{x}</option>)}</select></CloudField>
                             </div>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', color: 'var(--cloud-text-secondary)' }}><input type="checkbox" checked={sForm.snat} onChange={e => setSForm({ ...sForm, snat: e.target.checked })} /> SNAT</label>
@@ -1731,30 +1731,30 @@
             const band = h.band || '';
             const issues = Array.isArray(h.issues) ? h.issues : [];
             const kpis = [
-                { icon: 'Heart', value: score != null ? score + '%' : '—', label: (t('cloud.healthScore') || 'Health score') + (band ? ' · ' + band : ''), accent: score == null ? '#64748b' : score >= 85 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444' },
-                { icon: 'AlertTriangle', value: issues.length, label: t('cloud.healthIssues') || 'Issues', accent: issues.length ? '#f59e0b' : '#14b8a6' },
-                { icon: 'BarChart', value: srv.length, label: t('cloud.metricServers') || 'Metric servers', accent: '#6366f1' },
+                { icon: 'Heart', value: score != null ? score + '%' : '—', label: ('상태 점수') + (band ? ' · ' + band : ''), accent: score == null ? '#64748b' : score >= 85 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444' },
+                { icon: 'AlertTriangle', value: issues.length, label: '상태 문제', accent: issues.length ? '#f59e0b' : '#14b8a6' },
+                { icon: 'BarChart', value: srv.length, label: '지표 서버', accent: '#6366f1' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.monitoring') || 'Monitoring'} sub={t('cloud.monitoringSub') || 'Cluster health & metric export'}>
-                        <button type="button" className="cloud-link-btn" onClick={() => { health.reload(); servers.reload(); }}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'모니터링'} sub={'클러스터 상태 및 지표 내보내기'}>
+                        <button type="button" className="cloud-link-btn" onClick={() => { health.reload(); servers.reload(); }}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
                     <CloudSectionState loading={health.loading} err={health.err} empty={false} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         {issues.length ? (
                             <div className="cloud-card">
-                                <CloudSectionTitle>{t('cloud.healthIssues') || 'Health issues'}</CloudSectionTitle>
+                                <CloudSectionTitle>{'상태 문제'}</CloudSectionTitle>
                                 <div className="cloud-util-breakdown">{issues.slice(0, 12).map((iss, i) => (
                                     <div className="cloud-util-row" key={i}><span>{(iss && (iss.message || iss.title || iss.factor)) || String(iss)}</span><span className="cloud-cell-muted">{iss && (iss.severity || iss.impact) || ''}</span></div>
                                 ))}</div>
                             </div>
                         ) : null}
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.BarChart />, title: t('cloud.metricServers') || 'Metric servers', count: srv.length })}
-                            {srv.length === 0 ? <CloudEmpty icon="BarChart" title={t('cloud.noMetricServers') || 'No external metric servers configured'} /> : (
+                            {cloudHead({ icon: <Icons.BarChart />, title: '지표 서버', count: srv.length })}
+                            {srv.length === 0 ? <CloudEmpty icon="BarChart" title={'구성된 외부 지표 서버가 없습니다'} /> : (
                                 <div className="cloud-table-scroll"><table className="cloud-table">
-                                    <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colType') || 'Type'}</th><th>{t('cloud.colTarget') || 'Target'}</th></tr></thead>
+                                    <thead><tr><th>{'이름'}</th><th>{'유형'}</th><th>{'대상'}</th></tr></thead>
                                     <tbody>{srv.map((m, i) => (<tr className="cloud-table-row cloud-table-row-static" key={m.id || i}>
                                         <td>{m.id || m.name || '—'}</td>
                                         <td className="cloud-table-mono">{m.type || '—'}</td>
@@ -1777,22 +1777,22 @@
             const cjobs = Array.isArray(cross.data) ? cross.data : [];
             const failing = njobs.filter(j => Number(j.fail_count) > 0 || (j.error && String(j.error).trim())).length;
             const kpis = [
-                { icon: 'Copy', value: njobs.length, label: t('cloud.replNative') || 'Native jobs', accent: '#6366f1' },
-                { icon: 'Cloud', value: cjobs.length, label: t('cloud.replCross') || 'Cross-cluster', accent: '#14b8a6' },
-                { icon: failing ? 'XCircle' : 'CheckCircle', value: failing, label: t('cloud.replFailing') || 'Failing', accent: failing ? '#ef4444' : '#22c55e' },
+                { icon: 'Copy', value: njobs.length, label: '기본 복제', accent: '#6366f1' },
+                { icon: 'Cloud', value: cjobs.length, label: '클러스터 간', accent: '#14b8a6' },
+                { icon: failing ? 'XCircle' : 'CheckCircle', value: failing, label: '실패 중', accent: failing ? '#ef4444' : '#22c55e' },
             ];
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cloud.replication') || 'Replication'} sub={t('cloud.replicationSub') || 'Storage replication jobs'}>
-                        <button type="button" className="cloud-link-btn" onClick={() => { native.reload(); cross.reload(); }}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'복제'} sub={'스토리지 복제 작업'}>
+                        <button type="button" className="cloud-link-btn" onClick={() => { native.reload(); cross.reload(); }}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={native.loading} err={native.err} empty={!njobs.length && !cjobs.length} emptyIcon="Copy" emptyTitle={t('cloud.noRepl') || 'No replication jobs'} t={t}>
+                    <CloudSectionState loading={native.loading} err={native.err} empty={!njobs.length && !cjobs.length} emptyIcon="Copy" emptyTitle={'복제 작업이 없습니다'} t={t}>
                         <div className="cloud-kpi-grid">{kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}</div>
                         {njobs.length ? (
                             <div className="cloud-card cloud-table-card">
-                                {cloudHead({ icon: <Icons.Copy />, title: t('cloud.replNative') || 'Native replication', count: njobs.length })}
+                                {cloudHead({ icon: <Icons.Copy />, title: '기본 복제', count: njobs.length })}
                                 <div className="cloud-table-scroll"><table className="cloud-table">
-                                    <thead><tr><th>{t('cloud.colJob') || 'Job'}</th><th>{t('cloud.colTarget') || 'Target'}</th><th>{t('cloud.colSchedule') || 'Schedule'}</th><th>{t('cloud.colLastSync') || 'Last sync'}</th><th>{t('cloud.colState') || 'State'}</th><th style={{ textAlign: 'right' }}>{t('cloud.colActions') || ''}</th></tr></thead>
+                                    <thead><tr><th>{'작업'}</th><th>{'대상'}</th><th>{'일정'}</th><th>{'마지막 동기화'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}>{''}</th></tr></thead>
                                     <tbody>{njobs.map((j, i) => (<tr className="cloud-table-row cloud-table-row-static" key={j.id || i}>
                                         <td className="cloud-table-mono">{j.id || '—'}</td>
                                         <td className="cloud-table-mono">{j.target || '—'}</td>
@@ -1800,7 +1800,7 @@
                                         <td>{j.last_sync ? cloudRelTime(j.last_sync) : '—'}</td>
                                         <td>{(j.error && String(j.error).trim()) ? <span className="cloud-chip cloud-chip-err">error</span> : (Number(j.disable) === 1 ? <CloudConnChip connected={false} t={t} /> : <CloudConnChip connected={true} t={t} />)}</td>
                                         <CloudRowActions>
-                                            <CloudIconBtn icon="Play" title={t('cloud.runNow') || 'Run now'} onClick={() => mut.run('r' + j.id, 'POST', `/api/clusters/${clusterId}/replication/${j.id}/run`)} />
+                                            <CloudIconBtn icon="Play" title={'지금 실행'} onClick={() => mut.run('r' + j.id, 'POST', `/api/clusters/${clusterId}/replication/${j.id}/run`)} />
                                         </CloudRowActions>
                                     </tr>))}</tbody>
                                 </table></div>
@@ -1808,9 +1808,9 @@
                         ) : null}
                         {cjobs.length ? (
                             <div className="cloud-card cloud-table-card">
-                                {cloudHead({ icon: <Icons.Cloud />, title: t('cloud.replCross') || 'Cross-cluster', count: cjobs.length })}
+                                {cloudHead({ icon: <Icons.Cloud />, title: '클러스터 간', count: cjobs.length })}
                                 <div className="cloud-table-scroll"><table className="cloud-table">
-                                    <thead><tr><th>{t('cloud.colName') || 'Name'}</th><th>{t('cloud.colSource') || 'Source'}</th><th>{t('cloud.colTarget') || 'Target'}</th><th>{t('cloud.colSchedule') || 'Schedule'}</th><th>{t('cloud.colStatus') || 'Status'}</th></tr></thead>
+                                    <thead><tr><th>{'이름'}</th><th>{'출발지'}</th><th>{'대상'}</th><th>{'일정'}</th><th>{'상태'}</th></tr></thead>
                                     <tbody>{cjobs.map((j, i) => (<tr className="cloud-table-row cloud-table-row-static" key={j.id || i}>
                                         <td>{j.name || j.id || '—'}</td>
                                         <td className="cloud-table-mono">{j.source_cluster || '—'}</td>
@@ -1858,48 +1858,48 @@
                     : { borderLeft: '3px solid #64748b', background: 'rgba(100,116,139,0.08)' };
             const stratIcon = strat === 'wait' ? <Icons.AlertTriangle /> : strat === 'quorum' ? <Icons.Shield /> : <Icons.Activity />;
             const kpis = [
-                { icon: enabled ? 'Shield' : 'XCircle', value: enabled ? (t('haEnabled') || 'Enabled') : (t('haDisabled') || 'Disabled'), label: t('cloud.haState') || 'HA state', accent: enabled ? '#22c55e' : '#64748b' },
-                { icon: sbp.have_quorum ? 'CheckCircle' : 'XCircle', value: sbp.have_quorum ? (t('quorumOk') || 'Quorum OK') : (t('quorumLost') || 'No quorum'), label: t('cloud.quorum') || 'Quorum', accent: sbp.have_quorum ? '#14b8a6' : '#ef4444' },
-                { icon: 'Server', value: installed ? (t('running') || 'Installed') : (t('notInstalled') || 'Not installed'), label: t('cloud.fenceAgents') || 'Self-fence agents', accent: installed ? '#6366f1' : '#f59e0b' },
-                { icon: 'Activity', value: `${health.online_nodes != null ? health.online_nodes : '—'} / ${health.total_nodes != null ? health.total_nodes : '—'}`, label: t('cloud.nodesOnline') || 'Hosts online', accent: '#0ea5e9' },
+                { icon: enabled ? 'Shield' : 'XCircle', value: enabled ? ('활성화됨') : ('비활성화됨'), label: 'HA 상태', accent: enabled ? '#22c55e' : '#64748b' },
+                { icon: sbp.have_quorum ? 'CheckCircle' : 'XCircle', value: sbp.have_quorum ? ('쿼럼 정상') : ('쿼럼 없음'), label: '쿼럼', accent: sbp.have_quorum ? '#14b8a6' : '#ef4444' },
+                { icon: 'Server', value: installed ? ('설치됨') : ('설치 안 됨'), label: '자체 펜싱 에이전트', accent: installed ? '#6366f1' : '#f59e0b' },
+                { icon: 'Activity', value: `${health.online_nodes != null ? health.online_nodes : '—'} / ${health.total_nodes != null ? health.total_nodes : '—'}`, label: '온라인 호스트', accent: '#0ea5e9' },
             ];
             return (
                 <div className="cloud-body">
                     <CloudPageHeader
-                        title={t('cloud.ha') || 'High Availability'}
-                        sub={enabled ? (t('cloud.haOn') || 'Split-brain protection active') : (t('cloud.haOff') || 'High availability is disabled for this cluster')}
+                        title={'고가용성'}
+                        sub={enabled ? ('스플릿 브레인 방지 활성화됨') : ('이 클러스터는 고가용성이 비활성화되어 있습니다')}
                     >
-                        <button type="button" className="cloud-link-btn" onClick={load}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                        <button type="button" className="cloud-link-btn" onClick={load}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
                     {loading ? (
-                        <div className="cloud-card"><div className="cloud-empty">{t('loading') || 'Loading…'}</div></div>
+                        <div className="cloud-card"><div className="cloud-empty">{'불러오는 중…'}</div></div>
                     ) : err ? (
-                        <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={t('cloud.haLoadFail') || 'Could not load HA status'} text={err} /></div>
+                        <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={'HA 상태를 불러오지 못했습니다'} text={err} /></div>
                     ) : (
                         <React.Fragment>
                             {(fs.strategy || fs.reason) && (
                                 <div className="cloud-card" style={bannerStyle}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                                         <span style={{ display: 'inline-flex' }}>{stratIcon}</span>
-                                        <strong>{t('fenceStrategyLabel') || 'Fence strategy'}: <span style={{ textTransform: 'uppercase' }}>{strat}</span></strong>
+                                        <strong>{'펜싱 전략'}: <span style={{ textTransform: 'uppercase' }}>{strat}</span></strong>
                                         {fs.expected_votes != null && <span style={{ marginLeft: 'auto', opacity: 0.7, fontSize: 12 }}>{fs.expected_votes} votes · qdevice: {fs.has_qdevice ? 'yes' : 'no'}</span>}
                                     </div>
                                     {sbp.fence_strategy_warning && <p style={{ fontSize: 13, margin: '4px 0' }}>{sbp.fence_strategy_warning}</p>}
                                     {fs.reason && <p style={{ fontSize: 12, opacity: 0.8, margin: '2px 0' }}>{fs.reason}</p>}
-                                    {fs.detected_at && <p style={{ fontSize: 12, opacity: 0.7, margin: '2px 0' }}>{t('detectedAt') || 'Detected at'}: {fs.detected_at}</p>}
+                                    {fs.detected_at && <p style={{ fontSize: 12, opacity: 0.7, margin: '2px 0' }}>{'감지 시각'}: {fs.detected_at}</p>}
                                 </div>
                             )}
                             <div className="cloud-kpi-grid">
                                 {kpis.map((k, i) => <CloudKpiCard key={i} icon={k.icon} value={k.value} label={k.label} accent={k.accent} />)}
                             </div>
                             <div className="cloud-card">
-                                <CloudSectionTitle>{t('cloud.haConfig') || 'Configuration'}</CloudSectionTitle>
+                                <CloudSectionTitle>{'구성'}</CloudSectionTitle>
                                 <div className="cloud-util-breakdown">
-                                    <div className="cloud-util-row"><span>{t('quorumEnabled') || 'Quorum check'}</span><span>{sbp.quorum_enabled ? (t('enabled') || 'Enabled') : (t('disabled') || 'Disabled')}</span></div>
-                                    <div className="cloud-util-row"><span>{t('selfFence') || 'Self-fencing'}</span><span>{sbp.self_fence_enabled ? (t('enabled') || 'Enabled') : (t('disabled') || 'Disabled')}</span></div>
-                                    <div className="cloud-util-row"><span>{t('twoNodeMode') || '2-node mode'}</span><span>{sbp.two_node_mode ? 'Yes' : 'No'}</span></div>
-                                    <div className="cloud-util-row"><span>{t('storageHeartbeat') || 'Storage heartbeat'}</span><span>{sbp.storage_heartbeat_enabled ? (sbp.storage_heartbeat_path || (t('enabled') || 'Enabled')) : (t('disabled') || 'Disabled')}</span></div>
-                                    <div className="cloud-util-row"><span>{t('recoveryDelay') || 'Recovery delay'}</span><span>{sbp.recovery_delay != null ? sbp.recovery_delay + 's' : '—'}</span></div>
+                                    <div className="cloud-util-row"><span>{'쿼럼 확인'}</span><span>{sbp.quorum_enabled ? ('활성화됨') : ('비활성화됨')}</span></div>
+                                    <div className="cloud-util-row"><span>{'자체 펜싱'}</span><span>{sbp.self_fence_enabled ? ('활성화됨') : ('비활성화됨')}</span></div>
+                                    <div className="cloud-util-row"><span>{'2노드 모드'}</span><span>{sbp.two_node_mode ? 'Yes' : 'No'}</span></div>
+                                    <div className="cloud-util-row"><span>{'스토리지 하트비트'}</span><span>{sbp.storage_heartbeat_enabled ? (sbp.storage_heartbeat_path || ('활성화됨')) : ('비활성화됨')}</span></div>
+                                    <div className="cloud-util-row"><span>{'복구 지연시간'}</span><span>{sbp.recovery_delay != null ? sbp.recovery_delay + 's' : '—'}</span></div>
                                     {sbp.pegaprox_vmid ? <div className="cloud-util-row"><span>Makus Virt VM</span><span>#{sbp.pegaprox_vmid}</span></div> : null}
                                 </div>
                             </div>
@@ -1934,16 +1934,16 @@
             const cur = list.find(p => p.id === sel) || null;
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('plugins') || 'Plugins'} sub={list.length + ' ' + (t('plugins') || 'plugins')}>
-                        <button type="button" className="cloud-link-btn" onClick={() => mut.run('rescan', 'POST', '/api/plugins/rescan')}><Icons.Search /> {t('rescan') || 'Rescan'}</button>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'플러그인'} sub={list.length + ' ' + ('플러그인')}>
+                        <button type="button" className="cloud-link-btn" onClick={() => mut.run('rescan', 'POST', '/api/plugins/rescan')}><Icons.Search /> {'다시 스캔'}</button>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Box" emptyTitle={t('noPlugins') || 'No plugins enabled'} emptyText={t('cloud.pluginsHint') || 'Enable plugins in Settings → Plugins.'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!list.length} emptyIcon="Box" emptyTitle={'활성화된 플러그인이 없습니다'} emptyText={'설정 → 플러그인에서 활성화하세요.'} t={t}>
                         <div className="cloud-kpi-grid">
                             {list.map(p => (
                                 <CloudKpiCard key={p.id} icon="Box" value={p.name || p.id}
                                     label={'v' + (p.version || '?') + (p.author ? ' · ' + p.author : '')}
-                                    sub={p.loaded ? (t('loaded') || 'Loaded') : (p.error ? (t('error') || 'Error') : (t('unloaded') || 'Unloaded'))}
+                                    sub={p.loaded ? ('로드됨') : (p.error ? ('오류') : ('언로드됨'))}
                                     accent={(cur && cur.id === p.id) ? 'var(--cloud-accent)' : (p.loaded ? '#22c55e' : '#ef4444')}
                                     onClick={() => setSel(p.id)} />
                             ))}
@@ -1952,8 +1952,8 @@
                             <div className="cloud-card cloud-table-card" style={{ padding: 0, overflow: 'hidden' }}>
                                 {cloudHead({ icon: <Icons.Box />, title: cur.name || cur.id, count: (cur.routes && cur.routes.length) || null, right: (
                                     <div style={{ display: 'flex', gap: 4 }}>
-                                        <CloudIconBtn icon="RotateCw" title={t('reload') || 'Reload'} onClick={() => mut.run('rl' + cur.id, 'POST', `/api/plugins/${cur.id}/reload`)} />
-                                        <CloudIconBtn icon="Power" danger title={t('disable') || 'Disable'} onClick={() => mut.run('ds' + cur.id, 'POST', `/api/plugins/${cur.id}/disable`)} />
+                                        <CloudIconBtn icon="RotateCw" title={'다시 로드'} onClick={() => mut.run('rl' + cur.id, 'POST', `/api/plugins/${cur.id}/reload`)} />
+                                        <CloudIconBtn icon="Power" danger title={'비활성화'} onClick={() => mut.run('ds' + cur.id, 'POST', `/api/plugins/${cur.id}/disable`)} />
                                     </div>
                                 ) })}
                                 {cur.has_frontend && cur.frontend_route
@@ -1961,7 +1961,7 @@
                                     : <div style={{ padding: 16 }}>
                                         {cur.description && <p className="cloud-cell-muted" style={{ marginBottom: 8 }}>{cur.description}</p>}
                                         {cur.error && <div className="cloud-chip cloud-chip-err" style={{ marginBottom: 8 }}>{cur.error}</div>}
-                                        <div className="cloud-cell-muted" style={{ fontSize: '.8rem' }}>{(cur.routes || []).length ? 'Routes: ' + cur.routes.join(', ') : (t('cloud.pluginNoUi') || 'This plugin has no frontend UI.')}</div>
+                                        <div className="cloud-cell-muted" style={{ fontSize: '.8rem' }}>{(cur.routes || []).length ? 'Routes: ' + cur.routes.join(', ') : ('이 플러그인은 프론트엔드 화면이 없습니다.')}</div>
                                     </div>}
                             </div>
                         )}
@@ -1992,15 +1992,15 @@
             const submitRun = () => { if (!pw) return; mut.run('run' + runFor.id, 'POST', `/api/clusters/${clusterId}/scripts/${runFor.id}/run`, { password: pw }); setRunFor(null); setPw(''); };
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('customScripts') || 'Scripts'} sub={t('cloud.scriptsSub') || 'Custom cluster scripts'}>
-                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {t('cloud.newScript') || 'New script'}</button>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'스크립트'} sub={'커스텀 클러스터 스크립트'}>
+                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {'새 스크립트'}</button>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!rows.length} emptyIcon="Terminal" emptyTitle={t('cloud.noScripts') || 'No scripts'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!rows.length} emptyIcon="Terminal" emptyTitle={'스크립트가 없습니다'} t={t}>
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Terminal />, title: t('customScripts') || 'Scripts', count: rows.length })}
+                            {cloudHead({ icon: <Icons.Terminal />, title: '스크립트', count: rows.length })}
                             <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('name') || 'Name'}</th><th>{t('type') || 'Type'}</th><th>{t('cloud.colTarget') || 'Target'}</th><th>{t('cloud.colLastRun') || 'Last run'}</th><th>{t('cloud.colStatus') || 'Status'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+                                <thead><tr><th>{'이름'}</th><th>{'유형'}</th><th>{'대상'}</th><th>{'마지막 실행'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
                                 <tbody>{rows.map((s, i) => {
                                     const st = String(s.last_status || '').toLowerCase();
                                     const ok = st.indexOf('ok') >= 0 || st.indexOf('success') >= 0;
@@ -2011,9 +2011,9 @@
                                         <td className="cloud-cell-muted">{s.last_run || '—'}</td>
                                         <td>{s.last_status ? (ok ? <span className="cloud-chip cloud-chip-ok">{s.last_status}</span> : <span className="cloud-chip cloud-chip-err">{s.last_status}</span>) : <span className="cloud-cell-muted">—</span>}</td>
                                         <CloudRowActions>
-                                            <CloudIconBtn icon="Play" title={t('cloud.runNow') || 'Run'} onClick={() => setRunFor(s)} />
-                                            <CloudIconBtn icon="FileText" title={t('cloud.viewOutput') || 'Output'} onClick={() => viewOutput(s)} />
-                                            <CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('d' + s.id, 'DELETE', `/api/clusters/${clusterId}/scripts/${s.id}`, undefined, (t('cloud.confirmDelScript') || 'Delete this script?'))} />
+                                            <CloudIconBtn icon="Play" title={'지금 실행'} onClick={() => setRunFor(s)} />
+                                            <CloudIconBtn icon="FileText" title={'출력'} onClick={() => viewOutput(s)} />
+                                            <CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('d' + s.id, 'DELETE', `/api/clusters/${clusterId}/scripts/${s.id}`, undefined, ('이 스크립트를 삭제하시겠습니까?'))} />
                                         </CloudRowActions>
                                     </tr>);
                                 })}</tbody>
@@ -2021,26 +2021,26 @@
                         </div>
                         {out && (
                             <div className="cloud-card" style={{ padding: 12 }}>
-                                <CloudSectionTitle right={<CloudIconBtn icon="X" title="Close" onClick={() => setOut(null)} />}>{out.name} — {t('cloud.output') || 'Output'}</CloudSectionTitle>
+                                <CloudSectionTitle right={<CloudIconBtn icon="X" title="Close" onClick={() => setOut(null)} />}>{out.name} — {'출력'}</CloudSectionTitle>
                                 <pre style={{ whiteSpace: 'pre-wrap', fontSize: '.8rem', maxHeight: '40vh', overflow: 'auto', background: 'var(--cloud-surface-2)', padding: 10, borderRadius: 6, marginTop: 8 }}>{out.text}</pre>
                             </div>
                         )}
                     </CloudSectionState>
                     {showNew && (
-                        <CloudModal title={t('cloud.newScript') || 'New script'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={t('create') || 'Create'} t={t}>
-                            <CloudField label={t('name') || 'Name'}><input className="cloud-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="cleanup-logs" /></CloudField>
-                            <CloudField label={t('description') || 'Description'}><input className="cloud-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></CloudField>
+                        <CloudModal title={'새 스크립트'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={'생성'} t={t}>
+                            <CloudField label={'이름'}><input className="cloud-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="cleanup-logs" /></CloudField>
+                            <CloudField label={'설명'}><input className="cloud-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></CloudField>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('type') || 'Type'}><select className="cloud-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="bash">bash</option><option value="python">python</option></select></CloudField>
-                                <CloudField label={t('cloud.colTarget') || 'Target nodes'}><input className="cloud-input" value={form.target_nodes} onChange={e => setForm({ ...form, target_nodes: e.target.value })} placeholder="all" /></CloudField>
+                                <CloudField label={'유형'}><select className="cloud-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="bash">bash</option><option value="python">python</option></select></CloudField>
+                                <CloudField label={'대상'}><input className="cloud-input" value={form.target_nodes} onChange={e => setForm({ ...form, target_nodes: e.target.value })} placeholder="all" /></CloudField>
                             </div>
-                            <CloudField label={t('cloud.scriptContent') || 'Script'}><textarea className="cloud-input" style={{ minHeight: 140, fontFamily: 'monospace' }} value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} placeholder={form.type === 'python' ? '#!/usr/bin/env python3' : '#!/bin/bash'} /></CloudField>
+                            <CloudField label={'스크립트'}><textarea className="cloud-input" style={{ minHeight: 140, fontFamily: 'monospace' }} value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} placeholder={form.type === 'python' ? '#!/usr/bin/env python3' : '#!/bin/bash'} /></CloudField>
                         </CloudModal>
                     )}
                     {runFor && (
-                        <CloudModal title={(t('cloud.runNow') || 'Run') + ' — ' + runFor.name} onClose={() => { setRunFor(null); setPw(''); }} onSubmit={submitRun} submitLabel={t('cloud.runNow') || 'Run'} t={t}>
-                            <div className="cloud-cell-muted" style={{ fontSize: '.8rem' }}>{t('cloud.runScriptHint') || 'Runs on the target nodes over SSH. Confirm with the node root password.'}</div>
-                            <CloudField label={t('password') || 'Node password'}><input className="cloud-input" type="password" value={pw} onChange={e => setPw(e.target.value)} autoFocus /></CloudField>
+                        <CloudModal title={('지금 실행') + ' — ' + runFor.name} onClose={() => { setRunFor(null); setPw(''); }} onSubmit={submitRun} submitLabel={'지금 실행'} t={t}>
+                            <div className="cloud-cell-muted" style={{ fontSize: '.8rem' }}>{'대상 노드에서 SSH로 실행됩니다. 노드 root 비밀번호로 확인해주세요.'}</div>
+                            <CloudField label={'노드 비밀번호'}><input className="cloud-input" type="password" value={pw} onChange={e => setPw(e.target.value)} autoFocus /></CloudField>
                         </CloudModal>
                     )}
                 </div>
@@ -2064,15 +2064,15 @@
             };
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('scheduledActions') || 'Schedules'} sub={t('cloud.schedulesSub') || 'Time-based VM actions'}>
-                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {t('cloud.newSchedule') || 'New schedule'}</button>
-                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {t('refresh') || 'Refresh'}</button>
+                    <CloudPageHeader title={'예약'} sub={'시간 기반 VM 작업'}>
+                        <button type="button" className="cloud-link-btn" onClick={() => setShowNew(true)}><Icons.Plus /> {'새 예약'}</button>
+                        <button type="button" className="cloud-link-btn" onClick={reload}><Icons.RefreshCw /> {'새로고침'}</button>
                     </CloudPageHeader>
-                    <CloudSectionState loading={loading} err={err} empty={!rows.length} emptyIcon="Clock" emptyTitle={t('cloud.noSchedules') || 'No schedules'} t={t}>
+                    <CloudSectionState loading={loading} err={err} empty={!rows.length} emptyIcon="Clock" emptyTitle={'예약이 없습니다'} t={t}>
                         <div className="cloud-card cloud-table-card">
-                            {cloudHead({ icon: <Icons.Clock />, title: t('scheduledActions') || 'Schedules', count: rows.length })}
+                            {cloudHead({ icon: <Icons.Clock />, title: '예약', count: rows.length })}
                             <div className="cloud-table-scroll"><table className="cloud-table">
-                                <thead><tr><th>{t('cloud.colTarget') || 'Target'}</th><th>{t('cloud.colAction') || 'Action'}</th><th>{t('cloud.colWhen') || 'When'}</th><th>{t('cloud.colLastRun') || 'Last run'}</th><th>{t('cloud.colState') || 'State'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+                                <thead><tr><th>{'대상'}</th><th>{'동작'}</th><th>{'일정'}</th><th>{'마지막 실행'}</th><th>{'상태'}</th><th style={{ textAlign: 'right' }}></th></tr></thead>
                                 <tbody>{rows.map((s, i) => (
                                     <tr className="cloud-table-row cloud-table-row-static" key={s.id || i}>
                                         <td className="cloud-table-mono">{s.vmid ? '#' + s.vmid : (s.target || '—')}{s.vm_type ? ' · ' + s.vm_type : ''}</td>
@@ -2081,9 +2081,9 @@
                                         <td className="cloud-cell-muted">{s.last_run || s.last_run_at || '—'}</td>
                                         <td><CloudConnChip connected={isOn(s)} t={t} /></td>
                                         <CloudRowActions>
-                                            <CloudIconBtn icon="Play" title={t('cloud.runNow') || 'Run now'} onClick={() => mut.run('r' + s.id, 'POST', `/api/schedules/${s.id}/run`)} />
-                                            <CloudIconBtn icon="Power" title={isOn(s) ? (t('disable') || 'Disable') : (t('enable') || 'Enable')} onClick={() => mut.run('t' + s.id, 'PUT', `/api/schedules/${s.id}`, { enabled: isOn(s) ? 0 : 1 })} />
-                                            <CloudIconBtn icon="Trash2" danger title={t('delete') || 'Delete'} onClick={() => mut.run('d' + s.id, 'DELETE', `/api/schedules/${s.id}`, undefined, (t('cloud.confirmDelSchedule') || 'Delete this schedule?'))} />
+                                            <CloudIconBtn icon="Play" title={'지금 실행'} onClick={() => mut.run('r' + s.id, 'POST', `/api/schedules/${s.id}/run`)} />
+                                            <CloudIconBtn icon="Power" title={isOn(s) ? ('비활성화') : ('활성화')} onClick={() => mut.run('t' + s.id, 'PUT', `/api/schedules/${s.id}`, { enabled: isOn(s) ? 0 : 1 })} />
+                                            <CloudIconBtn icon="Trash2" danger title={'삭제'} onClick={() => mut.run('d' + s.id, 'DELETE', `/api/schedules/${s.id}`, undefined, ('이 예약을 삭제하시겠습니까?'))} />
                                         </CloudRowActions>
                                     </tr>
                                 ))}</tbody>
@@ -2091,17 +2091,17 @@
                         </div>
                     </CloudSectionState>
                     {showNew && (
-                        <CloudModal title={t('cloud.newSchedule') || 'New schedule'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={t('create') || 'Create'} t={t}>
+                        <CloudModal title={'새 예약'} onClose={() => setShowNew(false)} onSubmit={submitNew} submitLabel={'생성'} t={t}>
                             <div style={{ display: 'flex', gap: 10 }}>
                                 <CloudField label={'VMID'}><input className="cloud-input" type="number" value={form.vmid} onChange={e => setForm({ ...form, vmid: e.target.value })} placeholder="100" /></CloudField>
-                                <CloudField label={t('type') || 'Type'}><select className="cloud-input" value={form.vm_type} onChange={e => setForm({ ...form, vm_type: e.target.value })}><option value="qemu">qemu</option><option value="lxc">lxc</option></select></CloudField>
+                                <CloudField label={'유형'}><select className="cloud-input" value={form.vm_type} onChange={e => setForm({ ...form, vm_type: e.target.value })}><option value="qemu">qemu</option><option value="lxc">lxc</option></select></CloudField>
                             </div>
-                            <CloudField label={t('cloud.colAction') || 'Action'}><select className="cloud-input" value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>{['start', 'stop', 'shutdown', 'reboot', 'snapshot'].map(a => <option key={a} value={a}>{a}</option>)}</select></CloudField>
+                            <CloudField label={'동작'}><select className="cloud-input" value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>{['start', 'stop', 'shutdown', 'reboot', 'snapshot'].map(a => <option key={a} value={a}>{a}</option>)}</select></CloudField>
                             <div style={{ display: 'flex', gap: 10 }}>
-                                <CloudField label={t('cloud.colWhen') || 'Schedule'}><select className="cloud-input" value={form.schedule_type} onChange={e => setForm({ ...form, schedule_type: e.target.value })}>{['once', 'daily', 'weekly', 'weekdays', 'weekends'].map(x => <option key={x} value={x}>{x}</option>)}</select></CloudField>
-                                <CloudField label={t('cloud.colTime') || 'Time'}><input className="cloud-input" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></CloudField>
+                                <CloudField label={'일정'}><select className="cloud-input" value={form.schedule_type} onChange={e => setForm({ ...form, schedule_type: e.target.value })}>{['once', 'daily', 'weekly', 'weekdays', 'weekends'].map(x => <option key={x} value={x}>{x}</option>)}</select></CloudField>
+                                <CloudField label={'시간'}><input className="cloud-input" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></CloudField>
                             </div>
-                            {form.schedule_type === 'once' && <CloudField label={t('cloud.colDate') || 'Date'}><input className="cloud-input" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></CloudField>}
+                            {form.schedule_type === 'once' && <CloudField label={'날짜'}><input className="cloud-input" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></CloudField>}
                         </CloudModal>
                     )}
                 </div>
@@ -2129,17 +2129,17 @@
             const totalVulns = nodes.reduce((a, n) => a + (((n.packages || n.vulnerabilities || n.cves || []).length) || Number(n.count) || 0), 0);
             return (
                 <div className="cloud-body">
-                    <CloudPageHeader title={t('cveScanner') || 'CVE Scanner'} sub={t('cloud.cveSub') || 'Package vulnerability scan (debsecan)'}>
-                        <button type="button" className="cloud-btn-primary" onClick={scan} disabled={busy}>{busy ? (t('cloud.scanning') || 'Scanning…') : (t('cloud.runScan') || 'Run scan')}</button>
+                    <CloudPageHeader title={'CVE 스캐너'} sub={'패키지 취약점 스캔 (debsecan)'}>
+                        <button type="button" className="cloud-btn-primary" onClick={scan} disabled={busy}>{busy ? ('노드 스캔 중…') : ('스캔 실행')}</button>
                     </CloudPageHeader>
-                    {err && <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={t('cloud.scanFailed') || 'Scan failed'} text={err} /></div>}
-                    {!res && !busy && !err && <div className="cloud-card"><CloudEmpty icon="Shield" title={t('cloud.cveIdle') || 'No scan yet'} text={t('cloud.cveHint') || 'Run a scan to check node packages for known CVEs (needs debsecan on the nodes).'} /></div>}
-                    {busy && <div className="cloud-card"><div className="cloud-empty">{t('cloud.scanning') || 'Scanning nodes…'}</div></div>}
+                    {err && <div className="cloud-card"><CloudEmpty icon="AlertTriangle" title={'스캔 실패'} text={err} /></div>}
+                    {!res && !busy && !err && <div className="cloud-card"><CloudEmpty icon="Shield" title={'아직 스캔한 적 없음'} text={'알려진 CVE를 확인하려면 스캔을 실행하세요 (노드에 debsecan 필요).'} /></div>}
+                    {busy && <div className="cloud-card"><div className="cloud-empty">{'노드 스캔 중…'}</div></div>}
                     {res && !busy && (
                         <React.Fragment>
                             <div className="cloud-kpi-grid">
-                                <CloudKpiCard icon="Cpu" value={nodes.length} label={t('cloud.colNodes') || 'Nodes'} accent="#6366f1" />
-                                <CloudKpiCard icon={totalVulns ? 'AlertTriangle' : 'Shield'} value={totalVulns} label={t('cloud.cveVulns') || 'Vulnerabilities'} accent={totalVulns ? '#ef4444' : '#22c55e'} />
+                                <CloudKpiCard icon="Cpu" value={nodes.length} label={'노드'} accent="#6366f1" />
+                                <CloudKpiCard icon={totalVulns ? 'AlertTriangle' : 'Shield'} value={totalVulns} label={'취약점'} accent={totalVulns ? '#ef4444' : '#22c55e'} />
                             </div>
                             {nodes.map((n, i) => {
                                 const pkgs = n.packages || n.vulnerabilities || n.cves || [];
@@ -2147,14 +2147,14 @@
                                     <div className="cloud-card cloud-table-card" key={n.node || i}>
                                         {cloudHead({ icon: <Icons.Cpu />, title: n.node || ('node ' + i), count: pkgs.length })}
                                         {n.error ? <div className="cloud-empty" style={{ padding: 14 }}>{n.error}</div> : (pkgs.length ? <div className="cloud-table-scroll"><table className="cloud-table">
-                                            <thead><tr><th>{t('cloud.colPackage') || 'Package'}</th><th>{t('cloud.colInstalled') || 'Installed'}</th><th>CVE</th><th>{t('cloud.colSeverity') || 'Severity'}</th></tr></thead>
+                                            <thead><tr><th>{'패키지'}</th><th>{'설치된 버전'}</th><th>CVE</th><th>{'심각도'}</th></tr></thead>
                                             <tbody>{pkgs.slice(0, 200).map((p, j) => { const sev = String(p.severity || '').toLowerCase(); return (<tr className="cloud-table-row cloud-table-row-static" key={j}>
                                                 <td className="cloud-table-mono">{p.package || p.pkg || p.name || '—'}</td>
                                                 <td className="cloud-cell-muted">{p.installed || p.version || '—'}</td>
                                                 <td className="cloud-table-mono">{p.cve || p.id || '—'}</td>
                                                 <td>{p.severity ? <span className={'cloud-chip ' + (sev.indexOf('high') >= 0 || sev.indexOf('crit') >= 0 ? 'cloud-chip-err' : 'cloud-chip-soft')}>{p.severity}</span> : <span className="cloud-cell-muted">—</span>}</td>
                                             </tr>); })}</tbody>
-                                        </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{t('cloud.cveClean') || 'No known vulnerabilities.'}</div>)}
+                                        </table></div> : <div className="cloud-empty" style={{ padding: 14 }}>{'알려진 취약점이 없습니다.'}</div>)}
                                     </div>
                                 );
                             })}
@@ -2197,7 +2197,7 @@
             const safeClusters = Array.isArray(clusters) ? clusters : [];
             const safeResources = Array.isArray(clusterResources) ? clusterResources : [];
 
-            // Makus Virt t() ECHOES the key back on a miss, so `t('cloud.x') || 'Fallback'`
+            // Makus Virt t() ECHOES the key back on a miss, so `''`
             // would render the raw key. treat key-echo as "no translation". -- NS
             const tx = React.useCallback((k) => {
                 const v = (typeof t === 'function') ? t(k) : undefined;
@@ -2244,43 +2244,43 @@
             }, [clusterResources]);
 
             const sectionLabels = {
-                overview: T('cloud.overview') || 'Overview',
-                vms: T('cloud.vms') || 'Virtual Machines',
-                containers: T('cloud.containers') || 'Containers',
-                datastores: T('cloud.datastores') || 'Datastores',
-                pools: T('cloud.pools') || 'Resource Pools',
-                networks: T('cloud.networks') || 'Networks',
-                clusters: T('cloud.clustersTitle') || 'Clusters',
-                nodes: T('cloud.hosts') || 'Hosts',
-                ha: T('cloud.ha') || 'High Availability',
-                storage: T('cloud.storageConfig') || 'Storage',
-                ceph: T('cloud.ceph') || 'Ceph',
-                sdn: T('cloud.sdn') || 'SDN',
-                firewall: T('cloud.firewall') || 'Firewall',
-                backups: T('cloud.backups') || 'Backups',
-                replication: T('cloud.replication') || 'Replication',
-                pbs: T('cloud.pbs') || 'Backup Servers',
-                siterecovery: T('cloud.siteRecovery') || 'Site Recovery',
-                monitoring: T('cloud.monitoring') || 'Monitoring',
-                topology: T('topology') || 'Topology',
-                compliance: T('compliance') || 'Compliance',
-                snapshotpolicies: T('snapshotPolicies') || 'Snapshot Policies',
-                templates: T('templatesLibrary') || 'Templates',
-                insights: T('insights') || 'Insights',
-                costs: T('costDashboard') || 'Costs',
-                power: T('powerTitle') || 'Power & Carbon',
-                apihealth: T('apiHealth') || 'API Health',
-                drift: T('configDrift') || 'Config Drift',
-                siem: T('siem') || 'SIEM',
-                alerts: T('alertChannels') || 'Alert Channels',
-                updates: T('updateManager') || 'Update Manager',
-                plugins: T('plugins') || 'Plugins',
-                scripts: T('customScripts') || 'Scripts',
-                schedules: T('scheduledActions') || 'Schedules',
-                cve: T('cveScanner') || 'CVE Scanner',
-                tasks: T('cloud.tasks') || 'Tasks',
-                users: T('cloud.users') || 'Users',
-                settings: T('cloud.settings') || 'Settings',
+                overview: '개요',
+                vms: '가상 머신',
+                containers: '컨테이너',
+                datastores: '데이터스토어',
+                pools: '리소스 풀',
+                networks: '네트워크',
+                clusters: '클러스터',
+                nodes: '호스트',
+                ha: '고가용성',
+                storage: '스토리지',
+                ceph: 'Ceph',
+                sdn: 'SDN',
+                firewall: '방화벽',
+                backups: '백업',
+                replication: '복제',
+                pbs: '백업 서버',
+                siterecovery: '사이트 복구',
+                monitoring: '모니터링',
+                topology: '토폴로지',
+                compliance: '준수',
+                snapshotpolicies: '스냅샷 정책',
+                templates: '템플릿',
+                insights: '인사이트',
+                costs: '비용',
+                power: '전력 & 탄소',
+                apihealth: 'API 상태',
+                drift: '설정 드리프트',
+                siem: 'SIEM',
+                alerts: '알림 채널',
+                updates: '업데이트 관리자',
+                plugins: '플러그인',
+                scripts: '스크립트',
+                schedules: '예약',
+                cve: 'CVE 스캐너',
+                tasks: '작업',
+                users: '사용자',
+                settings: '설정',
             };
 
             const selectSection = (id) => {
@@ -2433,7 +2433,7 @@
                         body = <CloudUsers t={T} addToast={addToast} />;
                         break;
                     case 'settings':
-                        body = <CloudClassicLauncher title={T('cloud.settings') || 'Settings'} icon="Settings" text={T('cloud.settingsClassic') || 'Full settings (auth, backups, monitoring, integrations) live in the classic Makus Virt layout.'} onExit={onExitCloud} t={T} />;
+                        body = <CloudClassicLauncher title={'설정'} icon="Settings" text={'전체 설정(인증, 백업, 모니터링, 연동)은 클래식 Makus Virt 레이아웃에서 이용 가능합니다.'} onExit={onExitCloud} t={T} />;
                         break;
                     default:
                         body = <CloudDashboard clusters={safeClusters} resources={safeResources} metrics={clusterMetrics} dcStatus={dcStatus} tasks={tasks} onNav={selectSection} t={T} />;

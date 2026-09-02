@@ -1682,7 +1682,7 @@
                                     <h3 className="text-lg font-semibold mb-4 text-cyan-400">Guests</h3>
                                     <div className="grid grid-cols-2 gap-6">
                                         <div>
-                                            <h4 className="font-medium mb-3">Virtual Machines</h4>
+                                            <h4 className="font-medium mb-3">가상 머신</h4>
                                             <div className="space-y-2 text-sm">
                                                 <div className="flex justify-between"><span className="text-green-400">● Running</span><span>{dcStatus.guests?.vms?.running || 0}</span></div>
                                                 <div className="flex justify-between"><span className="text-gray-400">○ Stopped</span><span>{dcStatus.guests?.vms?.stopped || 0}</span></div>

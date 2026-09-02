@@ -3,7 +3,7 @@
         // That's ~150 entries with no structure. Now: group by the dot-prefix, human-readable
         // group headers, per-group "select all", description tooltips, and a search box.
         const PERMISSION_CATEGORY_META = {
-            vm:            { order: 10, title: 'Virtual Machines',      icon: '🖥️' },
+            vm:            { order: 10, title: '가상 머신',      icon: '🖥️' },
             cluster:       { order: 20, title: 'Cluster',               icon: '🔗' },
             node:          { order: 30, title: 'Nodes',                 icon: '🏠' },
             storage:       { order: 40, title: 'Storage',               icon: '💾' },

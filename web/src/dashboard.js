@@ -20253,11 +20253,11 @@
                                             : 'flex items-center gap-1 p-1 bg-proxmox-card border border-proxmox-border rounded-xl w-fit'
                                         }>
                                             {[
-                                                { id: 'vms', label: 'Virtual Machines', icon: Icons.Monitor },
-                                                { id: 'hosts', label: 'Hosts', icon: Icons.Server },
-                                                { id: 'datastores', label: 'Datastores', icon: Icons.Database },
-                                                { id: 'networks', label: 'Networks', icon: Icons.Globe },
-                                                { id: 'clusters', label: 'Clusters', icon: Icons.Layers },
+                                                { id: 'vms', label: '가상 머신', icon: Icons.Monitor },
+                                                { id: 'hosts', label: '호스트', icon: Icons.Server },
+                                                { id: 'datastores', label: '데이터스토어', icon: Icons.Database },
+                                                { id: 'networks', label: '네트워크', icon: Icons.Globe },
+                                                { id: 'clusters', label: '클러스터', icon: Icons.Layers },
                                                 { id: 'tasks', label: 'Tasks & Events', icon: Icons.ClipboardList },
                                             ].map(tab => (
                                                 <button

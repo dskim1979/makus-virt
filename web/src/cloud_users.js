@@ -132,9 +132,9 @@
                     </CloudPageHeader>
 
                     {loading ? (
-                        <div className="cloud-loading">{t('loading') || 'Loading…'}</div>
+                        <div className="cloud-loading">{'불러오는 중…'}</div>
                     ) : filtered.length === 0 ? (
-                        <CloudEmpty icon="Users" title={t('noUsers') || 'No users'} text={query ? (t('noSearchResults') || 'No results for this search.') : ''} />
+                        <CloudEmpty icon="Users" title={query ? '검색 결과 없음' : '사용자가 없습니다'} text={query ? '이 검색어와 일치하는 결과가 없습니다.' : ''} />
                     ) : (
                         <div className="cloud-table-wrap">
                             <table className="cloud-table">
@@ -155,11 +155,11 @@
                                             <td>{u.display_name || '—'}</td>
                                             <td>{u.email || '—'}</td>
                                             <td><CloudPill color="#49afd9" bg="rgba(73,175,217,0.12)" border="rgba(73,175,217,0.3)">{roleLabel(u.role)}</CloudPill></td>
-                                            <td>{u.totp_enabled ? <CloudPill color="#60b515" bg="rgba(96,181,21,0.12)" border="rgba(96,181,21,0.3)">{t('enabled') || 'On'}</CloudPill> : <span style={{ color: '#728b9a' }}>—</span>}</td>
+                                            <td>{u.totp_enabled ? <CloudPill color="#60b515" bg="rgba(96,181,21,0.12)" border="rgba(96,181,21,0.3)">{'활성화됨'}</CloudPill> : <span style={{ color: '#728b9a' }}>—</span>}</td>
                                             <CloudRowActions>
-                                                <CloudIconBtn icon="Edit" title={t('edit') || 'Edit'} onClick={() => setEditingUser({ ...u, password: '' })} />
+                                                <CloudIconBtn icon="Edit" title={'편집 / 하드웨어'} onClick={() => setEditingUser({ ...u, password: '' })} />
                                                 <CloudIconBtn icon="Key" title={t('resetPassword') || 'Reset Password'} onClick={() => setPasswordResetUser(u.username)} />
-                                                <CloudIconBtn icon="Trash2" title={t('delete') || 'Delete'} danger onClick={() => handleDelete(u.username)} />
+                                                <CloudIconBtn icon="Trash2" title={'삭제'} danger onClick={() => handleDelete(u.username)} />
                                             </CloudRowActions>
                                         </tr>
                                     ))}
@@ -170,7 +170,7 @@
 
                     {/* Add User */}
                     {showAdd && (
-                        <CloudModal title={t('addUser') || 'Add User'} onClose={() => { setShowAdd(false); setForm(emptyForm); }} onSubmit={handleCreate} submitLabel={saving ? (t('saving') || 'Saving…') : (t('create') || 'Create')} t={t}>
+                        <CloudModal title={t('addUser') || 'Add User'} onClose={() => { setShowAdd(false); setForm(emptyForm); }} onSubmit={handleCreate} submitLabel={saving ? (t('saving') || 'Saving…') : ('생성')} t={t}>
                             <CloudField label={t('usernameLabel') || 'Username'}>
                                 <input className="cloud-input" required value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} />
                             </CloudField>
@@ -196,7 +196,7 @@
 
                     {/* Edit User */}
                     {editingUser && (
-                        <CloudModal title={`${t('edit') || 'Edit'}: ${editingUser.username}`} onClose={() => setEditingUser(null)}
+                        <CloudModal title={`${'편집 / 하드웨어'}: ${editingUser.username}`} onClose={() => setEditingUser(null)}
                             onSubmit={() => handleUpdate(editingUser.username, { display_name: editingUser.display_name, email: editingUser.email, role: editingUser.role })}
                             submitLabel={saving ? (t('saving') || 'Saving…') : (t('save') || 'Save')} t={t}>
                             <CloudField label={t('displayName') || 'Display Name'}>
