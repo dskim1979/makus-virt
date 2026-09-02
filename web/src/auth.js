@@ -218,7 +218,7 @@
                                                 value={username}
                                                 onChange={(e) => setUsername(e.target.value)}
                                                 className="w-full px-4 py-3 bg-proxmox-dark border border-proxmox-border rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-proxmox-orange transition-colors"
-                                                placeholder="pegaprox"
+                                                placeholder="admin"
                                                 autoComplete="username"
                                                 autoFocus
                                             />

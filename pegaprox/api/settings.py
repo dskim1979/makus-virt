@@ -3328,7 +3328,7 @@ def get_cors_origins():
             'same-origin': 'Only requests from the same host are allowed (most secure)',
             'configured': 'Specific origins are allowed',
             'env_variable': 'PEGAPROX_ALLOWED_ORIGINS',
-            'example': 'export PEGAPROX_ALLOWED_ORIGINS="https://pegaprox.example.com"'
+            'example': 'export PEGAPROX_ALLOWED_ORIGINS="https://makusvirt.example.com"'
         }
     })
 

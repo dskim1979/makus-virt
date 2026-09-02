@@ -8029,6 +8029,7 @@
             const { user, sessionId, logout, getAuthHeaders, isAdmin, passwordExpiry, updatePreferences } = useAuth();
             const can = (permission) => isAdmin || (Array.isArray(user?.permissions) && user.permissions.includes(permission));
             const { isCorporate, isCloud } = useLayout(); // LW: Feb 2026 - corporate layout / NS 2026-06: + cloud (Preview)
+            const branding = useBranding(); // NS: white-label — footer must reflect the configured app name
             const [clusters, setClusters] = useState([]);
             const [clusterGroups, setClusterGroups] = useState([]); // NS Jan 2026 - for grouping
             const [collapsedGroups, setCollapsedGroups] = useState({}); // Track which groups are collapsed
@@ -23393,7 +23394,7 @@
                     <footer className="border-t border-proxmox-border bg-proxmox-dark/50 mt-8">
                         <div className="max-w-[800px] mx-auto px-6 py-4">
                             <div className="text-center text-xs text-gray-600">
-                                <p>Makus Virt {PEGAPROX_VERSION} · for Proxmox Virtual Environment</p>
+                                <p>{branding.appName} {PEGAPROX_VERSION}{branding.appTagline ? ` · ${branding.appTagline}` : ''}</p>
                                 <p className="mt-1">Based on open-source software, licensed under AGPL-3.0 — <a href="https://github.com/dskim1979/makus-virt" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-400">source code</a></p>
                             </div>
                         </div>

@@ -282,7 +282,7 @@
                                         <label className="block text-xs text-gray-400 mb-1">{t('topic') || 'Topic'}</label>
                                         <input type="text" value={editing.topic || ''}
                                             onChange={e => setEditing({...editing, topic: e.target.value})}
-                                            placeholder="pegaprox-alerts"
+                                            placeholder="makus-virt-alerts"
                                             className="w-full px-3 py-1.5 bg-proxmox-secondary border border-proxmox-border rounded text-white text-sm font-mono" />
                                     </div>
                                     <div>
@@ -574,6 +574,7 @@
             const { t } = useTranslation();
             const { getAuthHeaders, user: currentUser } = useAuth();
             const { isCorporate } = useLayout(); // LW: Feb 2026 - Corporate styling
+            const branding = useBranding(); // NS: white-label — modal chrome must reflect the configured app name, not a hardcoded one
             const [activeTab, setActiveTab] = useState('users');
             const [users, setUsers] = useState([]);
             const [auditLogs, setAuditLogs] = useState([]);
@@ -2428,7 +2429,7 @@
                                 <Icons.Settings className="w-5 h-5" style={{color:'var(--corp-accent, #49afd9)'}} />
                                 <div className="min-w-0">
                                     <div className="corp-vm-modal-title truncate">{t('pegaproxSettings')}</div>
-                                    <div className="corp-vm-modal-meta">Makus Virt {PEGAPROX_VERSION}</div>
+                                    <div className="corp-vm-modal-meta">{branding.appName} {PEGAPROX_VERSION}</div>
                                 </div>
                             </div>
                             <div className="corp-vm-modal-actions">
@@ -2447,7 +2448,7 @@
                                     <h2 className="text-xl font-bold text-white">
                                         {t('pegaproxSettings')}
                                     </h2>
-                                    <p className="text-sm text-gray-400">Makus Virt {PEGAPROX_VERSION}</p>
+                                    <p className="text-sm text-gray-400">{branding.appName} {PEGAPROX_VERSION}</p>
                                 </div>
                             </div>
                             <button onClick={onClose} className="p-1.5 hover:bg-proxmox-dark text-gray-400 hover:text-white">
@@ -5150,7 +5151,7 @@
                                         <h4 className="text-white font-medium">Service Account (Bind)</h4>
                                         <div>
                                             <label className="block text-sm text-gray-400 mb-1">Bind DN</label>
-                                            <input type="text" value={ldapConfig.ldap_bind_dn} onChange={e => setLdapConfig(prev => ({...prev, ldap_bind_dn: e.target.value}))} placeholder="CN=svc-pegaprox,OU=Service Accounts,DC=example,DC=com" className="w-full px-3 py-2 bg-proxmox-secondary border border-proxmox-border rounded-lg text-white text-sm font-mono" />
+                                            <input type="text" value={ldapConfig.ldap_bind_dn} onChange={e => setLdapConfig(prev => ({...prev, ldap_bind_dn: e.target.value}))} placeholder="CN=svc-makusvirt,OU=Service Accounts,DC=example,DC=com" className="w-full px-3 py-2 bg-proxmox-secondary border border-proxmox-border rounded-lg text-white text-sm font-mono" />
                                         </div>
                                         <div>
                                             <label className="block text-sm text-gray-400 mb-1">Bind Password</label>
@@ -5491,7 +5492,7 @@
                                         <input type="text"
                                             value={oidcConfig.oidc_audiences || ''}
                                             onChange={e => setOidcConfig(prev => ({...prev, oidc_audiences: e.target.value}))}
-                                            placeholder="comma-separated, e.g. pegaprox-prod, pegaprox-staging"
+                                            placeholder="comma-separated, e.g. makusvirt-prod, makusvirt-staging"
                                             className="w-full bg-proxmox-darker border border-proxmox-border rounded p-2 text-sm font-mono text-white" />
                                         <p className="text-[11px] text-gray-500 leading-snug">
                                             {t('oidcAudiencesHint') || 'Additional audience values accepted on the JWT verify alongside the client_id. Useful when one logical audience is shared across multiple deployments.'}
@@ -5948,7 +5949,7 @@
                                                     type="text"
                                                     value={serverSettings.domain}
                                                     onChange={e => setServerSettings({...serverSettings, domain: e.target.value})}
-                                                    placeholder="pegaprox.example.com"
+                                                    placeholder="makusvirt.example.com"
                                                     className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm focus:outline-none focus:border-proxmox-orange"
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">{t('domainHint')}</p>
