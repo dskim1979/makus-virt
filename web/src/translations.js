@@ -3882,18 +3882,18 @@
                 keyAttributes: '주요 속성',
                 allAttributes: '모든 속성',
                 // MK + LW 2026-05-31 — monitoring expansion strings (Top Talkers / Interface Statistics / SMART)
-                topTalkers: 'Top Talkers',
-                topTalkersHint: 'CPU/RAM/Disco sono istantanei; I/O disco e di rete sono cumulativi dall\'avvio della VM (le VM attive salgono in cima).',
+                
+                
                 cpuPercent: 'CPU %',
-                memoryPercent: 'Memoria %',
-                diskUsagePercent: 'Disco %',
-                diskIo: 'I/O disco (byte totali)',
-                netIo: 'I/O di rete (byte totali)',
-                runningVms: 'VM in esecuzione',
-                interfaceStatistics: 'Statistiche interfaccia',
-                errOrDropHint: 'Valori RX/TX errs / drops diversi da zero evidenziati in rosso. Contatori cumulativi dall\'avvio.',
-                keyAttributes: 'Attributi chiave',
-                allAttributes: 'Tutti gli attributi',
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 // MK + LW 2026-05-31 — guest-agent enrichment
                 guestDetail: '게스트 상세',
                 loggedInUsers: '로그인 사용자',
@@ -3901,21 +3901,21 @@
                 filesystems: '파일 시스템',
                 interfaces: '인터페이스',
                 // MK + LW 2026-05-31 — guest-agent enrichment
-                guestDetail: 'Dettaglio guest',
-                loggedInUsers: 'Utenti connessi',
-                clockSkew: 'Sfasamento dell\'orologio',
-                filesystems: 'File system',
-                interfaces: 'Interfacce',
+                
+                
+                
+                
+                
                 // MK + LW 2026-05-31 — cluster health panel
                 configVersion: '설정 버전',
                 corosyncRings: 'Corosync 링',
                 address: '주소',
                 services: '서비스',
                 // MK + LW 2026-05-31 — cluster health panel
-                configVersion: 'Config v',
-                corosyncRings: 'Anelli Corosync',
-                address: 'Indirizzo',
-                services: 'Servizi',
+                
+                
+                
+                
                 // MK + LW 2026-05-31 — sensors panel
                 sensors: '센서',
                 sensor: '센서',
@@ -3966,54 +3966,54 @@
                 bmcSaved: 'BMC 엔드포인트 저장됨',
                 bmcRemoved: 'BMC 엔드포인트 제거됨',
                 // MK + LW 2026-05-31 — sensors panel
-                sensors: 'Sensori',
-                sensor: 'Sensore',
-                sensorsHint: 'Sensori hardware via lm-sensors. Le celle rosse superano la soglia critica, le gialle superano il massimo.',
-                temperatureC: 'Temperatura (°C)',
-                tempHistoryTitle: 'Temperatura nel tempo (sensore più caldo)',
-                samples: 'campioni',
+                
+                
+                
+                
+                
+                
                 // NS 2026-07-15 — hardware monitoring (#609)
-                hardwareMonitoring: 'Monitoraggio hardware',
-                hardwareMonitoringDisabledDesc: 'Il monitoraggio hardware in banda (IPMI) non è abilitato. Legge sensori, consumo, inventario e il registro eventi hardware direttamente sul nodo — senza credenziali, in sola lettura.',
-                enableHardwareMonitoring: 'Abilita monitoraggio hardware',
-                hwEnabled: 'Monitoraggio hardware abilitato',
-                hwEnabledBy: 'Abilitato da',
-                hwReadFailed: 'Impossibile leggere l\'hardware',
-                hwIpmitoolMissing: 'ipmitool non è installato su questo nodo.',
-                hwInstallHint: 'Makus Virt eseguirà apt-get install ipmitool sul nodo e potrebbe caricare i moduli kernel IPMI. Sola lettura, solo IPMI locale.',
-                hwInstallIpmitool: 'Installa ipmitool',
-                hwInstalling: 'Installazione…',
-                hwInstallDone: 'ipmitool installato',
-                hwInstallFailed: 'Installazione di ipmitool non riuscita',
-                hwNoData: 'Nessun dato hardware disponibile',
-                hwSystemInfo: 'Informazioni di sistema',
-                hwSensors: 'Sensori',
-                hwEventLog: 'Registro eventi hardware (SEL)',
-                hwConfirmDefault: 'Comprendo e accetto la responsabilità di abilitare questa funzione',
-                hwEnable: 'Abilita',
-                powerDraw: 'Assorbimento',
-                partNumber: 'Codice ricambio',
-                chassisIntrusion: 'Intrusione chassis',
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 // NS 2026-07-16 — hardware alerting / cluster rollup (#609 phase 2)
-                hardwareHealth: 'Stato hardware',
-                degradedHardware: 'Hardware degradato',
-                hwAlertWarnPlus: 'Avviso o peggio',
-                hwAlertCritOnly: 'Solo critico',
-                clustersDegradedHwNamed: '{count} cluster con hardware degradato: {names}',
+                
+                
+                
+                
+                
                 // NS 2026-07-16 — out-of-band Redfish (#609 phase 3)
-                redfishOob: 'Fuori banda (Redfish)',
-                redfishOobDesc: 'Leggi lo stato dell\'hardware tramite la rete di gestione con l\'API Redfish del BMC: un ripiego fuori banda basato su credenziali quando l\'IPMI in banda non è disponibile.',
-                redfishBmcHint: 'Endpoint BMC per questo nodo. La password è memorizzata cifrata e non viene più mostrata.',
-                enableRedfish: 'Abilita il monitoraggio fuori banda',
-                bmcHost: 'Host / IP del BMC',
-                bmcUser: 'Utente BMC',
-                bmcPassword: 'Password BMC',
-                bmcVerifySsl: 'Verifica il certificato TLS',
-                bmcTest: 'Prova',
-                bmcTestOk: 'Raggiungibile',
-                bmcTestFail: 'Non riuscito',
-                bmcSaved: 'Endpoint BMC salvato',
-                bmcRemoved: 'Endpoint BMC rimosso',
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 // MK + LW 2026-05-31 — rollups (per-tag / per-pool)
                 rollups: '집계',
                 pools: '풀',
@@ -4023,15 +4023,15 @@
                 noGroupings: '아직 그룹화된 VM이 없습니다.',
                 rollupsHint: '여러 태그가 있는 VM은 각 태그 집계에 포함됩니다. CPU는 즉시 % 합계, RAM/디스크는 사용률, 네트워크 I/O는 VM 부팅 이후 누적값입니다.',
                 // MK + LW 2026-05-31 — rollups (per-tag / per-pool)
-                rollups: 'Aggregazioni',
-                pools: 'pool',
-                byTag: 'Per tag',
-                byPool: 'Per pool',
-                tag: 'Tag',
-                noGroupings: 'Nessuna VM raggruppata ancora.',
-                rollupsHint: 'Le VM con più tag contano in ogni aggregazione di tag. CPU è la somma delle % istantanee; RAM/Disco sono rapporti di riempimento; I/O di rete è cumulativo dall\'avvio.',
+                
+                
+                
+                
+                
+                
+                
                 clusterHealthSshMissing: '클러스터 상태 확인은 Makus Virt에서 노드로의 SSH 접근이 필요합니다 (corosync-cfgtool, pvecm, systemctl). 클러스터의 Node-Shell SSH 자격 증명을 설정하고 새로고침하세요.',
-                clusterHealthSshMissing: 'Cluster Health richiede l\'accesso SSH al nodo da Makus Virt (corosync-cfgtool, pvecm, systemctl). Configura le credenziali SSH Node-Shell del cluster e aggiorna.',
+                
                 // completed translations (i18n backfill)
                 acmeChallengeDns: 'DNS-01',
                 acmeChallengeHttp: 'HTTP-01',
