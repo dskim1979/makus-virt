@@ -3970,6 +3970,7 @@
                                     <th className="p-3">GPU</th>
                                     <th className="p-3">PCI ID</th>
                                     <th className="p-3">vGPU</th>
+                                    <th className="p-3">사용률</th>
                                     <th className="p-3">상태</th>
                                     <th className="p-3">할당된 VM</th>
                                 </tr>
@@ -3984,6 +3985,18 @@
                                             {g.vgpu_capable
                                                 ? <span className="text-xs px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded">지원</span>
                                                 : <span className="text-xs text-gray-600">—</span>}
+                                        </td>
+                                        <td className="p-3">
+                                            {g.utilization ? (
+                                                <div className="text-xs">
+                                                    <div className="text-gray-300">GPU {g.utilization.gpu_pct != null ? `${g.utilization.gpu_pct.toFixed(0)}%` : '—'} · MEM {g.utilization.mem_pct != null ? `${g.utilization.mem_pct.toFixed(0)}%` : '—'}</div>
+                                                    {g.utilization.mem_used_mb != null && (
+                                                        <div className="text-gray-500">{(g.utilization.mem_used_mb / 1024).toFixed(1)} / {(g.utilization.mem_total_mb / 1024).toFixed(1)} GB{g.utilization.temp_c != null ? ` · ${g.utilization.temp_c.toFixed(0)}°C` : ''}</div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-gray-600" title="nvidia-smi에 SSH로 접근할 수 없거나 드라이버가 없습니다">—</span>
+                                            )}
                                         </td>
                                         <td className="p-3">
                                             {g.status === 'allocated'

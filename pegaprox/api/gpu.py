@@ -39,12 +39,15 @@ _GPU_PCI_CLASSES = ('0300', '0302')
 _PCIID_RE = re.compile(r'^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$')
 
 
+_NVIDIA_VENDOR_ID = '10de'
+
+
 def _valid_pciid(pciid):
     return bool(pciid) and bool(_PCIID_RE.match(pciid))
 
 
 def _is_gpu(dev):
-    """True if this /nodes/{node}/hardware/pci entry is a GPU.
+    """True if this /nodes/{node}/hardware/pci entry is an NVIDIA GPU.
 
     NS: Proxmox reports 'class' as a 6-hex-digit string — class + subclass +
     prog-if, e.g. '030000' for VGA compatible controller, '030200' for a
@@ -56,6 +59,13 @@ def _is_gpu(dev):
     picker at all). Compares only the first 4 hex digits (class+subclass),
     ignoring prog-if, and tolerates the class arriving as an int, with or
     without a '0x' prefix, or with leading zeros dropped.
+
+    Also requires vendor == NVIDIA (0x10de) — this feature is NVIDIA vGPU
+    only (see module docstring), and class alone isn't a reliable enough
+    signal: every server motherboard's onboard BMC (ASPEED/Matrox, for the
+    IPMI/iDRAC/iLO remote console) reports as PCI class 0300 too, so without
+    the vendor check the inventory would count the board's own remote-console
+    chip as an allocatable "GPU" alongside any real cards.
     """
     raw = dev.get('class')
     if raw is None:
@@ -64,7 +74,73 @@ def _is_gpu(dev):
     cls = cls.lower().replace('0x', '').strip()
     if len(cls) < 6:
         cls = cls.zfill(6)  # pad short/leading-zero-stripped values to the full 6 digits
-    return cls[:4] in _GPU_PCI_CLASSES
+    if cls[:4] not in _GPU_PCI_CLASSES:
+        return False
+
+    vendor = dev.get('vendor')
+    if vendor is None:
+        return False
+    vendor = format(vendor, 'x') if isinstance(vendor, int) else str(vendor)
+    vendor = vendor.lower().replace('0x', '').strip().zfill(4)
+    return vendor == _NVIDIA_VENDOR_ID
+
+
+def _get_node_gpu_utilization(manager, node):
+    """{pciid: {gpu_pct, mem_pct, mem_used_mb, mem_total_mb, temp_c}} for every
+    NVIDIA GPU on this node, via `nvidia-smi` over SSH.
+
+    Proxmox's own API has no concept of live GPU utilization — hardware/pci
+    is a static device listing — so this is the only way to get it, and it
+    only works if the NVIDIA driver is actually installed on the host (which
+    it must be anyway for passthrough/vGPU to work at all). Returns {} on
+    any failure (no SSH access, driver not installed, nvidia-smi not on
+    PATH, etc.) rather than raising — utilization is a nice-to-have overlay
+    on top of the inventory, never a reason to fail the whole request.
+    """
+    try:
+        node_ip = manager._get_node_ip(node)
+        if not node_ip:
+            return {}
+        ssh = manager._ssh_connect(node_ip, retries=1)
+        if not ssh:
+            return {}
+        try:
+            cmd = ('nvidia-smi --query-gpu=pci.bus_id,utilization.gpu,utilization.memory,'
+                   'memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits')
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
+            exit_code = stdout.channel.recv_exit_status()
+            if exit_code != 0:
+                return {}
+            output = stdout.read().decode('utf-8', errors='ignore')
+        finally:
+            ssh.close()
+
+        result = {}
+        for line in output.strip().splitlines():
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) != 6:
+                continue
+            bus_id, gpu_pct, mem_pct, mem_used, mem_total, temp = parts
+            # nvidia-smi reports the full domain:bus:device.function
+            # (e.g. '00000000:42:00.0', 8-hex-digit domain); Proxmox's pciid
+            # uses a 4-hex-digit domain ('0000:42:00.0'). Keep only the
+            # bus:device.function tail and re-prefix with the short domain
+            # so both sides compare equal regardless of domain width.
+            short_form = '0000:' + bus_id.lower().split(':', 1)[-1] if ':' in bus_id else bus_id.lower()
+            try:
+                result[short_form] = {
+                    'gpu_pct': float(gpu_pct) if gpu_pct.replace('.', '', 1).isdigit() else None,
+                    'mem_pct': float(mem_pct) if mem_pct.replace('.', '', 1).isdigit() else None,
+                    'mem_used_mb': float(mem_used) if mem_used.replace('.', '', 1).isdigit() else None,
+                    'mem_total_mb': float(mem_total) if mem_total.replace('.', '', 1).isdigit() else None,
+                    'temp_c': float(temp) if temp.replace('.', '', 1).isdigit() else None,
+                }
+            except (ValueError, AttributeError):
+                continue
+        return result
+    except Exception as e:
+        logging.debug(f"[gpu] utilization query failed on {node}: {e}")
+        return {}
 
 
 def _friendly_vendor(vendor_id, vendor_name):
@@ -273,10 +349,14 @@ def cluster_gpu_inventory(cluster_id):
             continue
 
         vm_assignments = _get_node_gpu_assignments(manager, host, port, node, session)
+        # One SSH call per node (not per-GPU) — nvidia-smi returns every card
+        # on the host in a single query.
+        utilization = _get_node_gpu_utilization(manager, node)
 
         for dev in node_gpus:
             pciid = dev.get('id') or ''
             assigned = vm_assignments.get(pciid, [])
+            util = utilization.get(pciid.lower())
             inventory.append({
                 'node': node,
                 'pciid': pciid,
@@ -285,6 +365,7 @@ def cluster_gpu_inventory(cluster_id):
                 'vgpu_capable': bool(dev.get('mdev')),
                 'assignments': assigned,
                 'status': 'allocated' if assigned else 'free',
+                'utilization': util,  # None if nvidia-smi/SSH wasn't reachable
             })
 
     total = len(inventory)
