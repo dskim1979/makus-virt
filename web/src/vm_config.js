@@ -219,6 +219,8 @@
             const [passthrough, setPassthrough] = useState({ pci: [], usb: [], serial: [] });
             const [availablePci, setAvailablePci] = useState([]);
             const [availableUsb, setAvailableUsb] = useState([]);
+            const [allNodeGpus, setAllNodeGpus] = useState([]); // NS: unfiltered (include_allocated=1), just for labeling hostpci entries that are GPUs
+            const [usedSerialPaths, setUsedSerialPaths] = useState([]);
             const [showAddPci, setShowAddPci] = useState(false);
             const [showAddUsb, setShowAddUsb] = useState(false);
             const [showAddSerial, setShowAddSerial] = useState(false);
@@ -383,6 +385,20 @@
                     const usbRes = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/hardware/usb`);
                     if (usbRes && usbRes.ok) {
                         setAvailableUsb(await usbRes.json());
+                    }
+
+                    // NS: unfiltered GPU list (includes already-allocated ones) — used only to
+                    // render a friendly "GPU: <name>" label for an existing hostpci entry below,
+                    // not for the add-a-new-GPU picker (that one filters allocated cards out).
+                    const gpuRes = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/gpus?include_allocated=1`);
+                    if (gpuRes && gpuRes.ok) {
+                        setAllNodeGpus((await gpuRes.json()).gpus || []);
+                    }
+
+                    // Serial device paths already claimed by another VM on this node
+                    const serialUsedRes = await authFetch(`${API_URL}/clusters/${clusterId}/nodes/${vm.node}/hardware/serial-used`);
+                    if (serialUsedRes && serialUsedRes.ok) {
+                        setUsedSerialPaths(await serialUsedRes.json());
                     }
                 } catch (error) {
                     console.error('to load passthrough:', error);
@@ -2541,9 +2557,19 @@
                                                             </div>
                                                             {passthrough.pci?.length > 0 ? (
                                                                 <div className="space-y-1">
-                                                                    {passthrough.pci.map((dev, idx) => (
+                                                                    {passthrough.pci.map((dev, idx) => {
+                                                                        const pciAddr = String(dev.value).split(',')[0].trim();
+                                                                        const gpuMatch = allNodeGpus.find(g => g.pciid === pciAddr);
+                                                                        return (
                                                                         <div key={idx} className="flex items-center justify-between p-2 bg-proxmox-dark rounded text-sm">
-                                                                            <span className="font-mono text-gray-300">{dev.key}: {dev.value}</span>
+                                                                            {gpuMatch ? (
+                                                                                <span className="text-gray-300 flex items-center gap-1.5">
+                                                                                    🎮 GPU: {gpuMatch.vendor} {gpuMatch.device_name}
+                                                                                    <span className="font-mono text-xs text-gray-500">({pciAddr})</span>
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="font-mono text-gray-300">{dev.key}: {dev.value}</span>
+                                                                            )}
                                                                             <button
                                                                                 onClick={() => handleRemovePassthrough('pci', dev.key)}
                                                                                 className="text-red-400 hover:text-red-300 p-1"
@@ -2551,7 +2577,8 @@
                                                                                 <Icons.Trash className="w-3 h-3" />
                                                                             </button>
                                                                         </div>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             ) : (
                                                                 <div className="text-xs text-gray-500 italic">{t('noPciDevices')}</div>
@@ -5974,10 +6001,9 @@
                                             className="w-full bg-proxmox-dark border border-proxmox-border rounded px-3 py-2 text-white"
                                         >
                                             <option value="socket">{t('socketConsole')}</option>
-                                            <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
-                                            <option value="/dev/ttyUSB1">/dev/ttyUSB1</option>
-                                            <option value="/dev/ttyS0">/dev/ttyS0</option>
-                                            <option value="/dev/ttyS1">/dev/ttyS1</option>
+                                            {['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyS0', '/dev/ttyS1']
+                                                .filter(path => !usedSerialPaths.includes(path))
+                                                .map(path => <option key={path} value={path}>{path}</option>)}
                                         </select>
                                     </div>
                                     <div className="flex gap-2 justify-end pt-4">

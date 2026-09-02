@@ -4779,7 +4779,10 @@ def get_node_pci_devices(cluster_id, node):
 @bp.route('/api/clusters/<cluster_id>/nodes/<node>/hardware/usb', methods=['GET'])
 @require_auth(perms=['node.view'])
 def get_node_usb_devices(cluster_id, node):
-    """Get available USB devices on a node for passthrough"""
+    """Get available USB devices on a node for passthrough — excludes ones
+    already claimed by another VM (Proxmox hands a physical USB device to
+    one guest exclusively; offering an in-use one again just fails at
+    attach/boot time)."""
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
@@ -4789,17 +4792,25 @@ def get_node_usb_devices(cluster_id, node):
     
     try:
         host, port = manager.host, manager.api_port
+        session = manager._create_session()
         url = f"https://{host}:{port}/api2/json/nodes/{node}/hardware/usb"
-        response = manager._create_session().get(url, timeout=10)
+        response = session.get(url, timeout=10)
         
         if response.status_code == 200:
             devices = response.json().get('data', [])
-            # Add display name
+            used_hosts = _get_node_usb_assignments(manager, host, port, node, session)
+            available = []
             for device in devices:
+                vendid = str(device.get('vendid', '')).replace('0x', '')
+                prodid = str(device.get('prodid', '')).replace('0x', '')
+                host_key = f"{vendid}:{prodid}" if vendid and prodid else None
+                if host_key and host_key in used_hosts:
+                    continue  # already passed through to another VM
                 vendor = device.get('manufacturer', device.get('vendid', 'Unknown'))
                 product = device.get('product', device.get('prodid', 'Unknown'))
                 device['display_name'] = f"{vendor} - {product}"
-            return jsonify(devices)
+                available.append(device)
+            return jsonify(available)
         return jsonify([])
     except Exception as e:
         logging.error(f"Error getting USB devices: {e}")
@@ -5107,6 +5118,47 @@ def add_usb_passthrough(cluster_id, node, vmid):
         return jsonify({'error': safe_error(e, 'Failed to add USB passthrough')}), 500
 
 
+@bp.route('/api/clusters/<cluster_id>/nodes/<node>/hardware/serial-used', methods=['GET'])
+@require_auth(perms=['node.view'])
+def get_node_serial_used(cluster_id, node):
+    """Device paths (e.g. '/dev/ttyUSB0') already claimed by a serialN entry
+    on some VM on this node. 'socket' is deliberately never included — a
+    virtual socket console isn't a physical device, so it isn't exclusive."""
+    ok, err = check_cluster_access(cluster_id)
+    if not ok:
+        return err
+    manager, error = get_connected_manager(cluster_id)
+    if error:
+        return error
+
+    used = set()
+    try:
+        host, port = manager.host, manager.api_port
+        session = manager._create_session()
+        qemu_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu"
+        qemu_resp = session.get(qemu_url, timeout=15)
+        vms = qemu_resp.json().get('data', []) if qemu_resp.status_code == 200 else []
+        for vm in vms:
+            vmid = vm.get('vmid')
+            try:
+                cfg_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu/{vmid}/config"
+                cfg_resp = session.get(cfg_url, timeout=10)
+                config = cfg_resp.json().get('data', {}) if cfg_resp.status_code == 200 else {}
+            except Exception:
+                continue
+            for key, value in config.items():
+                if not (key.startswith('serial') and key[6:].isdigit()):
+                    continue
+                v = str(value).strip()
+                if v.startswith('/dev/'):
+                    used.add(v)
+    except Exception as e:
+        logging.error(f"Error getting serial port usage: {e}")
+        return jsonify({'error': safe_error(e, 'Failed to get serial port usage')}), 500
+
+    return jsonify(sorted(used))
+
+
 @bp.route('/api/clusters/<cluster_id>/vms/<node>/qemu/<int:vmid>/passthrough/serial', methods=['POST'])
 @require_auth(perms=['vm.config'])
 def add_serial_port(cluster_id, node, vmid):
@@ -5215,6 +5267,40 @@ def _parse_pci_config(config_str):
             result['options'][key] = value
     
     return result
+
+
+def _get_node_usb_assignments(manager, host, port, node, session=None):
+    """{'vendid:prodid'} — every USB device (identified by vendor:product ID)
+    currently passed through to *any* VM on this node, whether by usbN
+    host=VID:PID or by usbN host=BUS-PORT (the latter isn't matchable against
+    a vendor:product scan result, so it's skipped — a bus/port assignment
+    doesn't collide with a vendor:product one anyway, they're different USB
+    passthrough addressing modes)."""
+    session = session or manager._create_session()
+    used = set()
+    try:
+        qemu_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu"
+        qemu_resp = session.get(qemu_url, timeout=15)
+        vms = qemu_resp.json().get('data', []) if qemu_resp.status_code == 200 else []
+    except Exception:
+        return used
+
+    for vm in vms:
+        vmid = vm.get('vmid')
+        try:
+            cfg_url = f"https://{host}:{port}/api2/json/nodes/{node}/qemu/{vmid}/config"
+            cfg_resp = session.get(cfg_url, timeout=10)
+            config = cfg_resp.json().get('data', {}) if cfg_resp.status_code == 200 else {}
+        except Exception:
+            continue
+        for key, value in config.items():
+            if not (key.startswith('usb') and key[3:].isdigit()):
+                continue
+            parsed = _parse_usb_config(str(value))
+            h = parsed.get('host') or ''
+            if ':' in h:  # vendid:prodid form, as opposed to bus-port ("1-2")
+                used.add(h.lower())
+    return used
 
 
 def _parse_usb_config(config_str):

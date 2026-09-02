@@ -124,11 +124,17 @@ def list_node_gpus(cluster_id, node):
     can't hand the same physical device to two guests at once. A vGPU-capable
     card stays listed even with some slices already handed out elsewhere;
     /profiles reports the remaining available_instances per profile, and the
-    frontend disables any profile that's fully consumed."""
+    frontend disables any profile that's fully consumed.
+
+    Pass ?include_allocated=1 to skip that filtering and get every detected
+    GPU regardless of assignment — used to resolve a friendly name/vendor for
+    a hostpci entry a VM already has (which is, by definition, "allocated"),
+    not for the add-a-new-GPU picker."""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
     manager, error = get_connected_manager(cluster_id)
     if error: return error
+    include_allocated = request.args.get('include_allocated', '').lower() in ('1', 'true', 'yes')
 
     try:
         host, port = manager.host, manager.api_port
@@ -158,13 +164,14 @@ def list_node_gpus(cluster_id, node):
         vgpu_capable = bool(dev.get('mdev'))
         existing = assignments.get(pciid, [])
         # A whole-device (mdev is None) assignment locks the entire card to
-        # that one VM — hide it. mdev-slice assignments never block the card
-        # from showing; capacity is checked per-profile in /profiles instead.
-        if existing and not vgpu_capable and any(a['mdev'] is None for a in existing):
-            continue
-        if existing and vgpu_capable and any(a['mdev'] is None for a in existing):
-            # a whole-device grab on a vGPU-capable card still locks it entirely
-            continue
+        # that one VM — hide it, unless the caller explicitly wants the full
+        # unfiltered list (e.g. to label an already-attached device).
+        if not include_allocated:
+            if existing and not vgpu_capable and any(a['mdev'] is None for a in existing):
+                continue
+            if existing and vgpu_capable and any(a['mdev'] is None for a in existing):
+                # a whole-device grab on a vGPU-capable card still locks it entirely
+                continue
         gpus.append({
             'pciid': pciid,
             'device_name': dev.get('device_name') or dev.get('device') or 'Unknown GPU',
