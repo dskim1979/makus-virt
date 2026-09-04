@@ -4,3 +4,8 @@
 # NS Jul 2026 — >=9.0.3 patches CVE-2025-71176 (insecure /tmp/pytest-of-{user} tmpdir,
 # TOCTOU local priv-esc/DoS). Dev/CI-only; never ships in the appliance.
 pytest>=9.0.3
+
+# NS Sep 2026 — known-vulnerability scanner for requirements.txt/requirements-dev.txt
+# (PyPA's own tool; also runs in .github/workflows/dependency-audit.yml on every
+# PR/push + weekly). Run locally with: pip-audit -r requirements.txt
+pip-audit
