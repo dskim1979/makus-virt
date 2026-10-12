@@ -1678,6 +1678,14 @@ def main(debug_mode=False):
     except Exception as e:
         logging.warning(f"Syslog server failed to start: {e}")
 
+    # MAKUS - sFlow collector (network flows); opens UDP 6343 only when enabled
+    try:
+        from pegaprox.background.sflow_collector import start_sflow_collector
+        if start_sflow_collector():
+            print("Started sFlow collector")
+    except Exception as e:
+        logging.warning(f"sFlow collector failed to start: {e}")
+
     # #625: not on a standby - the plans are the active's, and so is any run in flight.
     # The reset of DR plans a crash left running or testing (#238) is start_heartbeat's
     # recover_orphan_runs, which asks ha.is_active() right before it writes. A copy of

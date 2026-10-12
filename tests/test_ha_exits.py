@@ -435,7 +435,9 @@ EXITS = {
     # the listening socket of the console websocket servers (`sock_cls = socket.socket`)
     ('pegaprox/utils/concurrent.py', 'gevent_listen_socket', 'socket'): (3, 'local'),
     ('pegaprox/background/syslog_server.py', '_tcp_listener', 'socket'): (1, 'local'),
-    ('pegaprox/background/syslog_server.py', '_udp_listener', 'socket'): (1, 'local'),
+    ('pegaprox/background/syslog_server.py', '_udp_listener', 'socket'): (1, 'local'),
+    # MAKUS - sFlow collector: listens for the nodes' sFlow datagrams, changes nothing
+    ('pegaprox/background/sflow_collector.py', '_udp_listener', 'socket'): (1, 'local'),
     # outside the clusters
     ('pegaprox/api/settings.py', 'check_pegaprox_update', 'http-direct'): (1, 'external'),
     ('pegaprox/api/settings.py', 'perform_pegaprox_update', 'http-direct'): (5, 'external'),
@@ -755,7 +757,10 @@ AUTOMATIONS = {
     ('pegaprox/background/site_recovery.py', 'start_heartbeat'): (1, 'confirm'),
     ('pegaprox/background/syslog_server.py', '_tcp_listener'): (1, 'local'),
     ('pegaprox/background/syslog_server.py', '_syslog_loop'): (3, 'local'),
-    ('pegaprox/background/syslog_server.py', 'start_syslog_server'): (1, 'local'),
+    ('pegaprox/background/syslog_server.py', 'start_syslog_server'): (1, 'local'),
+    # MAKUS - sFlow collector thread, its listener and its hourly flush to flows.db
+    ('pegaprox/background/sflow_collector.py', '_collector_loop'): (2, 'local'),
+    ('pegaprox/background/sflow_collector.py', 'start_sflow_collector'): (1, 'local'),
     ('pegaprox/core/backup_verify.py', 'start_verification.run'): (1, 'read'),
     ('pegaprox/core/backup_verify.py', 'start_verification'): (1, 'job'),
     # a bulk migration of a user, one guest after another (#952)

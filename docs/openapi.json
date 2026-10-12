@@ -47925,6 +47925,152 @@
         ]
       }
     },
+    "/api/flows/status": {
+      "get": {
+        "operationId": "flows.flows_status_get",
+        "tags": [
+          "flows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        },
+        "x-pegaprox-auth": "decorator",
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "sessionId": []
+          }
+        ],
+        "x-pegaprox-permissions": [
+          "admin.settings"
+        ]
+      }
+    },
+    "/api/flows/config": {
+      "put": {
+        "operationId": "flows.flows_config_put",
+        "tags": [
+          "flows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "x-pegaprox-auth": "decorator",
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "sessionId": []
+          }
+        ],
+        "x-pegaprox-permissions": [
+          "admin.settings"
+        ]
+      }
+    },
+    "/api/flows/top": {
+      "get": {
+        "operationId": "flows.flows_top_get",
+        "tags": [
+          "flows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        },
+        "x-pegaprox-auth": "decorator",
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "sessionId": []
+          }
+        ],
+        "x-pegaprox-permissions": [
+          "admin.settings"
+        ]
+      }
+    },
+    "/api/flows/setup": {
+      "get": {
+        "operationId": "flows.flows_setup_get",
+        "tags": [
+          "flows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        },
+        "x-pegaprox-auth": "decorator",
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "sessionId": []
+          }
+        ],
+        "x-pegaprox-permissions": [
+          "admin.settings"
+        ]
+      }
+    },
     "/api/clusters/{cluster_id}/nodes/{node}/shellws": {
       "get": {
         "operationId": "__flask_sock.node_shell_websocket_proxy_get",
