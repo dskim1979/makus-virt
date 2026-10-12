@@ -108,10 +108,10 @@ def _get_node_gpu_utilization(manager, node):
             cmd = ('nvidia-smi --query-gpu=pci.bus_id,utilization.gpu,utilization.memory,'
                    'memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits')
             stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
-            exit_code = stdout.channel.recv_exit_status()
-            if exit_code != 0:
+            from pegaprox.utils.ssh import read_capped
+            output = read_capped(stdout)  # bounded: a node must not be able to exhaust our memory
+            if stdout.channel.recv_exit_status() != 0:
                 return {}
-            output = stdout.read().decode('utf-8', errors='ignore')
         finally:
             ssh.close()
 

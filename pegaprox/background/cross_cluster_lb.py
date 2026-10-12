@@ -17,6 +17,7 @@ from datetime import datetime
 
 from pegaprox.globals import cluster_managers
 from pegaprox.core.db import get_db
+from pegaprox.core import ha
 from pegaprox.utils.audit import log_audit
 
 logger = logging.getLogger('pegaprox.xclb')
@@ -110,6 +111,9 @@ def run_cross_cluster_balance_check(group):
     """Core logic: compare cluster scores within a group, migrate if needed.
     NS: Intentionally conservative - one VM per cycle, dry_run default on.
     """
+    # a standby migrates nothing, from the loop or from the manual trigger
+    if not ha.is_active():
+        return
     group_id = group['id']
     group_name = group.get('name', group_id)
     threshold = group.get('cross_cluster_threshold', 30)
@@ -165,7 +169,15 @@ def run_cross_cluster_balance_check(group):
         return
 
     # 6. find migration candidate on source
-    vm = hi_mgr.find_migration_candidate(source_node, source_node, include_containers=include_containers)
+    # sec/correctness (audit): this passed source_node as its OWN target. Two gates inside
+    # find_migration_candidate then evaluated against the node the guest is already on, so
+    # neither could ever refuse: a guest with a plb_pin tag matched its own node and got picked
+    # to be moved off the pin, and the "does the target have this storage" check asked our own
+    # cluster about our own node and always said yes. target_mgr sends the storage lookup to
+    # the cluster that will actually receive the guest.
+    vm = hi_mgr.find_migration_candidate(source_node, target_node,
+                                         include_containers=include_containers,
+                                         target_mgr=lo_mgr)
     if not vm:
         logger.info(f"[XCLB] No migration candidate on {hi_cid}/{source_node}")
         return
@@ -173,6 +185,11 @@ def run_cross_cluster_balance_check(group):
     vmid = vm.get('vmid')
     vm_name = vm.get('name', 'unnamed')
     vm_type = vm.get('type', 'qemu')
+
+    # an automatic leader that lost its lease starts no migration (#625); the token,
+    # the fingerprint and the migration follow within the lease this confirms
+    if not ha.confirm_step(f'cross-cluster balancing of {vmid}'):
+        return
 
     # 7. create temp API token on target cluster
     token_name = f"xclb-{group_id[:8]}-{vmid}"
@@ -210,9 +227,9 @@ def run_cross_cluster_balance_check(group):
             log_audit('system', 'xclb.migrate',
                       f"Cross-cluster LB: Migrated {vm_type}/{vmid} ({vm_name}) "
                       f"from {hi_cid} to {lo_cid} (group:{group_id})")
-            # spawn token cleanup thread
+            # spawn token cleanup thread (its delete comes later and asks at its exit)
             threading.Thread(
-                target=_token_cleanup_thread,
+                target=ha.as_job(_token_cleanup_thread, f'token cleanup for {vmid}'),
                 args=(lo_mgr, hi_mgr, token_name, task_upid, vmid, vm_type),
                 daemon=True
             ).start()

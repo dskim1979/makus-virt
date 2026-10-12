@@ -8,12 +8,27 @@ import os
 from pathlib import Path
 
 # Version
-PEGAPROX_VERSION = "1.1.0"
-PEGAPROX_BUILD = "2026.08.30"
+PEGAPROX_VERSION = "1.3.0"
+PEGAPROX_BUILD = "2026.10.07"
 
 # File Paths & Directories
-CONFIG_DIR = 'config'
-Path(CONFIG_DIR).mkdir(exist_ok=True)
+# MK Sep 2026 (#826): both directories are resolvable from the environment.
+# They used to be relative to the working directory, which is /opt/PegaProx, /var/lib/
+# pegaprox or /app depending on how you installed - so "keep the state somewhere else"
+# meant moving the whole install. Everything below derives from CONFIG_DIR, so setting
+# it here is enough; read it before anything is joined onto it.
+#   PEGAPROX_CONFIG_DIR - database, master key, settings, TLS pair, branding
+#   PEGAPROX_LOG_DIR    - the per-cluster log files
+# Unset or blank keeps today's relative paths, which is what every install has.
+def _dir_from_env(var, default):
+    raw = os.environ.get(var, '')
+    return raw.strip() if isinstance(raw, str) and raw.strip() else default
+
+
+CONFIG_DIR = _dir_from_env('PEGAPROX_CONFIG_DIR', 'config')
+# parents=True because a moved path is typically nested (/srv/state/pegaprox/config)
+# and mkdir would otherwise fail on the very first start.
+Path(CONFIG_DIR).mkdir(parents=True, exist_ok=True)
 try:
     os.chmod(CONFIG_DIR, 0o700)
 except Exception:
@@ -32,6 +47,9 @@ SESSIONS_FILE = os.path.join(CONFIG_DIR, 'sessions.json')
 SESSIONS_FILE_ENCRYPTED = os.path.join(CONFIG_DIR, 'sessions.enc')
 SERVER_SETTINGS_FILE = os.path.join(CONFIG_DIR, 'server_settings.json')
 ADMIN_INITIALIZED_FILE = os.path.join(CONFIG_DIR, '.admin_initialized')
+# created by hand on the server to run the setup wizard on an install that holds
+# configuration but no account any more (#991); the setup removes it
+SETUP_REOPEN_FILE = os.path.join(CONFIG_DIR, 'reopen_setup')
 ALERTS_CONFIG_FILE = os.path.join(CONFIG_DIR, 'alerts.json')
 SCHEDULED_TASKS_FILE = os.path.join(CONFIG_DIR, 'scheduled_tasks.json')
 VM_TAGS_FILE = os.path.join(CONFIG_DIR, 'vm_tags.json')
@@ -53,7 +71,7 @@ SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'ssl', 'key.pem')
 SSL_CERT_FILE_LEGACY = 'ssl/cert.pem'
 SSL_KEY_FILE_LEGACY = 'ssl/key.pem'
 BRANDING_DIR = os.path.join(CONFIG_DIR, 'branding')
-LOG_DIR = 'logs'
+LOG_DIR = _dir_from_env('PEGAPROX_LOG_DIR', 'logs')   # #826
 
 # MK May 2026 (#357 SeeJayEmm): expose log level + per-cluster file-handler
 # behaviour via env vars so operators shipping logs to a central collector
@@ -62,6 +80,7 @@ LOG_DIR = 'logs'
 #   PEGAPROX_FILE_LOG_LEVEL   — level for the per-cluster logs/<id>.log handler
 #   PEGAPROX_DISABLE_FILE_LOG — '1'/'true' to skip attaching the FileHandler
 import logging as _logging
+import math as _math
 def _parse_log_level(s: str, default):
     if not isinstance(s, str) or not s.strip():
         return default
@@ -95,7 +114,7 @@ def _config_owned_by_us():
 CONFIG_OWNED_BY_US = _config_owned_by_us()
 
 # Ensure directories exist
-Path(LOG_DIR).mkdir(exist_ok=True)
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)   # #826: a moved log path is usually nested
 Path(PLUGINS_DIR).mkdir(exist_ok=True)
 Path(WEB_DIR).mkdir(exist_ok=True)
 if CONFIG_OWNED_BY_US:
@@ -188,3 +207,61 @@ PREDICTIVE_WMA_DECAY = 0.7
 PREDICTIVE_COMPOSITE_WEIGHT = (0.6, 0.4)  # cpu, mem
 PREDICTIVE_OVERSHOOT_FACTOR = 1.15  # compensate for bursty workloads
 PREDICTIVE_ENGINE_TAG = 'pega-wma-v2'
+
+# MK Sep 2026 — how long the VNC relay's reader may sit in one recv before it releases the
+# pve_ws lock for a writer. The #713 lock funnels SSL_read and SSL_write through one mutex so
+# they can't splice a TLS record, and this slice is what keeps the reader from starving the
+# writer. It started at 50ms, which is also the worst-case delay an outbound pointer or key
+# event inherits on an idle screen — that is the mouse jitter people reported on 1.1.0, since
+# an idle desktop sends no framebuffer traffic to cut the wait short. 10ms is below the
+# threshold where pointer motion reads as steady, and costs only more timed-out wakeups
+# (~100/s per OPEN CONSOLE — a human-bounded number, unrelated to how many guests exist).
+VNC_PVE_RECV_SLICE = float(os.environ.get('PEGAPROX_VNC_RECV_SLICE', '0.01'))
+
+# MK Sep 2026 (#647) — how long to keep asking where a guest ended up after an HA
+# migrate task reported failure. `ha-manager migrate` returns once the CRM has the
+# request, not once the guest has moved, so an immediate look-up answers "still on the
+# source" for a migration that is about to succeed. 90s covers the reported gap with
+# room to spare; a real failure pays it once, on a path that is already the exception.
+def _bounded_float_env(name, default, lo, hi):
+    """Read a float from the environment without letting a typo take the app down.
+
+    MK Sep 2026 — a bare float(os.environ.get(...)) raises at IMPORT time, so
+    PEGAPROX_HA_MIGRATE_SETTLE=90s (or an empty value from a half-written unit file)
+    stops PegaProx from starting at all rather than doing something sensible. And the
+    poll interval is slept on inside a loop: a 0 there turns a 90-second settle window
+    into ninety seconds of hammering /cluster/resources as fast as the API answers.
+    Fall back on garbage, clamp on out-of-range, say so either way.
+    """
+    raw = os.environ.get(name)
+    if raw is None or raw == '':
+        return default
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        _logging.warning(f"[config] {name}={raw!r} is not a number — using {default}")
+        return default
+    # float('nan') parses happily, and every comparison against NaN is False — so it
+    # walks straight through the range check below and comes out the other side intact.
+    # A NaN settle window makes `time.time() + val` NaN too, which makes the loop's
+    # `time.time() >= deadline` false forever: the evacuation never returns and polls
+    # the cluster until the process dies. That check clamps inf and -inf fine on its own;
+    # NaN is the one it cannot see, so this takes all three and says so in the log.
+    if not _math.isfinite(val):
+        _logging.warning(f"[config] {name}={raw!r} is not a finite number — using {default}")
+        return default
+    if val < lo or val > hi:
+        clamped = min(max(val, lo), hi)
+        _logging.warning(f"[config] {name}={val} outside {lo}..{hi} — using {clamped}")
+        return clamped
+    return val
+
+
+HA_MIGRATE_SETTLE_SECONDS = _bounded_float_env('PEGAPROX_HA_MIGRATE_SETTLE', 90.0, 0.0, 3600.0)
+HA_MIGRATE_SETTLE_POLL = _bounded_float_env('PEGAPROX_HA_MIGRATE_SETTLE_POLL', 3.0, 0.5, 60.0)
+
+# MK Oct 2026 (#713) - a write to PVE on a console relay gets its own deadline. It used to
+# inherit VNC_PVE_RECV_SLICE above, so any write that could not drain within 10ms - a full
+# send buffer, or a hub busy elsewhere for that long - timed out halfway. What that does to
+# the stream is in vnc_polling.write_with_deadline.
+VNC_PVE_SEND_TIMEOUT = _bounded_float_env('PEGAPROX_VNC_SEND_TIMEOUT', 10.0, 1.0, 120.0)

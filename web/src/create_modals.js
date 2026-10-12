@@ -391,7 +391,12 @@
             // ZFS/LVM/RBD only do raw, file-based storages support all
             const STORAGE_FORMATS = {
                 zfspool: ['raw'], zfs: ['raw'],
-                lvm: ['raw'], lvmthin: ['raw'],
+                // NS Sep 2026 (#785) — PVE 9 does qcow2 on LVM and LVM-thin (volume-chain
+                // snapshots). This table still had them raw-only, and with a single entry the
+                // select renders disabled and hard-coded to RAW, so the format could not be
+                // picked at all in the create wizard. vm_config.js already knew this; the two
+                // tables had drifted. Same order as there.
+                lvm: ['qcow2', 'raw'], lvmthin: ['qcow2', 'raw'],
                 rbd: ['raw'],
                 iscsi: ['raw'], iscsidirect: ['raw'],
                 dir: ['raw', 'qcow2', 'vmdk'],
@@ -1932,6 +1937,34 @@
         // Add Cluster Modal
         // LW: Wizard for adding new Proxmox clusters
         // Defaults are pretty sensible, most users just need host + credentials
+        // Fresh Add Cluster form values, one factory per connection type. The modal stays
+        // mounted while closed and resets every field (including credentials) from these.
+        const emptyProxmoxConfig = () => ({
+            name: '', host: '', api_port: 8006, node_ui_suffix: '', user: 'root@pam', pass: '',
+            ssl_verification: false, migration_threshold: 20, migration_tolerance: 10, check_interval: 300,
+            auto_migrate: false, balance_containers: false, balance_local_disks: false,
+            dry_run: false, ssh_key: '', ssh_disabled: false, ha_enabled: false, proxlb_tags_enabled: false,
+            proxlb_pins_auto_migrate: false, proxlb_pins_strict: false,
+            predictive_balancing: false, predictive_threshold: 75,
+            balance_cpu_weight: 1.0, balance_mem_weight: 1.0, balance_io_weight: 0.0,
+            cpu_baseline: null,
+        });
+        const emptyXcpConfig = () => ({
+            name: '', host: '', user: 'root', pass: '',
+            ssl_verification: false, migration_threshold: 20, check_interval: 300,
+            auto_migrate: false, dry_run: false, cluster_type: 'xcpng',
+        });
+        const emptyPbsConfig = () => ({
+            name: '', host: '', port: 8007, user: 'root@pam', password: '',
+            api_token_id: '', api_token_secret: '', fingerprint: '',
+            ssl_verify: false, linked_clusters: [], notes: '',
+            ssh_user: '', ssh_port: 22, ssh_key: '',
+        });
+        const emptyVmwareConfig = () => ({
+            name: '', host: '', port: 443, username: 'root', password: '',
+            ssl_verify: false, notes: '',
+        });
+
         function AddClusterModal({ isOpen, onClose, onSubmit, onAddPBS, onAddVMware, loading, error, initialType = 'proxmox', reconfigureConfig = null }) {
             const { t } = useTranslation();
             const { isCorporate } = useLayout();
@@ -1947,44 +1980,40 @@
                     if (rc.cluster_type === 'xcpng') {
                         setXcpConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, dry_run: rc.dry_run || false }));
                     } else {
-                        setConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', api_port: rc.api_port || 8006, node_ui_suffix: rc.node_ui_suffix || '', user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, migration_tolerance: rc.migration_tolerance || 10, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, balance_containers: rc.balance_containers || false, balance_local_disks: rc.balance_local_disks || false, dry_run: rc.dry_run || false, ssh_key: '' }));
+                        // #762 — carry EVERY persisted cluster setting into the reconfigure form, not
+                        // just this subset. The omitted toggles (HA, ProxLB tags, predictive balancing +
+                        // its weights/baseline) started at their defaults, so hitting Re-configure quietly
+                        // switched them back off. The list GET already returns all of these.
+                        setConfig(prev => ({ ...prev, name: rc.name || '', host: rc.host || '', api_port: rc.api_port || 8006, node_ui_suffix: rc.node_ui_suffix || '', user: rc.user || '', pass: '', ssl_verification: rc.ssl_verification || false, migration_threshold: rc.migration_threshold || 20, migration_tolerance: rc.migration_tolerance || 10, check_interval: rc.check_interval || 300, auto_migrate: rc.auto_migrate || false, balance_containers: rc.balance_containers || false, balance_local_disks: rc.balance_local_disks || false, dry_run: rc.dry_run || false, ssh_key: '', ssh_disabled: rc.ssh_disabled || false, ha_enabled: rc.ha_enabled || false, proxlb_tags_enabled: rc.proxlb_tags_enabled || false, proxlb_pins_auto_migrate: rc.proxlb_pins_auto_migrate === true, proxlb_pins_strict: rc.proxlb_pins_strict === true, predictive_balancing: rc.predictive_balancing || false, predictive_threshold: rc.predictive_threshold || 75, balance_cpu_weight: rc.balance_cpu_weight || 1.0, balance_mem_weight: rc.balance_mem_weight || 1.0, balance_io_weight: rc.balance_io_weight || 0.0, cpu_baseline: rc.cpu_baseline || null }));
                     }
                 }
             }, [isOpen, initialType, reconfigureConfig]);
             
             // Proxmox config
-            const [config, setConfig] = useState({
-                name: '', host: '', api_port: 8006, node_ui_suffix: '', user: 'root@pam', pass: '',
-                ssl_verification: false, migration_threshold: 20, migration_tolerance: 10, check_interval: 300,
-                auto_migrate: false, balance_containers: false, balance_local_disks: false,
-                dry_run: false, ssh_key: '',
-                predictive_balancing: false, predictive_threshold: 75,
-                balance_cpu_weight: 1.0, balance_mem_weight: 1.0, balance_io_weight: 0.0,
-                cpu_baseline: null,
-            });
+            const [config, setConfig] = useState(emptyProxmoxConfig);
             const [showSshSettings, setShowSshSettings] = useState(false);
 
             // XCP-ng config
-            const [xcpConfig, setXcpConfig] = useState({
-                name: '', host: '', user: 'root', pass: '',
-                ssl_verification: false, migration_threshold: 20, check_interval: 300,
-                auto_migrate: false, dry_run: false, cluster_type: 'xcpng',
-            });
+            const [xcpConfig, setXcpConfig] = useState(emptyXcpConfig);
 
             // PBS config
-            const [pbsConfig, setPbsConfig] = useState({
-                name: '', host: '', port: 8007, user: 'root@pam', password: '',
-                api_token_id: '', api_token_secret: '', fingerprint: '',
-                ssl_verify: false, linked_clusters: [], notes: '',
-                ssh_user: '', ssh_port: 22, ssh_key: '',
-            });
+            const [pbsConfig, setPbsConfig] = useState(emptyPbsConfig);
             const [showPbsSshSettings, setShowPbsSshSettings] = useState(false);
 
             // VMware config
-            const [vmwConfig, setVmwConfig] = useState({
-                name: '', host: '', port: 443, username: 'root', password: '',
-                ssl_verify: false, notes: '',
-            });
+            const [vmwConfig, setVmwConfig] = useState(emptyVmwareConfig);
+
+            // Clear every form on close so a later Add does not inherit the previous
+            // cluster's name, host or password, and no credential lingers in state.
+            useEffect(() => {
+                if (isOpen) return;
+                setConfig(emptyProxmoxConfig());
+                setXcpConfig(emptyXcpConfig());
+                setPbsConfig(emptyPbsConfig());
+                setVmwConfig(emptyVmwareConfig());
+                setShowSshSettings(false);
+                setShowPbsSshSettings(false);
+            }, [isOpen]);
 
             if (!isOpen) return null;
 
@@ -2110,6 +2139,10 @@
                                         <textarea value={config.ssh_key} onChange={e => setConfig({...config, ssh_key: e.target.value})}
                                             className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-proxmox-orange transition-colors font-mono text-xs"
                                             placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" rows={4} />
+                                        <div className="pt-2 border-t border-proxmox-border">
+                                            <Toggle checked={config.ssh_disabled} onChange={v => setConfig({...config, ssh_disabled: v})} label={t('sshDisabled') || 'No SSH to this cluster'} />
+                                            <p className="text-xs text-gray-400 mt-2">{t('sshDisabledDesc') || 'Blocks every SSH connection to this cluster\'s nodes, including the node shell and the VNC tunnel. Features that need a shell will say so.'}</p>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -2214,16 +2247,18 @@
                                         placeholder="root@pam" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">{t('password')}</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">{t('passwordOrToken') || t('password')}</label>
                                     <input type="password" value={pbsConfig.password} onChange={e => setPbsConfig({...pbsConfig, password: e.target.value})} required
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-400 transition-colors"
-                                        placeholder="Password" />
+                                        placeholder={pbsConfig.user.includes('!') ? 'Token Secret' : 'Password'} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">Port</label>
                                     <input type="number" value={pbsConfig.port} onChange={e => setPbsConfig({...pbsConfig, port: parseInt(e.target.value) || 8007})}
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white focus:outline-none focus:border-blue-400 transition-colors" />
                                 </div>
+                                {/* LW Oct 2026 (#805) - a token goes in like on the PVE tab, the backend reads the '!' */}
+                                <p className="col-span-3 -mt-2 text-xs text-gray-500">{t('apiTokenHint') || 'For API tokens use: user@realm!tokenid'}</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Fingerprint ({t('optional') || 'Optional'})</label>
@@ -2281,7 +2316,7 @@
                                     <label className="block text-sm font-medium text-gray-300 mb-2">{t('name')}</label>
                                     <input type="text" value={vmwConfig.name} onChange={e => setVmwConfig({...vmwConfig, name: e.target.value})} required
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors"
-                                        placeholder="ESXi Host 1" />
+                                        placeholder={t('esxiServerNameExamplePlaceholder')} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-2">{t('host')}</label>
@@ -2301,10 +2336,10 @@
                                     <label className="block text-sm font-medium text-gray-300 mb-2">{t('password')}</label>
                                     <input type="password" value={vmwConfig.password} onChange={e => setVmwConfig({...vmwConfig, password: e.target.value})} required
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors"
-                                        placeholder="Password" />
+                                        placeholder={t('password')} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">Port</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">{t('port')}</label>
                                     <input type="number" value={vmwConfig.port} onChange={e => setVmwConfig({...vmwConfig, port: parseInt(e.target.value) || 443})}
                                         className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white focus:outline-none focus:border-emerald-400 transition-colors" />
                                 </div>
@@ -2316,7 +2351,7 @@
                                 <label className="block text-sm font-medium text-gray-300 mb-2">{t('notes') || 'Notes'} ({t('optional') || 'Optional'})</label>
                                 <input type="text" value={vmwConfig.notes} onChange={e => setVmwConfig({...vmwConfig, notes: e.target.value})}
                                     className="w-full px-4 py-2.5 bg-proxmox-dark border border-proxmox-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors"
-                                    placeholder="Production ESXi host" />
+                                    placeholder={t('esxiServerNotesPlaceholder')} />
                             </div>
                             </>)}
 
@@ -2334,7 +2369,7 @@
                                     }`}>
                                     {loading ? t('connecting') : reconfigureConfig ? (t('reconfigure') || 'Re-configure')
                                         : connectionType === 'pbs' ? (t('addPbsServer') || 'Add Backup Server')
-                                        : connectionType === 'vmware' ? (t('addVmwareServer') || 'Add VMware')
+                                        : connectionType === 'vmware' ? t('addEsxiServer')
                                         : connectionType === 'xcpng' ? (t('addXcpngPool') || 'Add XCP-ng Pool')
                                         : t('addCluster')}
                                 </button>
@@ -3502,6 +3537,9 @@
         }
 
         function HardwareKeysPanel({ t, addToast, getAuthHeaders }) {
+            // a key is bound to the host the browser sees: no standby enrols one, forwarding
+            // or not (#625). Removing one goes through like any other change
+            const { haStandby } = useAuth();
             const [available, setAvailable] = useState(true);   // optimistic; will flip if server says no
             const [hostUsable, setHostUsable] = useState(true);
             const [hostReason, setHostReason] = useState(null);
@@ -3617,12 +3655,15 @@
                             <Icons.Key /> {t('hardwareKeys') || 'Hardware Keys'}
                             <span className="text-xs text-gray-500 ml-1">({creds.length})</span>
                         </h3>
+                        {!haStandby && (
                         <button onClick={register} disabled={registering || !hostUsable}
                             className="px-3 py-1.5 bg-proxmox-orange hover:bg-orange-600 rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                             {registering ? <Icons.RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Icons.Plus className="w-3.5 h-3.5" />}
                             {t('addHardwareKey') || 'Add Security Key'}
                         </button>
+                        )}
                     </div>
+                    {haStandby && <HaSettingsOnActive className="mb-3" />}
                     {!hostUsable && hostReason === 'ip_literal' && (
                         <div className="mb-3 p-3 rounded-lg flex items-start gap-2" style={{background: 'rgba(239, 192, 6, 0.08)', borderLeft: '3px solid #efc006'}}>
                             <Icons.AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{color: '#efc006'}} />

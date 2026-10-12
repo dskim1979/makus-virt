@@ -51,3 +51,4 @@ assignees: ''
 ## Checklist
 - [ ] I have searched existing issues to make sure this is not a duplicate
 - [ ] I am using the latest version of MOAVI
+- [ ] I've put enough in here that someone can start on it without asking me three questions first

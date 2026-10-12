@@ -372,6 +372,8 @@
                         <p className="text-center text-gray-500 text-sm mt-6">
                             {t('clusterManagement')} {PEGAPROX_VERSION}
                         </p>
+                        <LegalNotice className="mt-4 pt-3"
+                                     style={{borderTop: '1px solid rgba(127,127,127,0.18)'}} />
                     </div>
                 </div>
             );
@@ -441,6 +443,7 @@
                             </div>
                             <h2 className="text-xl font-semibold text-white mb-2">{t('setupComplete')}</h2>
                             <p className="text-gray-400">{t('setupRedirecting')}</p>
+                            <LegalNotice className="mt-6" />
                         </div>
                     </div>
                 );
@@ -557,6 +560,8 @@
                         <p className="text-center text-gray-500 text-sm mt-6">
                             {t('clusterManagement')} {PEGAPROX_VERSION}
                         </p>
+                        <LegalNotice className="mt-4 pt-3"
+                                     style={{borderTop: '1px solid rgba(127,127,127,0.18)'}} />
                     </div>
                 </div>
             );

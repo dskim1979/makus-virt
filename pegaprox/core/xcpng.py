@@ -19,7 +19,10 @@ from urllib.parse import urlparse, urlunparse, urlencode
 from pegaprox.constants import LOG_DIR
 from pegaprox import globals as _g
 from pegaprox.core.db import get_db
+from pegaprox.core import ha
+from pegaprox.core import ha_transport
 from pegaprox.utils.realtime import broadcast_sse
+from pegaprox.utils.ssh import read_capped as _read_capped
 
 # XenAPI is optional - only needed for XCP-ng clusters
 try:
@@ -209,21 +212,28 @@ class XcpngManager:
             return False
 
         with self._session_lock:
+            # MK Oct 2026 - a stopped manager logs in no more, as PegaProxManager.stop()
+            # blocks it (#444). The loop may still be in a fetch when stop() logs out, and
+            # its next _api() would open a session nobody ever logs out (a pool reloaded
+            # on a standby, #625, or reconfigured on the leader)
+            if self.stop_event.is_set():
+                self.is_connected = False
+                return False
             try:
                 url = self._get_xapi_url()
-                session = XenAPI.Session(url, ignore_ssl=not self.config.ssl_verification)
+                session = ha_transport.guard_xapi(
+                    XenAPI.Session(url, ignore_ssl=not self.config.ssl_verification))
                 session.xenapi.login_with_password(
                     self.config.user, self.config.pass_,
                     '1.0', 'PegaProx'
                 )
-                self._session = session
+                replaced, self._session = self._session, session
                 self.is_connected = True
                 self.connection_error = None
                 self.current_host = self.config.host
                 self._consecutive_failures = 0
                 self._last_keepalive = time.time()
                 self.logger.info(f"Connected to XCP-ng pool: {self.config.host}")
-                return True
             except Exception as e:
                 self.is_connected = False
                 self.connection_error = str(e)
@@ -232,6 +242,14 @@ class XcpngManager:
                 if self._consecutive_failures <= 3:
                     self.logger.error(f"XAPI connect failed: {e}")
                 return False
+        if replaced is not None:
+            # the session this one takes over from (it expired, or failed too often): the
+            # pool master keeps it open until it times out otherwise
+            try:
+                replaced.xenapi.session.logout()
+            except Exception:
+                pass
+        return True
 
     # compat alias for API layer
     def connect_to_proxmox(self) -> bool:
@@ -262,7 +280,9 @@ class XcpngManager:
             self.connect()
 
     def _api(self):
-        """Get the xenapi proxy, reconnecting if needed."""
+        """Get the xenapi proxy, reconnecting if needed. None once stopped."""
+        if self.stop_event.is_set():
+            return None
         if not self._session or not self.is_connected:
             if not self.connect():
                 return None
@@ -291,8 +311,10 @@ class XcpngManager:
 
     def _run_loop(self):
         """Background loop - periodic status refresh & task polling."""
-        # initial connect
-        self.connect()
+        # initial connect, unless the caller logged in already: adding and reconfiguring
+        # a pool test the login before they start us, and that session is the one to use
+        if not (self._session and self.is_connected):
+            self.connect()
         while not self.stop_event.is_set():
             try:
                 if self.is_connected:
@@ -303,7 +325,8 @@ class XcpngManager:
                     now_t = time.time()
                     interval_cfg = getattr(self.config, 'check_interval', 300)
                     auto_migrate = getattr(self.config, 'auto_migrate', False)
-                    if auto_migrate and now_t - self._last_balance_check >= interval_cfg:
+                    # a PegaProx standby does not balance (#625)
+                    if auto_migrate and ha.is_active() and now_t - self._last_balance_check >= interval_cfg:
                         try:
                             self.run_balance_check()
                         except Exception as be:
@@ -491,6 +514,9 @@ class XcpngManager:
 
     def _fetch_vms(self, api) -> list:
         db = get_db()
+        # a PegaProx standby looks ids up and hands none out (#625): a VM the active
+        # has not numbered yet stays out of the list until the sync brings its id
+        new_ids = ha.is_active()
         vm_refs = api.VM.get_all()
         now = time.time()
         vms = []
@@ -509,7 +535,9 @@ class XcpngManager:
                 continue
 
             vm_uuid = rec.get('uuid', '')
-            vmid = db.xcpng_get_vmid(self.id, vm_uuid)
+            vmid = db.xcpng_get_vmid(self.id, vm_uuid, create=new_ids)
+            if vmid is None:
+                continue
 
             # figure out which host its on
             resident = rec.get('resident_on', 'OpaqueRef:NULL')
@@ -757,9 +785,12 @@ class XcpngManager:
             }
         return result
 
-    def get_vm_resources(self) -> list:
+    def get_vm_resources(self, max_age: float = 0.0) -> list:
         """Return VM+node list for broadcast loop - same format as Proxmox /cluster/resources.
-        MK: include nodes so SSE doesn't think connection is stale when cluster has zero VMs."""
+        MK: include nodes so SSE doesn't think connection is stale when cluster has zero VMs.
+        #781 (Panxatony) — accept (and ignore) max_age so callers written for the Proxmox manager
+        (clusters.py /resources, topology.py) don't TypeError on an XCP-ng cluster. There's no
+        cached snapshot to reuse here; this always builds fresh, which is what max_age=0 means."""
         vms = self.get_vms() or []
         nodes = self.get_nodes() or []
         return vms + nodes
@@ -885,12 +916,22 @@ class XcpngManager:
 
             api.VM.destroy(ref)
 
-            # cleanup vmid mapping
+            # MK Sep 2026 - retire the mapping instead of deleting it. The allocator
+            # takes MAX(vmid)+1 from this very table, so removing the row lowers the
+            # high-water mark and hands the id straight to the next VM created here.
+            # Anything still pointing at it - a VM-ACL row, a pool grant, a scheduled
+            # action - would then apply to a completely different guest, possibly
+            # another tenant's. Blanking the uuid keeps the id spent: the lookup by
+            # uuid never matches a retired row, and resolve returns nothing for it.
             db = get_db()
-            cursor = db.conn.cursor()
-            cursor.execute('DELETE FROM xcpng_vmid_map WHERE cluster_id = ? AND vmid = ?',
-                          (self.id, int(vmid)))
-            db.conn.commit()
+            db.xcpng_retire_vmid(self.id, int(vmid))
+
+            # and drop what pointed at it, so nothing is left to inherit even if the
+            # id is somehow reused by a path we have not thought of
+            try:
+                db.purge_vm_grants(self.id, int(vmid))
+            except Exception as e:
+                self.logger.warning(f"could not purge grants for retired VM {vmid}: {e}")
 
             # invalidate cache
             self._cached_vms = None
@@ -1807,13 +1848,20 @@ class XcpngManager:
 
             # console URL is like https://host/console?ref=OpaqueRef:xxxx
             location = api.console.get_location(rfb_console)
-            # extract session ID for auth
-            session_ref = api.xenapi._session
+            # MK Sep 2026 - `session_ref` used to travel in this response. That is the POOL
+            # management session: whoever holds it can call the XenAPI directly with our
+            # service account's rights, which is every VM in the pool, not the one console
+            # they opened. Both callers hand this dict straight to the browser, so every
+            # console user - including a client-portal customer with one guest - was handed
+            # it. Nothing consumes it: no relay, no frontend path reads the field.
+            #
+            # When the XCP-ng console is finished, the ticket belongs on the SERVER side of
+            # the relay (the pattern the PVE console already uses) and must never reach the
+            # client. Deliberately not returned here.
             return {
                 'success': True,
                 'type': 'xcpng_vnc',
                 'url': location,
-                'session_ref': session_ref,
                 'host': self.host,
                 'port': 443,
             }
@@ -2371,7 +2419,10 @@ class XcpngManager:
     # Maintenance mode - MK Mar 2026
     # ──────────────────────────────────────────
 
-    def enter_maintenance_mode(self, node_name, skip_evacuation=False):
+    def enter_maintenance_mode(self, node_name, skip_evacuation=False, allow_local_disks=False):
+        # MK Oct 2026 - the rolling update passes allow_local_disks (#330) to every manager;
+        # without it here each evacuating rolling update on XCP-ng stopped with a TypeError.
+        # host.evacuate decides about local disks itself, so it is taken and not used
         """Disable host and optionally evacuate VMs.
         XCP-ng host.disable() prevents new VMs from starting.
         host.evacuate() live-migrates all running VMs away.
@@ -2564,7 +2615,6 @@ class XcpngManager:
             sr_type = api.SR.get_type(sr_ref)
 
             # for ISO SRs, we use HTTP PUT to the host
-            import requests as _req
             session_ref = api.xenapi._session
             host_url = f"https://{self.host}"
 
@@ -2586,8 +2636,8 @@ class XcpngManager:
                 # HTTP PUT to import endpoint — URL built via defensive helper
                 url = _build_xapi_import_vdi_url(host_url, session_ref, vdi_uuid, "raw")
                 _ssl_verify = getattr(self.config, 'ssl_verification', False)
-                resp = _req.put(url, data=file_stream, verify=_ssl_verify,
-                               headers={'Content-Type': 'application/octet-stream'})
+                resp = ha_transport.http('PUT', url, data=file_stream, verify=_ssl_verify,
+                                         headers={'Content-Type': 'application/octet-stream'})
                 if resp.status_code in (200, 204):
                     self.logger.info(f"Uploaded {filename} to {storage}")
                     return {'success': True, 'message': f'{filename} uploaded'}
@@ -2893,6 +2943,7 @@ class XcpngManager:
 
             if ha_enabled:
                 vm_ha = []
+                new_ids = ha.is_active()   # see _fetch_vms (#625)
                 for vm_ref in api.VM.get_all():
                     try:
                         if api.VM.get_is_a_template(vm_ref):
@@ -2904,7 +2955,9 @@ class XcpngManager:
                             name = api.VM.get_name_label(vm_ref)
                             uuid = api.VM.get_uuid(vm_ref)
                             db = get_db()
-                            vmid = db.xcpng_get_vmid(self.id, uuid)
+                            vmid = db.xcpng_get_vmid(self.id, uuid, create=new_ids)
+                            if vmid is None:
+                                continue
                             vm_ha.append({
                                 'vmid': vmid,
                                 'name': name,
@@ -3112,6 +3165,17 @@ class XcpngManager:
         """Open SSH connection to XCP-ng host."""
         import paramiko
 
+        # MK Sep 2026 (#941) — XCP-ng carries the same PegaProxConfig, so an operator can
+        # set ssh_disabled on one of these clusters too. This manager has its own SSH
+        # implementation and would have gone on connecting regardless: a switch that is
+        # settable and silently ignored is worse than no switch. The credential rule from
+        # the PVE side does NOT apply here — XenAPI authenticates with a real username and
+        # password, so config.pass_ is never a token secret.
+        if bool(getattr(self.config, 'ssh_disabled', False)):
+            self.logger.info("SSH is switched off for this cluster - not connecting to "
+                             "its hosts")
+            return None
+
         ssh_user = self.config.ssh_user or 'root'
         ssh_port = getattr(self.config, 'ssh_port', 22) or 22
 
@@ -3132,7 +3196,7 @@ class XcpngManager:
                                    password=self.config.pass_, timeout=15,
                                    allow_agent=False, look_for_keys=False)
                 persist_host_keys(client)
-                return client
+                return ha_transport.guard_client(client, host)
             except Exception as e:
                 if attempt == retries - 1:
                     self.logger.error(f"SSH to {host} failed: {e}")
@@ -3148,8 +3212,8 @@ class XcpngManager:
         try:
             _, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
             rc = stdout.channel.recv_exit_status()
-            out = stdout.read().decode('utf-8', errors='replace')
-            err = stderr.read().decode('utf-8', errors='replace')
+            out = _read_capped(stdout)
+            err = _read_capped(stderr)
             return rc, out, err
         except Exception as e:
             return -1, '', str(e)
@@ -3534,8 +3598,9 @@ class XcpngManager:
         with self.update_lock:
             self.nodes_updating[node_name] = task
 
-        t = threading.Thread(target=self._perform_node_update, daemon=True,
-                             args=(node_name, task))
+        # a user job: in an automatic group each command asks for the lease (#625)
+        t = threading.Thread(target=ha.as_job(self._perform_node_update, f'update of {node_name}'),
+                             daemon=True, args=(node_name, task))
         t.start()
         return task
 
@@ -3563,7 +3628,7 @@ class XcpngManager:
             task.add_output("Running yum update -y ...")
             _, stdout, stderr = ssh.exec_command("yum update -y 2>&1", timeout=600)
             rc = stdout.channel.recv_exit_status()
-            output = stdout.read().decode('utf-8', errors='replace')
+            output = _read_capped(stdout)
 
             pkg_count = 0
             for line in output.splitlines():
@@ -3584,6 +3649,16 @@ class XcpngManager:
                 task.status = 'rebooting'
                 task.add_output(f"Rebooting {node_name}...")
                 ssh.exec_command("reboot", timeout=5)
+                # MK Oct 2026 - the rolling update waits for a node only when its task says it
+                # rebooted (#715); without these an XCP-ng host still booting was passed by
+                task.reboot_issued = True
+                if getattr(self, '_rolling_update', {}).get('status') == 'running':
+                    try:
+                        from pegaprox.background.alerts import emit_rolling_update_reboot_event
+                        emit_rolling_update_reboot_event(self.id, node_name)
+                    except Exception as alert_error:
+                        self.logger.debug(
+                            f"Could not publish rolling-update reboot alert for {node_name}: {alert_error}")
                 try:
                     ssh.close()
                 except Exception:
@@ -3595,6 +3670,7 @@ class XcpngManager:
                 task.status = 'waiting_online'
                 task.add_output("Waiting for node to come back online...")
                 online = self._wait_for_host_online(node_name, timeout=300)
+                task.back_online = bool(online)
                 if online:
                     task.add_output(f"{node_name} is back online")
                 else:
@@ -3918,8 +3994,32 @@ echo DONE""",
         },
     }
 
-    def check_node_hardening(self, node_name):
-        """Run CIS checks on XCP-ng host and return status per control."""
+    @staticmethod
+    def _effective_profile(profile):
+        """Names the control set that ran, which here is always this manager's own.
+
+        MK Sep 2026 - XCP-ng has ten checks of its own and no profile sets, so it ignores
+        the profile argument. Echoing 'cis-l1' back would put a PVE profile name on an
+        XCP-ng result. Returning None would be honest but changes the field from string to
+        null for every existing API consumer, so name the set instead: 'xcpng-cis' is what
+        _CIS_CHECKS on this class is, not a claim about any published benchmark. The route
+        also returns requested_profile so a caller can see what it asked for.
+        """
+        return 'xcpng-cis'
+
+    def check_node_hardening(self, node_name, verbose=False, profile=None):
+        """Run CIS checks on XCP-ng host and return status per control.
+
+        MK Sep 2026 - the signature used to be (self, node_name) while the shared route in
+        api/reports.py calls it with verbose= and profile= for every cluster in
+        cluster_managers, XCP-ng included. Opening the hardening panel on an XCP-ng host
+        therefore raised TypeError and answered 500. Found by the daily scan flagging an
+        api mismatch at the call site.
+
+        `profile` is accepted and ignored: this manager has its own ten checks and no
+        profile sets, so there is nothing to filter. The caller is responsible for not
+        labelling the result with a PVE profile name - see _effective_profile there.
+        """
         parts = []
         for cid, spec in self._CIS_CHECKS.items():
             parts.append(f"echo '---{cid}---'")
@@ -3939,6 +4039,14 @@ echo DONE""",
                 continue
             if current_id and stripped in ('OK', 'FAIL'):
                 results[current_id] = (stripped == 'OK')
+        if verbose:
+            # Same shape the PVE manager returns for audit reports, so the report builder
+            # does not have to special-case the hypervisor. No separate evidence command
+            # exists here, so the evidence is the verdict line itself.
+            return {cid: {'status': ok,
+                          'evidence': 'OK' if ok else 'FAIL',
+                          'command': self._CIS_CHECKS.get(cid, {}).get('check', '')}
+                    for cid, ok in results.items()}
         return results
 
     def apply_node_hardening(self, node_name, controls):
@@ -4313,13 +4421,17 @@ echo DONE""",
 
     def remote_migrate_vm(self, node, vmid, vm_type='qemu', target_endpoint=None,
                           target_storage=None, target_bridge=None, target_vmid=None,
-                          online=True, delete_source=True, bwlimit=None):
+                          online=True, delete_source=True, bwlimit=None, target_pool=None):
         """Migrate VM to another XCP-ng pool via XAPI migrate_send.
 
-        target_endpoint: https://<remote_host> of the target pool master
+        target_pool: the XcpngManager of a pool registered in PegaProx. Its own stored
+        URL, credentials and TLS setting open the session there. target_endpoint is
+        not used: a URL from the caller never gets a stored credential.
         """
-        if not target_endpoint:
-            return {'success': False, 'error': 'Target endpoint required'}
+        # NS Oct 2026 (#1088, #1048) - this logged into the caller's target_endpoint
+        # with THIS pool's user and password
+        if not isinstance(target_pool, XcpngManager) or target_pool is self:
+            return {'success': False, 'error': 'Target must be another XCP-ng pool registered in PegaProx'}
 
         api = self._api()
         if not api:
@@ -4329,10 +4441,11 @@ echo DONE""",
             vm_ref = self._resolve_vm(vmid)
             power = api.VM.get_power_state(vm_ref)
 
-            # connect to remote pool to get session
-            remote_session = XenAPI.Session(target_endpoint, ignore_ssl=True)
+            tcfg = target_pool.config
+            remote_session = ha_transport.guard_xapi(XenAPI.Session(
+                target_pool._get_xapi_url(), ignore_ssl=not tcfg.ssl_verification))
             remote_session.xenapi.login_with_password(
-                self.config.user, self.config.pass_, '1.0', 'PegaProx')
+                tcfg.user, tcfg.pass_, '1.0', 'PegaProx')
 
             # build migrate_send params
             dest = {
@@ -4368,7 +4481,7 @@ echo DONE""",
             except Exception:
                 pass
 
-            self.logger.info(f"Remote migration started: VM {vmid} -> {target_endpoint}")
+            self.logger.info(f"Remote migration started: VM {vmid} -> pool {tcfg.name}")
             return {'success': True, 'task': task_id}
         except Exception as e:
             self.logger.error(f"remote_migrate_vm {vmid}: {e}")
@@ -4890,6 +5003,9 @@ echo DONE""",
 
     def run_balance_check(self):
         """Main balancing cycle - called from _run_loop."""
+        # a PegaProx standby migrates nothing, whoever calls this (#625)
+        if not ha.is_active():
+            return
         node_status = self.get_node_status()
         if not node_status:
             return
@@ -4922,6 +5038,9 @@ echo DONE""",
             if not target:
                 break
 
+            # an automatic leader that lost its lease starts no migration (#625)
+            if not ha.confirm_step(f"balancing VM {candidate['vmid']}"):
+                break
             ok = self._do_balance_migrate(candidate, target)
             if ok:
                 migrated += 1

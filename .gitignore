@@ -34,3 +34,11 @@ images/login_bg.png
 
 # OS
 .DS_Store
+.vscode/
+.idea/
+.zed/
+*.swp
+*.swo
+
+# codeant CLI scratch output — tool state, never source
+.codeant/

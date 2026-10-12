@@ -33,6 +33,7 @@ def register_blueprints(app):
     from pegaprox.api.metrics_exporter import bp as metrics_exporter_bp
     from pegaprox.api.insights import bp as insights_bp
     from pegaprox.api.templates_lib import bp as templates_lib_bp
+    from pegaprox.api.oci_catalog import bp as oci_catalog_bp
     from pegaprox.api.push import bp as push_bp, register_alert_handler
     from pegaprox.api.costs import bp as costs_bp
     from pegaprox.api.drift import bp as drift_bp, start_scanner as start_drift_scanner
@@ -45,6 +46,9 @@ def register_blueprints(app):
     from pegaprox.api.korean_reports import bp as korean_reports_bp  # 한국형 보고서 (MOAVI 이식)
     from pegaprox.api.dr_drill import bp as dr_drill_bp
     from pegaprox.api.multi_sdn import bp as multi_sdn_bp, start_scanner as start_multi_sdn_scanner
+    from pegaprox.api.auto_install import bp as auto_install_bp
+    from pegaprox.api.ha import bp as ha_bp
+    from pegaprox.api.banners import bp as banners_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -72,6 +76,7 @@ def register_blueprints(app):
     app.register_blueprint(metrics_exporter_bp)
     app.register_blueprint(insights_bp)
     app.register_blueprint(templates_lib_bp)
+    app.register_blueprint(oci_catalog_bp)
     app.register_blueprint(push_bp)
     app.register_blueprint(costs_bp)
     app.register_blueprint(drift_bp)
@@ -84,6 +89,9 @@ def register_blueprints(app):
     app.register_blueprint(korean_reports_bp)
     app.register_blueprint(dr_drill_bp)
     app.register_blueprint(multi_sdn_bp)
+    app.register_blueprint(auto_install_bp)
+    app.register_blueprint(ha_bp)
+    app.register_blueprint(banners_bp)
 
     # Initialize WebSocket support for realtime blueprint
     from pegaprox.api.realtime import sock

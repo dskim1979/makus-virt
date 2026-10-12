@@ -33,7 +33,7 @@ from flask import Blueprint, jsonify, request
 
 from pegaprox.globals import cluster_managers
 from pegaprox.utils.auth import require_auth
-from pegaprox.api.helpers import check_cluster_access, load_metrics_window
+from pegaprox.api.helpers import check_cluster_access, load_metrics_window, scope_vm_rows, require_unconfined
 from pegaprox.core.db import get_db
 from pegaprox.models.permissions import ROLE_ADMIN
 
@@ -201,14 +201,11 @@ def list_rates():
         # leaking every cluster's rates to any authenticated user. Always keep the shared
         # '__default__' fallback row (every cluster reads it when it has no own row).
         from pegaprox.utils.rbac import get_user_clusters
-        from flask import g as _g
+        from pegaprox.api.helpers import acting_user
         # NS Aug 2026 — honour a token's floored effective_role (not the owner's account role),
         # so an admin-owned but scoped token can't enumerate every cluster's rates.
-        _cu = dict(getattr(_g, 'current_user', None) or {})
-        _eff = request.session.get('effective_role') if getattr(request, 'session', None) else None
-        if _eff:
-            _cu['role'] = _eff
-        allowed = get_user_clusters(_cu)
+        # NS Oct 2026 - next to the owner's role, not in place of it (see costs.list_rates)
+        allowed = get_user_clusters(acting_user())
         if allowed is not None:
             rows = [r for r in rows if r['cluster_id'] == '__default__' or r['cluster_id'] in allowed]
         return jsonify({'rates': rows})
@@ -237,6 +234,11 @@ def upsert(cluster_id):
         ok, err = check_cluster_access(cluster_id)
         if not ok:
             return err
+        # sec (audit): the tariff is cluster-wide and feeds every tenant's cost reporting —
+        # no per-object notion, so a confined caller has no business rewriting it.
+        _cerr = require_unconfined(cluster_id)
+        if _cerr:
+            return _cerr
     # NS Aug 2026 (Aikido pentest) — __default__ is the shared fallback row for every cluster;
     # only a global admin may overwrite it (a cluster.config holder edits only its own cluster).
     # effective_role, not the raw role, so an admin-owned scoped token can't do it either.
@@ -286,6 +288,9 @@ def delete_rate(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     try:
         c = get_db().conn.cursor()
         c.execute('DELETE FROM power_rates WHERE cluster_id=?', (cluster_id,))
@@ -316,6 +321,8 @@ def cluster_summary(cluster_id):
 
     mgr = cluster_managers[cluster_id]
     rows = _compute_per_vm(snaps, mgr, rates, days * 24)
+    # #773 audit — scope per-VM power rows (top_consumers/by_node/vm_count derive from these)
+    rows = scope_vm_rows(cluster_id, rows)
 
     total_kwh = sum(r['kwh'] for r in rows)
     total_cost = sum(r['cost'] for r in rows)
@@ -369,6 +376,7 @@ def per_vm(cluster_id):
         return jsonify({'enough_data': False, 'rates': rates, 'rows': []})
     mgr = cluster_managers[cluster_id]
     rows = _compute_per_vm(snaps, mgr, rates, days * 24)
+    rows = scope_vm_rows(cluster_id, rows)  # #773 audit — per-VM rows scoped to the caller
     factor = 30.0 / days if days < 30 else 1.0
     for r in rows:
         r['monthly_kwh'] = round(r['kwh'] * factor, 2)

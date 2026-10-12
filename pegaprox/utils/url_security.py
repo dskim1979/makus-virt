@@ -47,8 +47,81 @@ _METADATA_HOSTS = frozenset({
 })
 
 
+def _embedded_ipv4(ip: ipaddress._BaseAddress):
+    """The IPv4 address carried inside an IPv6 transition address, or None.
+
+    Several IPv6 transition schemes embed a full IPv4 address in the v6 address.
+    CPython's classification flags (is_private / is_reserved / …) have covered
+    these inconsistently across 3.12.x point releases, so a guard that trusts the
+    outer-address flags alone has a version-dependent hole
+    (GHSA-ffhp-cpm8-4mpv, reported by tonghuaroot): a 6to4 / NAT64 / Teredo
+    address embedding 169.254.169.254 or 127.0.0.1 can classify as 'public' and
+    slip past. Decode the embedded v4 ourselves and classify THAT, so the verdict
+    is correct on every Python version. Only the well-defined prefixes are decoded;
+    anything else returns None and is classified as the plain v6 address it is.
+    """
+    if not isinstance(ip, ipaddress.IPv6Address):
+        return None
+    # ::ffff:a.b.c.d — IPv4-mapped (the common one; stdlib exposes it directly).
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    packed = ip.packed
+    # 6to4  2002::/16 (RFC 3056) — the embedded IPv4 is bytes 2..5.
+    if packed[0:2] == b'\x20\x02':
+        return ipaddress.IPv4Address(packed[2:6])
+    # NAT64 well-known prefix 64:ff9b::/96 (RFC 6052) — embedded IPv4 in the last 4 bytes.
+    if packed[0:12] == b'\x00\x64\xff\x9b' + b'\x00' * 8:
+        return ipaddress.IPv4Address(packed[12:16])
+    # NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215) - this is the /96 reading only. The
+    # operator may use another prefix length in that block, so _is_private_or_special and
+    # _is_loopback judge it before they get here (see _nat64_local_use_readings).
+    if packed[0:6] == b'\x00\x64\xff\x9b\x00\x01':
+        return ipaddress.IPv4Address(packed[12:16])
+    # Teredo 2001:0000::/32 (RFC 4380) — client IPv4 is the last 4 bytes, bitwise-inverted.
+    if packed[0:4] == b'\x20\x01\x00\x00':
+        return ipaddress.IPv4Address(bytes(b ^ 0xFF for b in packed[12:16]))
+    # IPv4-compatible ::/96 (deprecated, RFC 4291 §2.5.5.1) — high 96 bits zero, embedded IPv4 in
+    # the low 32. Caught last so :: / ::1 (also in ::/96) decode to 0.0.0.0 / 0.0.0.1, which stay
+    # blocked as unspecified / reserved. Self-review add (not in the original advisory): the whole
+    # ::/96 range was otherwise left to the stdlib flags — the exact version-dependent reliance this
+    # fix removes for the other schemes. ::ffff:* was already handled above via .ipv4_mapped.
+    if packed[0:12] == b'\x00' * 12:
+        return ipaddress.IPv4Address(packed[12:16])
+    return None
+
+
+_NAT64_LOCAL_USE = ipaddress.IPv6Network('64:ff9b:1::/48')
+
+
+def _in_nat64_local_use(ip) -> bool:
+    return isinstance(ip, ipaddress.IPv6Address) and ip in _NAT64_LOCAL_USE
+
+
+def _nat64_local_use_readings(ip: ipaddress.IPv6Address):
+    """The IPv4 address an address in 64:ff9b:1::/48 carries under each prefix length
+    RFC 6052 allows there: /48, /56 and /64 (byte 8, the u octet, sits in the way) and /96.
+    Which one a translator uses is the operator's choice, the address does not say."""
+    p = ip.packed
+    return [ipaddress.IPv4Address(b) for b in (
+        p[6:8] + p[9:11], p[7:8] + p[9:12], p[9:13], p[12:16])]
+
+
 def _is_private_or_special(ip: ipaddress._BaseAddress) -> bool:
     """True if the IP falls in a range we should never reach over the public path."""
+    # NS Oct 2026 - the local-use NAT64 block is site-internal by definition (RFC 8215,
+    # the stdlib calls it private too). Reading its last four bytes assumed the /96
+    # layout: 64:ff9b:1:a9fe:a9:fe00:808:808 carries 169.254.169.254 under /48 and
+    # passed as 8.8.8.8. Whatever the layout, it is no public destination.
+    if _in_nat64_local_use(ip):
+        return True
+    # GHSA-ffhp-cpm8-4mpv — if this is an IPv6 transition address wrapping an IPv4
+    # address, the real destination is that inner v4; classify it instead of trusting
+    # the outer v6's stdlib flags (which miss embedded private/metadata targets on
+    # some Python builds). A wrapped *public* v4 stays allowed; a wrapped private /
+    # loopback / link-local (169.254/16 metadata) / reserved one is blocked.
+    embedded = _embedded_ipv4(ip)
+    if embedded is not None:
+        return _is_private_or_special(embedded)
     return (
         ip.is_private
         or ip.is_loopback
@@ -57,6 +130,23 @@ def _is_private_or_special(ip: ipaddress._BaseAddress) -> bool:
         or ip.is_reserved
         or ip.is_unspecified
     )
+
+
+def _is_loopback(ip: ipaddress._BaseAddress) -> bool:
+    """Loopback on its own, transition addresses unwrapped like _is_private_or_special does.
+    The outer address is judged FIRST: ::1 falls inside the ::/96 compat range, so unwrapping
+    it first would hand back 0.0.0.1 and lose the loopback that was staring at us."""
+    if ip.is_loopback or ip.is_unspecified:
+        return True
+    if _in_nat64_local_use(ip):
+        # NS Oct 2026 - every layout, not only the /96 one (see _is_private_or_special). A
+        # zero run reads as 0.0.0.0 under the other layouts, so those count 127/8 only.
+        readings = _nat64_local_use_readings(ip)
+        return _is_loopback(readings[-1]) or any(r.is_loopback for r in readings[:-1])
+    embedded = _embedded_ipv4(ip)
+    if embedded is not None:
+        return _is_loopback(embedded)
+    return False
 
 
 def _resolve_all(host: str) -> Iterable[ipaddress._BaseAddress]:
@@ -88,6 +178,7 @@ def is_safe_outbound_url(
     *,
     allowed_schemes: Iterable[str] = ('https',),
     allow_private: bool = False,
+    allow_loopback: bool = True,
     require_resolution: bool = True,
 ) -> Tuple[bool, str]:
     """Return (ok, reason).
@@ -101,6 +192,12 @@ def is_safe_outbound_url(
             Used for purely-internal outbound (cluster API on
             corporate LAN). Default False — most call sites want
             internal blocked.
+        allow_loopback: Only consulted when allow_private is True. NS Sep 2026 — the
+            private-LAN call sites need RFC1918 but not 127.0.0.0/8: a caller who can
+            steer the URL and then read what came back gets at services bound to the
+            fetching host's own loopback, which nothing else on the network can reach.
+            Sites where the target is admin-configured (PBS, a node URL, a BMC) leave
+            this True; a site that fetches a user-supplied URL passes False.
         require_resolution: When True, resolve DNS and reject if any
             returned IP is private / metadata / loopback. When False
             we only reject IP-literal hosts that are obviously bad
@@ -143,6 +240,8 @@ def is_safe_outbound_url(
             return False, f'IP {ip_literal} is metadata endpoint'
         if not allow_private and _is_private_or_special(ip_literal):
             return False, f'IP {ip_literal} is private / loopback / metadata'
+        if not allow_loopback and _is_loopback(ip_literal):
+            return False, f'IP {ip_literal} is loopback'
         return True, 'ok (ip literal)'
 
     if not require_resolution:
@@ -161,6 +260,8 @@ def is_safe_outbound_url(
             return False, f'host {host!r} resolves to metadata IP {ip}'
         if not allow_private and _is_private_or_special(ip):
             return False, f'host {host!r} resolves to private/loopback {ip}'
+        if not allow_loopback and _is_loopback(ip):
+            return False, f'host {host!r} resolves to loopback {ip}'
 
     return True, 'ok'
 

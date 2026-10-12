@@ -13,11 +13,15 @@ import os
 import time
 import secrets
 import logging
-import sqlite3
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from pegaprox.core.db import get_db
+# MK Sep 2026 — NOT sqlite3's. get_db() hands back a connection dbcrypto opened, and on
+# the Linux x86_64 build that is sqlcipher3, whose exception classes are a separate tree
+# off Exception — sqlite3.IntegrityError never matches one. dbcrypto re-exports whatever
+# driver it picked for exactly this.
+from pegaprox.core.dbcrypto import IntegrityError
 from pegaprox.constants import DATABASE_FILE
 from pegaprox.utils.auth import validate_session, active_sessions, sessions_lock
 # MK 2026-06-04 (CWE-117): username comes from a login attempt = attacker-
@@ -260,7 +264,7 @@ def register_finish():
                 now,
             )
         )
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({'error': 'Key is already registered'}), 409
     except Exception as e:
         logging.error(f"[WebAuthn] DB insert failed: {e}")
@@ -292,9 +296,21 @@ def auth_begin():
     if not username:
         return jsonify({'error': 'username required'}), 400
 
+    # sec (audit): a 404 with this message vs a 200 with options told an ANONYMOUS caller
+    # whether an account exists and has hardware keys — undoing the deliberate uniform-response
+    # hardening on the login endpoint. Give a generic answer, and rate-limit the unbounded
+    # per-request DB lookup.
+    from pegaprox.utils.ssh import check_auth_action_rate_limit
+    from pegaprox.utils.audit import get_client_ip
+    if not check_auth_action_rate_limit(f'webauthn_begin:{get_client_ip()}',
+                                        max_attempts=20, window=300):
+        resp = jsonify({'error': 'Too many attempts'})
+        resp.headers['Retry-After'] = '300'
+        return resp, 429
+
     creds = _load_attested_list(username)
     if not creds:
-        return jsonify({'error': 'no hardware keys registered for this user'}), 404
+        return jsonify({'error': 'hardware-key authentication is not available for this account'}), 400
 
     srv, err = _get_server_or_error()
     if err: return err

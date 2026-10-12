@@ -16,9 +16,36 @@ from pegaprox.core.db import get_db
 
 from pegaprox.utils.auth import require_auth
 from pegaprox.utils.audit import log_audit
-from pegaprox.api.helpers import get_connected_manager, check_cluster_access, safe_error, parse_pve_error
+from pegaprox.utils.sanitization import bounded_list
+from pegaprox.api.helpers import get_connected_manager, check_cluster_access, safe_error, parse_pve_error, require_unconfined
+from pegaprox.utils.ssh import read_capped as _read_capped
 
 bp = Blueprint('datacenter', __name__)
+
+# MK Sep 2026 - every SDN id here arrives as a URL path segment and is then interpolated
+# into the PVE API path we speak with the cluster's stored root credential. requests
+# resolves dot segments before sending, so an id of ".." moves the whole PUT or DELETE one
+# level up the SDN tree and onto a sibling collection - measured, not assumed. The router
+# refuses a slash, so it is one level per request rather than the walk the snapshot name
+# allowed, but it is the same class and the same fix.
+#
+# Deliberately here rather than at each of the eighteen handlers: the nineteenth is the one
+# that would have been forgotten. subnet_id is excluded because it legitimately contains a
+# slash (it is a CIDR) and its handler already percent-encodes it.
+_SDN_ID_PARAMS = ('zone_id', 'vnet_id', 'fabric_id', 'controller_id', 'ipam_id', 'dns_id')
+
+
+@bp.before_request
+def _reject_unusable_sdn_ids():
+    from pegaprox.utils.sanitization import validate_sdn_id
+    for key in _SDN_ID_PARAMS:
+        val = (request.view_args or {}).get(key)
+        if val is not None and not validate_sdn_id(val):
+            logging.warning("[SDN] refused %s=%r on %s - not a usable SDN id",
+                            key, val, request.path)
+            return jsonify({'error': f'invalid {key}'}), 400
+    return None
+
 
 
 def _list_cluster_node_names(manager):
@@ -113,7 +140,10 @@ def _get_node_multipath_data(manager, node):
     ssh = None
     try:
         # Resolve node IP from Proxmox API (node name might not be in DNS)
-        node_ip = manager._get_node_ip(node) or node
+        node_ip = manager.member_node_ip(node)
+        if not node_ip:
+            result['error'] = f'Unknown or unreachable node {node!r}'
+            return result
         logging.debug(f"[Multipath] Resolved {node} → {node_ip}")
 
         # Connect via paramiko (handles SSH key + password auth correctly)
@@ -126,7 +156,7 @@ def _get_node_multipath_data(manager, node):
         def ssh_run(command, timeout=15):
             try:
                 stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
-                return stdout.read().decode('utf-8', errors='replace')
+                return _read_capped(stdout)
             except Exception as e:
                 logging.debug(f"[Multipath] exec failed on {node}: {e}")
                 return None
@@ -320,13 +350,21 @@ def setup_multipath(cluster_id):
     """
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
         return error
 
     data = request.json or {}
-    target_nodes = data.get('nodes', [])  # Empty = all nodes
+    # MK Sep 2026 - one multipath.conf push per entry, and duplicates were pushed twice.
+    # Nothing bounded the array, so the request decided how much work the cluster did.
+    target_nodes, _lerr = bounded_list(data.get('nodes'), max_items=256, max_length=253,
+                                       name='nodes')
+    if _lerr:
+        return jsonify({'error': _lerr}), 400
     vendor = data.get('vendor', 'default')  # default, netapp, emc, hpe, pure, dell
     policy = data.get('policy', 'service-time')  # round-robin, service-time, queue-length
     # NS Aug 2026 (Aikido pentest) — policy is interpolated raw into `path_selector "{policy} 0"`
@@ -364,7 +402,12 @@ def setup_multipath(cluster_id):
             ssh = None
 
             # Resolve node IP
-            node_ip = manager._get_node_ip(node) or node
+            node_ip = manager.member_node_ip(node)
+            if not node_ip:
+                node_result['success'] = False
+                node_result['error'] = f'Unknown or unreachable node {node!r}'
+                results.append(node_result)
+                continue
 
             try:
                 # Connect via paramiko (handles SSH key + password auth correctly)
@@ -378,8 +421,8 @@ def setup_multipath(cluster_id):
                 def _exec(cmd, timeout=30):
                     """Run command, return (rc, stdout, stderr)"""
                     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
-                    out = stdout.read().decode('utf-8', errors='replace')
-                    err = stderr.read().decode('utf-8', errors='replace')
+                    out = _read_capped(stdout)
+                    err = _read_capped(stderr)
                     rc = stdout.channel.recv_exit_status()
                     return rc, out, err
 
@@ -636,6 +679,9 @@ def reconfigure_multipath(cluster_id, node):
     """Reconfigure multipath on a specific node (rescan devices)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -649,7 +695,9 @@ def reconfigure_multipath(cluster_id, node):
         if node not in set(_list_cluster_node_names(manager)):
             return jsonify({'error': f'Unknown cluster node: {node}'}), 400
         # Resolve node IP
-        node_ip = manager._get_node_ip(node) or node
+        node_ip = manager.member_node_ip(node)
+        if not node_ip:
+            return jsonify({'error': f'Unknown or unreachable node {node!r}'}), 400
 
         # Connect via paramiko
         ssh = manager._ssh_connect(node_ip, retries=2, retry_delay=1.0)
@@ -658,8 +706,8 @@ def reconfigure_multipath(cluster_id, node):
 
         # Reconfigure multipath
         stdin, stdout, stderr = ssh.exec_command('multipathd reconfigure && sleep 2 && multipath -ll', timeout=60)
-        out = stdout.read().decode('utf-8', errors='replace')
-        err = stderr.read().decode('utf-8', errors='replace')
+        out = _read_capped(stdout)
+        err = _read_capped(stderr)
         rc = stdout.channel.recv_exit_status()
 
         user = getattr(request, 'session', {}).get('user', 'system')
@@ -687,6 +735,9 @@ def discover_iscsi_targets(cluster_id, node):
     """Discover iSCSI targets on a portal - for Easy Setup"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -766,6 +817,9 @@ def login_iscsi_target(cluster_id, node):
     """Login to an iSCSI target - creates persistent connection"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -792,7 +846,7 @@ def login_iscsi_target(cluster_id, node):
     target_q = shlex.quote(target)
     portal_q = shlex.quote(portal)
     username_q = shlex.quote(username) if username else ''
-    password_q = shlex.quote(password) if password else ''
+    # no password_q — the CHAP secret never gets interpolated, see the _exec below
 
     ssh = None
     try:
@@ -802,25 +856,47 @@ def login_iscsi_target(cluster_id, node):
         if node not in set(_list_cluster_node_names(manager)):
             return jsonify({'error': f'Unknown cluster node: {node}'}), 400
         # Resolve node IP
-        node_ip = manager._get_node_ip(node) or node
+        node_ip = manager.member_node_ip(node)
+        if not node_ip:
+            return jsonify({'error': f'Unknown or unreachable node {node!r}'}), 400
 
         # Connect via paramiko
         ssh = manager._ssh_connect(node_ip, retries=2, retry_delay=1.0)
         if not ssh:
             return jsonify({'error': f'SSH connection failed to {node} ({node_ip}). Check credentials.'}), 400
 
-        def _exec(cmd, timeout=30):
+        def _exec(cmd, timeout=30, feed=None):
             stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
-            out = stdout.read().decode('utf-8', errors='replace')
-            err = stderr.read().decode('utf-8', errors='replace')
+            if feed is not None:
+                try:
+                    stdin.write(feed)
+                    stdin.flush()
+                except (OSError, EOFError):
+                    pass  # remote is already gone; the exit status below says so
+                stdin.channel.shutdown_write()
+            out = _read_capped(stdout)
+            err = _read_capped(stderr)
             rc = stdout.channel.recv_exit_status()
             return rc, out, err
 
         # If CHAP credentials provided, set them first
         if username and password:
-            _exec(f'''iscsiadm -m node -T {target_q} -p {portal_q} --op update -n node.session.auth.authmethod -v CHAP && \
-                iscsiadm -m node -T {target_q} -p {portal_q} --op update -n node.session.auth.username -v {username_q} && \
-                iscsiadm -m node -T {target_q} -p {portal_q} --op update -n node.session.auth.password -v {password_q}''')
+            # MK Sep 2026 — the secret travels down the channel on stdin, never in
+            # the command string. exec_command hands that string to a shell on the
+            # node and /proc/<pid>/cmdline is world-readable there, so the password
+            # used to be sitting in `ps` for every local account to read, for the
+            # whole length of the attach. `read` keeps it in the shell's own memory.
+            # iscsiadm still takes it as -v on its own argv for the single call that
+            # writes the field — open-iscsi has no file or stdin form for -v — so the
+            # residue is one short-lived process, not the entire operation.
+            _exec('IFS= read -r _pp || exit 64; '
+                  f'iscsiadm -m node -T {target_q} -p {portal_q} --op update'
+                  ' -n node.session.auth.authmethod -v CHAP && '
+                  f'iscsiadm -m node -T {target_q} -p {portal_q} --op update'
+                  f' -n node.session.auth.username -v {username_q} && '
+                  f'iscsiadm -m node -T {target_q} -p {portal_q} --op update'
+                  ' -n node.session.auth.password -v "$_pp"',
+                  feed=password + '\n')
 
         # Discovery
         _exec(f'iscsiadm -m discovery -t sendtargets -p {portal_q}')
@@ -1046,6 +1122,9 @@ def create_sdn_zone(cluster_id):
     """Create a new SDN zone"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1073,6 +1152,9 @@ def update_sdn_zone(cluster_id, zone_id):
     """Update an SDN zone"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1100,6 +1182,9 @@ def delete_sdn_zone(cluster_id, zone_id):
     """Delete an SDN zone"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1152,6 +1237,9 @@ def create_sdn_vnet(cluster_id):
     """Create a new SDN VNet"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1179,6 +1267,9 @@ def update_sdn_vnet(cluster_id, vnet_id):
     """Update an SDN VNet"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1206,6 +1297,9 @@ def delete_sdn_vnet(cluster_id, vnet_id):
     """Delete an SDN VNet"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1258,6 +1352,9 @@ def create_sdn_subnet(cluster_id, vnet_id):
     """Create a subnet in a VNet"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1285,6 +1382,9 @@ def delete_sdn_subnet(cluster_id, vnet_id, subnet_id):
     """Delete a subnet from a VNet"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1318,6 +1418,9 @@ def apply_sdn_config(cluster_id):
     """
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1376,6 +1479,9 @@ def get_sdn_fabrics(cluster_id):
 def create_sdn_fabric(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     manager, error = get_connected_manager(cluster_id)
     if error: return error
     try:
@@ -1401,6 +1507,9 @@ def create_sdn_fabric(cluster_id):
 def update_sdn_fabric(cluster_id, fabric_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     manager, error = get_connected_manager(cluster_id)
     if error: return error
     try:
@@ -1421,6 +1530,9 @@ def update_sdn_fabric(cluster_id, fabric_id):
 def delete_sdn_fabric(cluster_id, fabric_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     manager, error = get_connected_manager(cluster_id)
     if error: return error
     try:
@@ -1495,6 +1607,9 @@ def list_sdn_routemaps(cluster_id):
 def create_sdn_routemap(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     user = getattr(request, 'session', {}).get('user', 'system')
     name = (request.json or {}).get('routemap', '?')
     result = _sdn_crud_resource(cluster_id, 'route-maps')
@@ -1510,6 +1625,9 @@ def create_sdn_routemap(cluster_id):
 def update_sdn_routemap(cluster_id, routemap_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     return _sdn_crud_resource(cluster_id, 'route-maps', routemap_id)
 
 
@@ -1518,6 +1636,9 @@ def update_sdn_routemap(cluster_id, routemap_id):
 def delete_sdn_routemap(cluster_id, routemap_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     return _sdn_crud_resource(cluster_id, 'route-maps', routemap_id)
 
 
@@ -1535,6 +1656,9 @@ def list_sdn_prefixlists(cluster_id):
 def create_sdn_prefixlist(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     user = getattr(request, 'session', {}).get('user', 'system')
     name = (request.json or {}).get('prefixlist', '?')
     result = _sdn_crud_resource(cluster_id, 'prefix-lists')
@@ -1550,6 +1674,9 @@ def create_sdn_prefixlist(cluster_id):
 def update_sdn_prefixlist(cluster_id, prefixlist_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     return _sdn_crud_resource(cluster_id, 'prefix-lists', prefixlist_id)
 
 
@@ -1558,6 +1685,9 @@ def update_sdn_prefixlist(cluster_id, prefixlist_id):
 def delete_sdn_prefixlist(cluster_id, prefixlist_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     return _sdn_crud_resource(cluster_id, 'prefix-lists', prefixlist_id)
 
 
@@ -1597,6 +1727,9 @@ def create_sdn_controller(cluster_id):
     """Create a new SDN controller (BGP, EVPN, ISIS)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1624,6 +1757,9 @@ def update_sdn_controller(cluster_id, controller_id):
     """Update an SDN controller"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1651,6 +1787,9 @@ def delete_sdn_controller(cluster_id, controller_id):
     """Delete an SDN controller"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1707,6 +1846,9 @@ def create_sdn_ipam(cluster_id):
     """Create a new IPAM configuration (pve, netbox, phpipam)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1734,6 +1876,9 @@ def update_sdn_ipam(cluster_id, ipam_id):
     """Update an IPAM configuration"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1761,6 +1906,9 @@ def delete_sdn_ipam(cluster_id, ipam_id):
     """Delete an IPAM configuration"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1817,6 +1965,9 @@ def create_sdn_dns(cluster_id):
     """Create a new DNS configuration (powerdns)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1844,6 +1995,9 @@ def update_sdn_dns(cluster_id, dns_id):
     """Update a DNS configuration"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1871,6 +2025,9 @@ def delete_sdn_dns(cluster_id, dns_id):
     """Delete a DNS configuration"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -1947,6 +2104,9 @@ def update_sdn_subnet(cluster_id, vnet_id, subnet_id):
     """Update a subnet (DHCP range, gateway, etc.)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     manager, error = get_connected_manager(cluster_id)
     if error:
@@ -2028,6 +2188,9 @@ def create_node_lvm_api(cluster_id, node):
     """Create LVM volume group"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2069,6 +2232,9 @@ def create_node_lvmthin_api(cluster_id, node):
     """Create LVM-Thin pool"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2104,12 +2270,49 @@ def get_node_zfs_api(cluster_id, node):
     return jsonify(manager.get_node_zfs(node))
 
 
+# MK Oct 2026 - one pool in full: the vdev tree with state and error counts, the last
+# scrub and the data errors (utils/zpool.py). A pool or guest grant is a claim on guests,
+# not on the disks of a node, so a confined caller gets none of it
+@bp.route('/api/clusters/<cluster_id>/nodes/<node>/disks/zfs/<name>', methods=['GET'])
+@require_auth(perms=['node.view'])
+def get_node_zfs_pool_api(cluster_id, node, name):
+    """Get the status of one ZFS pool on a node"""
+    from pegaprox.utils import zpool
+    ok, err = check_cluster_access(cluster_id)
+    if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
+
+    if cluster_id not in cluster_managers:
+        return jsonify({'error': 'Cluster not found'}), 404
+    manager = cluster_managers[cluster_id]
+    if getattr(manager, 'cluster_type', 'proxmox') != 'proxmox':
+        return jsonify({'error': 'ZFS pools are read from Proxmox VE nodes only'}), 400
+    if not zpool.valid_node_name(node):
+        return jsonify({'error': 'Invalid node name'}), 400
+    if not zpool.valid_pool_name(name):
+        return jsonify({'error': 'Invalid pool name'}), 400
+
+    status, data = manager.get_node_zfs_detail(node, name)
+    if status == 0:
+        return jsonify({'error': f'Node {node} did not answer'}), 503
+    if status != 200 or not isinstance(data, dict):
+        # zpool status fails for a pool the node does not have, and Proxmox answers 500
+        why = 'the API user needs Sys.Audit on /' if status == 403 else f'HTTP {status}'
+        return jsonify({'error': f'Pool {name} could not be read on node {node} ({why})'}), 502
+    return jsonify(dict(zpool.pool_detail(data), node=node))
+
+
 @bp.route('/api/clusters/<cluster_id>/nodes/<node>/disks/zfs', methods=['POST'])
 @require_auth(perms=['storage.config'])
 def create_node_zfs_api(cluster_id, node):
     """Create ZFS pool"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2140,6 +2343,9 @@ def create_node_directory_api(cluster_id, node):
     """Create directory storage"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2168,6 +2374,9 @@ def init_node_disk_gpt_api(cluster_id, node):
     """Initialize disk with GPT partition table"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2194,6 +2403,9 @@ def wipe_node_disk_api(cluster_id, node):
     """Wipe disk (delete partition table)"""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2224,6 +2436,9 @@ def create_sr_api(cluster_id, node):
     LW: type-specific dispatch to NFS, iSCSI, LVM, EXT creation methods."""
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -2276,6 +2491,9 @@ def create_sr_api(cluster_id, node):
 def discover_iscsi_api(cluster_id, node):
     ok, err = check_cluster_access(cluster_id)
     if not ok: return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404

@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version"/>
-  <img src="https://img.shields.io/badge/python-3.8+-green" alt="Python"/>
+  <img src="https://img.shields.io/badge/version-1.3.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/python-3.10+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/license-AGPL--3.0-orange" alt="License"/>
   <img src="https://img.shields.io/badge/based%20on-PegaProx-lightgrey" alt="Based on PegaProx"/>
 </p>
@@ -54,6 +54,7 @@
 - 백업 일정·관리, 백업 복원 검증(실험 기능: 복원 → 부팅 → 상태 확인 → 정리)
 - 브라우저 콘솔(noVNC · xterm.js, SPICE 파일 내려받기)
 - 노드 간 자동 분산, 고가용성(HA) 자동 재시작, 함께/떨어뜨려 두기 규칙(Affinity)
+- OCI 이미지로 만드는 앱 컨테이너, 여러 게스트 한 번에 처리(스냅숏·태그·마이그레이션), 마이그레이션 사전 점검
 
 ### XCP-ng (기술 미리보기)
 - XCP-ng / Xen 풀 연결, 전원 동작, VNC 콘솔, 디스크·NIC 관리, 유지 보수 모드
@@ -71,6 +72,8 @@
 ### 자동화·모니터링
 - 예약 작업(시작·정지·스냅숏·백업), 태그·VM 목록 기준 스냅숏 정책과 보존 정리
 - 노드 순차 업데이트(VM 자동 대피)
+- **MOAVI 자체 고가용성** — 최대 4대의 MOAVI 를 한 그룹으로(리더 1 + 대기), 리더 장애 시 관리자 확인 후 승격
+- Proxmox VE 자동 설치(응답 파일 프로필·설치 진행 추적), 리소스 매핑(디렉터리·PCI·USB)
 - 알림 규칙(CPU·메모리·디스크·온도·**하드웨어 상태**), 감사 로그 검색·CSV 내보내기
 - 서버 하드웨어 상태(BMC) — 센서·전원공급장치·섀시·이벤트 로그(SEL), 클러스터 하드웨어 이상 요약
 - SIEM 전송(Syslog, Splunk HEC, Elasticsearch, Loki, 웹훅), 내장 Syslog 서버
@@ -98,7 +101,7 @@
 
 ## 📋 요구 사항
 
-- Python 3.8 이상, Linux 서버
+- Python 3.10 이상, Linux 서버
 - Proxmox VE 8.0 이상 또는 9.0 이상, 그리고/또는 XCP-ng 8.2 이상
 - Chrome · Edge · Firefox · Safari 최신 버전
 - 포트: **5000**(웹), 5001(VNC 콘솔), 5002(노드 셸)

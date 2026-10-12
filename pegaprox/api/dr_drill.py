@@ -419,6 +419,15 @@ def _require_plan_access(plan_row):
         ok, err = check_cluster_access(cid)
         if not ok:
             return err
+    # sec (audit): cluster reach was the whole gate, but a drill's check rows carry the plan's VM
+    # list, replication freshness and the target's network/storage inventory — the very data the
+    # site_recovery.py siblings withhold via _authz_plan_vms. A pool-/ACL-scoped caller who could
+    # not open the plan could read it here instead. Same per-VM layer, same helper.
+    if pd.get('id'):
+        from pegaprox.api.site_recovery import _authz_plan_vms
+        ok, err = _authz_plan_vms(pd)
+        if not ok:
+            return err
     return None
 
 
@@ -447,8 +456,10 @@ def start_drill(plan_id):
 
     log_audit(user, 'dr.drill_started', f"plan_id={plan_id} drill_id={drill_id}")
 
-    t = threading.Thread(target=_execute_drill, args=(drill_id,), daemon=True,
-                         name=f'dr-drill-{drill_id}')
+    # a user job: in an automatic group each call it sends asks for the lease (#625)
+    from pegaprox.core import ha
+    t = threading.Thread(target=ha.as_job(_execute_drill, f'DR drill {drill_id}'), args=(drill_id,),
+                         daemon=True, name=f'dr-drill-{drill_id}')
     t.start()
     return jsonify({'drill_id': drill_id, 'status': 'running'})
 
@@ -462,7 +473,7 @@ def get_drill(drill_id):
         drow = c.fetchone()
         if not drow:
             return jsonify({'error': 'not found'}), 404
-        c.execute('SELECT source_cluster, target_cluster FROM site_recovery_plans WHERE id = ?', (drow['plan_id'],))
+        c.execute('SELECT id, source_cluster, target_cluster FROM site_recovery_plans WHERE id = ?', (drow['plan_id'],))
         if _require_plan_access(c.fetchone()):
             return jsonify({'error': 'not found'}), 404   # 404, not 403 — don't confirm existence
         c.execute('SELECT * FROM dr_drill_checks WHERE drill_id = ? ORDER BY sequence ASC', (drill_id,))
@@ -480,7 +491,7 @@ def get_drill(drill_id):
 def list_drills(plan_id):
     try:
         c = get_db().conn.cursor()
-        c.execute('SELECT source_cluster, target_cluster FROM site_recovery_plans WHERE id = ?', (plan_id,))
+        c.execute('SELECT id, source_cluster, target_cluster FROM site_recovery_plans WHERE id = ?', (plan_id,))
         if _require_plan_access(c.fetchone()):
             return jsonify({'error': 'not found'}), 404   # 404, not 403 — don't confirm existence
         c.execute('''SELECT id, started_at, finished_at, status, summary,

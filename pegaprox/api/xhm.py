@@ -5,13 +5,14 @@ Endpoints for Proxmox <-> XCP-ng <-> ESXi migration.
 
 import threading
 import uuid
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
 from pegaprox.globals import cluster_managers, _xhm_migrations
 from pegaprox.utils.auth import require_auth, load_users, build_authz_user
 from pegaprox.utils.audit import log_audit
 from pegaprox.utils.rbac import user_can_access_vm
-from pegaprox.api.helpers import check_cluster_access
+from pegaprox.api.helpers import check_cluster_access, caller_is_scoped
 from pegaprox.core.xhm import (
     XHMigrationTask, plan_xcpng_to_pve, plan_pve_to_xcpng,
     _run_xcpng_to_pve, _run_pve_to_xcpng,
@@ -22,6 +23,46 @@ from pegaprox.core.xhm import (
 bp = Blueprint('xhm', __name__)
 
 _xhm_lock = threading.Lock()
+
+# How long a finished migration stays in the in-memory registry, and how many we keep at all.
+# The UI reads the list to show recent results, so this is a retention window, not a cleanup.
+_XHM_RETENTION_SECONDS = 6 * 3600
+_XHM_MAX_FINISHED = 100
+
+
+# NS Oct 2026 (#1039) - a standalone ESXi host sits in cluster_managers under its vmware_id,
+# and the Proxmox check found no ACL there and fell through to the role. Its guests are
+# governed by the vmware:<id> ACLs and the vmware.vm.* permissions instead.
+_ESXI_PERMS = {'vm.migrate': 'vmware.vm.migrate', 'vm.delete': 'vmware.vm.manage'}
+
+
+def _may_migrate_source(user, cluster_id, vmid, perm='vm.migrate'):
+    from pegaprox.globals import vmware_managers
+    from pegaprox.utils.rbac import user_can_access_vmware_vm
+    mgr = cluster_managers.get(cluster_id)
+    if getattr(mgr, 'cluster_type', '') == 'esxi' or cluster_id in vmware_managers:
+        return user_can_access_vmware_vm(user, cluster_id, str(vmid), _ESXI_PERMS[perm])
+    return user_can_access_vm(user, cluster_id, int(vmid), perm)
+
+
+def _prune_finished_migrations():
+    """Drop old finished migrations. Call with _xhm_lock held.
+
+    Nothing ever removed from this dict, so every migration a server had ever run stayed
+    resident for the process lifetime — each one holding its full log — and the list endpoint
+    re-authorized all of them on every call. Running tasks are never touched."""
+    finished = [(t.completed_at, mid) for mid, t in _xhm_migrations.items()
+                if t.status in ('completed', 'failed') and t.completed_at]
+    if not finished:
+        return
+    cutoff = datetime.now() - timedelta(seconds=_XHM_RETENTION_SECONDS)
+    stale = {mid for ts, mid in finished if ts < cutoff}
+    # plus the oldest beyond the cap, so a burst of migrations can't outrun the window
+    if len(finished) - len(stale) > _XHM_MAX_FINISHED:
+        keep = sorted((f for f in finished if f[1] not in stale), reverse=True)
+        stale.update(mid for _, mid in keep[_XHM_MAX_FINISHED:])
+    for mid in stale:
+        _xhm_migrations.pop(mid, None)
 
 
 @bp.route('/api/xhm/plan', methods=['GET'])
@@ -53,8 +94,13 @@ def xhm_plan():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid source_vmid'}), 400
     
-    if not user_can_access_vm(user, source_cluster, vmid_int, 'vm.migrate'):
+    if not _may_migrate_source(user, source_cluster, vmid_int):
         return jsonify({'error': 'Access denied to source VM'}), 403
+    # sec (audit): the target got check_cluster_access only — which admits a pool-/ACL-scoped
+    # caller — yet this creates a BRAND-NEW guest there on a caller-chosen node and storage.
+    # A new vmid matches no per-object grant, so confinement is the right question to ask.
+    if caller_is_scoped(user, target_cluster):
+        return jsonify({'error': 'Access denied to target cluster'}), 403
 
     # auto-detect direction from cluster types
     src_mgr = cluster_managers.get(source_cluster)
@@ -123,8 +169,19 @@ def xhm_start():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid source_vmid'}), 400
     
-    if not user_can_access_vm(user, data['source_cluster'], vmid_int, 'vm.migrate'):
+    if not _may_migrate_source(user, data['source_cluster'], vmid_int):
         return jsonify({'error': 'Access denied to source VM'}), 403
+    # MK Sep 2026 - remove_source DESTROYS the source guest once the copy lands. That is
+    # vm.delete, not vm.migrate, and the distinction is load-bearing here: vm.delete is
+    # deliberately absent from the inherit_role permission set, so a VM-ACL user holds
+    # vm.migrate and never vm.delete. Without this check the migration path was the way
+    # around that - copy the guest somewhere, tick the box, and the original is gone.
+    if data.get('remove_source'):
+        if not _may_migrate_source(user, data['source_cluster'], vmid_int, 'vm.delete'):
+            return jsonify({'error': 'Access denied: removing the source guest needs '
+                                     'vm.delete on it'}), 403
+    if caller_is_scoped(user, data['target_cluster']):
+        return jsonify({'error': 'Access denied to target cluster'}), 403
 
     src_mgr = cluster_managers.get(data['source_cluster'])
     tgt_mgr = cluster_managers.get(data['target_cluster'])
@@ -156,7 +213,8 @@ def xhm_start():
         direction=direction,
         source_cluster=data['source_cluster'],
         source_node=data.get('source_node', ''),
-        source_vmid=data['source_vmid'],
+        # the id the gates above checked, not the raw one (it reaches qm destroy)
+        source_vmid=str(vmid_int),
         target_cluster=data['target_cluster'],
         target_node=data['target_node'],
         target_storage=data['target_storage'],
@@ -165,6 +223,7 @@ def xhm_start():
     )
 
     with _xhm_lock:
+        _prune_finished_migrations()
         _xhm_migrations[mid] = task
 
     _runners = {
@@ -176,7 +235,9 @@ def xhm_start():
     runner = _runners.get(direction)
     if not runner:
         return jsonify({'error': f'No runner for direction {direction}'}), 400
-    t = threading.Thread(target=runner, args=(task,), daemon=True)
+    # a user job: in an automatic group each call it sends asks for the lease (#625)
+    from pegaprox.core import ha
+    t = threading.Thread(target=ha.as_job(runner, 'cross-hypervisor migration'), args=(task,), daemon=True)
     t.start()
 
     user = request.session.get('user', 'admin') if hasattr(request, 'session') else 'admin'
@@ -203,7 +264,7 @@ def _xhm_reachable(t):
     if svmid and scluster:
         try:
             _u = build_authz_user(request.session.get('user', ''), request.session)
-            return user_can_access_vm(_u, scluster, int(svmid), 'vm.migrate')
+            return _may_migrate_source(_u, scluster, svmid)
         except Exception:
             return False
     return True

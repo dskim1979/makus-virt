@@ -53,12 +53,14 @@ def _check_key():
 
 def _require_admin():
     """Check if current user is admin — returns error tuple or None"""
-    from pegaprox.utils.auth import load_users
-    from pegaprox.models.permissions import ROLE_ADMIN
+    # sec (audit): the STORED role, so an admin-owned but viewer-scoped API token passed this
+    # admin check with its owner's rights. build_authz_user carries the token-floored
+    # effective_role, which is what every gate in the core uses.
+    # NS Oct 2026 (#1028) - and an admin a tenant override lowers is no admin here either
+    from pegaprox.utils.auth import build_authz_user
+    from pegaprox.utils.rbac import acts_as_admin
     username = request.session.get('user', '')
-    users = load_users()
-    user = users.get(username, {})
-    if user.get('role') != ROLE_ADMIN:
+    if not acts_as_admin(build_authz_user(username, request.session)):
         return {'error': 'Admin access required'}, 403
     return None
 
@@ -443,7 +445,11 @@ def _create_incident():
         conn.close()
         return {'success': True, 'id': iid}
     except Exception as e:
-        return {'error': str(e)}, 500
+        # MK Sep 2026 - str(e) on a DB failure is the query, the column names and
+        # sometimes the values. Admin-only is not a reason to hand it back over HTTP;
+        # the operator who needs it is reading the log anyway.
+        logging.exception("[status-page] incident mutation failed")
+        return {'error': 'Could not update the incident - see the server log'}, 500
 
 
 def _update_incident():
@@ -473,7 +479,11 @@ def _update_incident():
         conn.close()
         return {'success': True}
     except Exception as e:
-        return {'error': str(e)}, 500
+        # MK Sep 2026 - str(e) on a DB failure is the query, the column names and
+        # sometimes the values. Admin-only is not a reason to hand it back over HTTP;
+        # the operator who needs it is reading the log anyway.
+        logging.exception("[status-page] incident mutation failed")
+        return {'error': 'Could not update the incident - see the server log'}, 500
 
 
 def _delete_incident():
@@ -490,7 +500,11 @@ def _delete_incident():
         conn.close()
         return {'success': True}
     except Exception as e:
-        return {'error': str(e)}, 500
+        # MK Sep 2026 - str(e) on a DB failure is the query, the column names and
+        # sometimes the values. Admin-only is not a reason to hand it back over HTTP;
+        # the operator who needs it is reading the log anyway.
+        logging.exception("[status-page] incident mutation failed")
+        return {'error': 'Could not update the incident - see the server log'}, 500
 
 
 def _uptime_history():

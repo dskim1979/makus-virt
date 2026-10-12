@@ -41,6 +41,16 @@ def get_paramiko():
 # MK: This made the dashboard like 5x faster, totally worth it
 # ============================================
 
+def _carried(tasks):
+    """The tasks of a fan-out with what the caller may send to a cluster (#625): in an
+    automatic group a step confirmed here goes on in each task. The tasks themselves
+    anywhere else."""
+    from pegaprox.core import ha   # here: this layer is imported before core
+    if not ha.guard_on():
+        return tasks
+    return [ha.carry(task) for task in tasks]
+
+
 def run_concurrent(tasks: list, timeout: float = 30.0) -> list:
     """Run tasks concurrently with gevent pool"""
     # NS: chatgpt helped with this one, i was mass confused about greenlets
@@ -54,6 +64,7 @@ def run_concurrent(tasks: list, timeout: float = 30.0) -> list:
     # the parallel path the helper was designed for.
     if not tasks:
         return []
+    tasks = _carried(tasks)
 
     if GEVENT_POOL is not None and GEVENT_AVAILABLE:
         # Use gevent pool for concurrent execution
@@ -62,7 +73,9 @@ def run_concurrent(tasks: list, timeout: float = 30.0) -> list:
             # Wait for all with timeout
             from gevent import joinall
             joinall(greenlets, timeout=timeout)
-            
+
+            # Capture whatever finished within `timeout` (an unfinished greenlet isn't
+            # successful() → None) BEFORE reaping, so the result never depends on kill timing.
             results = []
             for g in greenlets:
                 try:
@@ -70,6 +83,16 @@ def run_concurrent(tasks: list, timeout: float = 30.0) -> list:
                 except Exception as e:
                     logging.error(f"Concurrent task failed: {e}")
                     results.append(None)
+
+            # #777 (Frisch12) — reap stragglers. joinall returns at `timeout` but leaves any
+            # unfinished greenlets RUNNING in the shared GEVENT_POOL; their results are already
+            # discarded above, yet each keeps holding a pool slot, so every later fan-out through
+            # this pool (including ones issued from request handlers) queues behind work nobody will
+            # read — until the pool is full and the whole instance stalls. The caller has given up at
+            # `timeout`, so kill the unfinished ones and hand their slots back.
+            for g in greenlets:
+                if not g.ready():
+                    g.kill(block=False)
             return results
         except Exception as e:
             logging.error(f"Concurrent execution failed: {e}")
@@ -148,6 +171,7 @@ def run_per_node(node_callables, max_concurrent=8, timeout=120):
     """
     if not node_callables:
         return {}
+    node_callables = dict(zip(node_callables, _carried(list(node_callables.values()))))
     # Cap concurrency at the lesser of node count and max_concurrent
     n = len(node_callables)
     workers = max(1, min(int(max_concurrent), n))
@@ -163,6 +187,12 @@ def run_per_node(node_callables, max_concurrent=8, timeout=120):
                 jobs[node] = pool.spawn(_run_node_safe, node, fn)
             from gevent import joinall
             joinall(list(jobs.values()), timeout=timeout)
+            # #777 — NB: deliberately NOT reaping stragglers here. run_per_node uses a LOCAL,
+            # bounded pool (not the shared GEVENT_POOL that caused the outage), so a straggler
+            # can't exhaust the request pool; and some callers (multi_sdn writes) do remote
+            # mutations under this fan-out where a GreenletExit mid-write could orphan objects
+            # the atomic rollback can't see. A straggler here just completes or times out on its
+            # own SSH/TCP deadline. The shared-pool reap lives in run_concurrent above.
             results = {}
             for node, g in jobs.items():
                 try:

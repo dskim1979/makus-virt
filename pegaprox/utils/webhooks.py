@@ -20,6 +20,7 @@ Short timeout + per-channel try/except so one dead webhook can't block the rest.
 """
 import json
 import logging
+from pegaprox.utils.sanitization import redact_url
 import re
 import uuid
 from datetime import datetime
@@ -85,11 +86,16 @@ _WEBHOOK_PATH_ONLY_RE = re.compile(
 
 
 def _redact_webhook_url(s):
-    """Strip secret-bearing webhook URL paths from a string before logging."""
+    """Strip secret-bearing webhook URL paths from a string before logging.
+
+    MK Sep 2026 - this existed and guarded exactly one of the four log lines below.
+    The patterns above only know the shapes we had seen; redact_url handles the rest
+    (userinfo, secret query parameters, any deep path), so run both.
+    """
     if not s: return s
     s = _WEBHOOK_URL_RE.sub('[REDACTED-WEBHOOK-URL]', str(s))
     s = _WEBHOOK_PATH_ONLY_RE.sub('[REDACTED-WEBHOOK-PATH]', s)
-    return s
+    return redact_url(s)
 
 
 def _ntfy_priority(sev):
@@ -237,7 +243,7 @@ def send_to_channels(alert, channel_ids=None):
         from pegaprox.api.helpers import load_server_settings
         channels = (load_server_settings() or {}).get('alert_webhooks') or []
     except Exception as e:
-        logging.debug(f"[webhooks] could not load channels: {e}")
+        logging.debug(f"[webhooks] could not load channels: {_redact_webhook_url(str(e))}")
         return
     if channel_ids is not None:
         wanted = {str(c) for c in channel_ids}
@@ -248,11 +254,43 @@ def send_to_channels(alert, channel_ids=None):
             # MK May 2026 (M-11) — detail comes from send_to_channel which already
             # redacts; redact again on outer dispatch-error to be defensive.
             if ok:
-                logging.info(f"[webhooks] → {ch.get('name', ch.get('id'))}: {detail}")
+                logging.info(f"[webhooks] → {ch.get('name', ch.get('id'))}: {_redact_webhook_url(detail)}")
             else:
-                logging.warning(f"[webhooks] → {ch.get('name', ch.get('id'))}: FAILED ({detail})")
+                logging.warning(f"[webhooks] → {ch.get('name', ch.get('id'))}: FAILED ({_redact_webhook_url(detail)})")
         except Exception as e:
             logging.debug(f"[webhooks] channel {ch.get('id')} dispatch error: {_redact_webhook_url(str(e))}")
+
+
+def notify_lifecycle(event, title, message, cluster_id=None, severity='info', channel_ids=None):
+    """Fire a maintenance-lifecycle event at the chosen alert channels (#716).
+
+    Alert channels already carry the URL guard, the per-type body builders and the
+    admin-facing configuration, so a lifecycle event is just an alert with an extra
+    `event` key: a generic channel (n8n and friends) gets it verbatim in the payload,
+    the chatty ones render it as any other alert.
+
+    channel_ids is deliberately opt-in - None or [] send nothing. The callers run
+    inside maintenance threads, so this never raises: a webhook that is down must not
+    be able to stop a node update halfway through an evacuation.
+    MK Sep 2026
+    """
+    if not channel_ids:
+        return
+    try:
+        alert = {
+            'event': event,
+            'alert_name': title,
+            'message': message,
+            'severity': severity,
+            'target_type': 'cluster',
+            'target_name': cluster_id or '',
+            'cluster_id': cluster_id or '',
+            'metric': 'lifecycle',
+            'current_value': event,
+        }
+        send_to_channels(alert, channel_ids)
+    except Exception as e:
+        logging.debug(f"[webhooks] lifecycle {event} dispatch failed: {_redact_webhook_url(str(e))}")
 
 
 def new_channel(payload):
@@ -261,5 +299,10 @@ def new_channel(payload):
     out = {k: v for k, v in (payload or {}).items() if k in allowed}
     out.setdefault('enabled', True)
     out.setdefault('type', 'generic')
-    out['id'] = (payload or {}).get('id') or uuid.uuid4().hex[:12]
+    # MK Sep 2026 - the caller used to be able to name the id. alert_webhooks is one
+    # global list, so submitting the id of somebody else's channel produced two entries
+    # sharing it, and every lookup here takes the first match: the edit route would then
+    # rewrite whichever one it found, and the dispatch path deliver to it. Nobody needs
+    # to choose an id - the only caller is the create route - so we always mint one.
+    out['id'] = uuid.uuid4().hex[:12]
     return out

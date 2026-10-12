@@ -51,6 +51,91 @@ try:
 except ImportError:
     pass
 
+# MK Sep 2026 (audit) — a pool_permissions row whose permission list is empty grants
+# nothing inside the pool, but this query returned its cluster anyway, and the #555
+# fallback in check_cluster_access turns "holds a pool grant here" into cluster reach.
+# So an emptied grant kept the door open while the UI showed no permissions at all.
+# rbac.user_has_any_pool_access already gets this right (`any(p for p in perms.values())`),
+# which is what makes the difference a bug rather than a decision. Empty is stored as
+# '[]' by the write path and as NULL/'' by older rows.
+_NON_EMPTY_GRANT = " AND permissions IS NOT NULL AND TRIM(permissions) NOT IN ('', '[]')"
+
+
+def _group_grant_spellings(group):
+    """Every spelling a pool grant might plausibly use for one directory group.
+
+    #940 — an LDAP/AD login stores memberships as full DNs
+    ("CN=PVE-Admins,OU=Groups,DC=corp,DC=local"); utils/ldap.py puts member_of straight
+    into the user's `groups`. The pool-permission dialog, meanwhile, labels its field
+    "Group Name" / "Gruppenname" in all three places it appears and the operator types
+    `PVE-Admins`. The lookup compared the whole string, so the grant never matched, the
+    pool stayed empty, and nothing anywhere raised — which is why this sat unnoticed.
+
+    Returns the value as stored plus, when it parses as a DN, its first RDN value. A
+    grant written as a DN still matches only the DN (the leaf candidate is a bare name);
+    a grant written as a bare name now matches the DN's leaf. Note the consequence: two
+    groups in different OUs sharing a CN both match a bare-name grant. That is inherent
+    to typing a bare name and is what the dialog asks for — an operator who needs them
+    separated can enter the full DN, which stays exact.
+
+    The role/tenant mapping side of LDAP is unaffected: its field is called `group_dn`
+    and compares whole strings, which is consistent with what it asks for. MK
+
+    Oct 2026 (#940) - the same for a group path as Keycloak's group mapper sends it by
+    default ("/Org/PVE-Admins"): its last segment, with the same caveat.
+    """
+    import re as _re
+    g = (group or '').strip()
+    if not g:
+        return []
+    out = [g]
+    if g.startswith('/'):
+        leaf = g.rstrip('/').rsplit('/', 1)[-1].strip()
+        if leaf and leaf.lower() != g.lower():
+            out.append(leaf)
+        return out
+    # first RDN of a DN — split on a comma that is not escaped (RFC 4514 allows "\,")
+    head = _re.split(r'(?<!\\),', g, maxsplit=1)[0].strip()
+    if '=' in head:
+        leaf = head.split('=', 1)[1].strip().replace('\\,', ',')
+        if leaf and leaf.lower() != g.lower():
+            out.append(leaf)
+    return out
+
+
+def _group_grant_keys(groups):
+    """Lowercased spellings of every group in `groups`, for matching grants in one pass."""
+    keys = set()
+    for g in groups or []:
+        if isinstance(g, str):
+            keys.update(s.lower() for s in _group_grant_spellings(g))
+    return keys
+
+
+# auth_source values whose rows carry directory groups. The groups come from the LDAP
+# result or the IdP's claims at sign-in and from nowhere else, so a local account never
+# has any - whatever the column holds, and whatever a restored backup put there.
+# MK Oct 2026 (#940)
+DIRECTORY_AUTH_SOURCES = ('ldap', 'oidc', 'entra')
+
+
+def _directory_groups(auth_source, value):
+    """The group list a user row may carry: non-empty strings, none for a local account.
+
+    `value` is the stored JSON or a list. A broken value reads as no groups - this runs
+    in every pool lookup, and one bad row must not break them for that user."""
+    if (auth_source or 'local') not in DIRECTORY_AUTH_SOURCES:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value or '[]')
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [g for g in value if isinstance(g, str) and g]
+
+
 class PegaProxDB:
     """
     SQLite database wrapper - MK
@@ -114,10 +199,16 @@ class PegaProxDB:
             with open(aes_key_file, 'rb') as f:
                 aes_key = f.read()
             if len(aes_key) != 32:
-                logging.warning("Invalid AES key length, regenerating...")
-                aes_key = os.urandom(32)  # 256 bits
-                with open(aes_key_file, 'wb') as f:
-                    f.write(aes_key)
+                # MK: this used to regenerate the key in place. A short read here means a
+                # truncated write (disk full, power cut) or a half-restored backup — and
+                # overwriting is unrecoverable: every cluster password, SSH key, BMC password
+                # and server_settings secret in the DB was sealed with the old key, and the
+                # audit chain was signed with it. Refuse to start instead, same as below; we
+                # only ever write a fresh key when there is no file at all.
+                raise RuntimeError(
+                    f"FATAL: AES key file {aes_key_file} is {len(aes_key)} bytes, expected 32. "
+                    "Restore it from backup — regenerating would permanently destroy every "
+                    "stored credential. Remove the file only if you accept re-entering them.")
         else:
             # Generate new 256-bit key
             aes_key = os.urandom(32)
@@ -221,6 +312,8 @@ class PegaProxDB:
                 balance_containers INTEGER DEFAULT 0,
                 balance_local_disks INTEGER DEFAULT 0,
                 proxlb_tags_enabled INTEGER DEFAULT 0,
+                proxlb_pins_auto_migrate INTEGER DEFAULT 0,
+                proxlb_pins_strict INTEGER DEFAULT 0,
                 dry_run INTEGER DEFAULT 1,
                 enabled INTEGER DEFAULT 1,
                 ha_enabled INTEGER DEFAULT 0,
@@ -263,11 +356,21 @@ class PegaProxDB:
                 avatar_data TEXT DEFAULT '',
                 ldap_dn TEXT DEFAULT '',
                 last_ldap_sync TEXT DEFAULT '',
+                -- MK Sep 2026: what the directory itself last granted, so a sync can take
+                -- back its OWN grants without touching anything an admin set by hand. The
+                -- August revocation fix wrote both of these into the user dict and neither
+                -- had a column, so every restart wiped them and the revocation silently
+                -- stopped working.
+                ldap_permissions TEXT DEFAULT '[]',
+                ldap_tenant TEXT DEFAULT '',
                 tenant_permissions TEXT DEFAULT '{}',
                 denied_permissions TEXT DEFAULT '[]',
                 oidc_sub TEXT DEFAULT '',
                 last_oidc_sync TEXT DEFAULT '',
-                layout_chosen INTEGER DEFAULT 0
+                layout_chosen INTEGER DEFAULT 0,
+                -- the user's directory / IdP groups as of the last sign-in, read by
+                -- username in the pool-grant lookups (#940)
+                directory_groups TEXT DEFAULT '[]'
             )
         ''')
         
@@ -391,17 +494,26 @@ class PegaProxDB:
                 quota_max_vms INTEGER DEFAULT 0,
                 quota_max_cores INTEGER DEFAULT 0,
                 quota_max_memory_gb INTEGER DEFAULT 0,
-                quota_enforcement TEXT DEFAULT 'block'
+                quota_max_disk_gb INTEGER DEFAULT 0,
+                quota_enforcement TEXT DEFAULT 'block',
+                vmid_range_start INTEGER DEFAULT 0,
+                vmid_range_end INTEGER DEFAULT 0
             )
         ''')
         # NS #502 — per-tenant quota columns for existing tenants tables (0 = unlimited)
         try:
             cursor.execute("PRAGMA table_info(tenants)")
             _tcols = [c[1] for c in cursor.fetchall()]
+            # NS Sep 2026 — quota_max_disk_gb joins the family, and vmid_range_* gives a tenant its
+            # own slice of the VMID space so two tenants creating guests on a shared cluster can't
+            # land on the same id. 0 keeps the old behaviour in both cases (no cap / no range).
             for _cn, _cd in (('quota_max_vms', 'INTEGER DEFAULT 0'),
                              ('quota_max_cores', 'INTEGER DEFAULT 0'),
                              ('quota_max_memory_gb', 'INTEGER DEFAULT 0'),
-                             ('quota_enforcement', "TEXT DEFAULT 'block'")):
+                             ('quota_max_disk_gb', 'INTEGER DEFAULT 0'),
+                             ('quota_enforcement', "TEXT DEFAULT 'block'"),
+                             ('vmid_range_start', 'INTEGER DEFAULT 0'),
+                             ('vmid_range_end', 'INTEGER DEFAULT 0')):
                 if _cn not in _tcols:
                     cursor.execute(f"ALTER TABLE tenants ADD COLUMN {_cn} {_cd}")
                     logging.info(f"Added {_cn} column to tenants table")
@@ -515,16 +627,63 @@ class PegaProxDB:
             CREATE INDEX IF NOT EXISTS idx_migration_timestamp ON migration_history(timestamp DESC)
         ''')
 
-        # #720 — persist SOFT (non-HA) node maintenance so it survives a PegaProx restart. Native HA
-        # maintenance is re-derived from PVE on each poll (#78) and is NOT stored here.
+        # #720 — persist node maintenance so it survives a PegaProx restart.
+        # Originally SOFT (non-HA) entries only: native HA maintenance was supposed to be
+        # re-derived from PVE on each poll (#78). That re-derivation is blind on PVE 9 (see
+        # _get_native_ha_maintenance_nodes), so we persist BOTH kinds now and keep native_ha
+        # alongside — exit_maintenance_mode needs it to clear the flag upstream after a restart.
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS node_maintenance (
                 cluster_id TEXT NOT NULL,
                 node TEXT NOT NULL,
                 entered_at TEXT NOT NULL,
+                native_ha INTEGER DEFAULT 0,
                 PRIMARY KEY (cluster_id, node)
             )
         ''')
+
+        # migration for DBs created before native_ha was persisted
+        try:
+            cursor.execute("PRAGMA table_info(node_maintenance)")
+            _nm_cols = [col[1] for col in cursor.fetchall()]
+            if 'native_ha' not in _nm_cols:
+                logging.info("Adding native_ha column to node_maintenance table...")
+                cursor.execute("ALTER TABLE node_maintenance ADD COLUMN native_ha INTEGER DEFAULT 0")
+        except Exception as e:
+            # #720 — do NOT swallow this. A node_maintenance table left without the native_ha
+            # column silently disables maintenance persistence (save/get raise on every call),
+            # which is the exact bug this column fixes. Fail init loudly rather than commit a
+            # half-migrated schema (review).
+            logging.error(f"node_maintenance native_ha migration failed: {e}")
+            raise
+
+        # MK Oct 2026 (#954) - the Proxmox HA rules a rolling update switched off for its run.
+        # Written before the first one is touched: after a restart nothing else knows them
+        # (a disabled rule looks like any other), and they have to be switched on again.
+        # owner: who holds it off - 'rolling', or 'maintenance:<node>' for the maintenance of
+        # one node. One rule can be held by several; it goes back on when the last one lets go.
+        # A table from before the owner was keyed on (cluster_id, rule): it is moved aside,
+        # built again with the new key, and its rows (all a rolling update's) copied over.
+        cursor.execute("PRAGMA table_info(suspended_ha_rules)")
+        _sh_cols = {col[1] for col in cursor.fetchall()}
+        _sh_keyed = bool(_sh_cols) and 'owner' not in _sh_cols
+        if _sh_keyed:
+            cursor.execute('DROP TABLE IF EXISTS suspended_ha_rules_keyed')
+            cursor.execute('ALTER TABLE suspended_ha_rules RENAME TO suspended_ha_rules_keyed')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS suspended_ha_rules (
+                cluster_id TEXT NOT NULL,
+                rule TEXT NOT NULL,
+                rule_type TEXT NOT NULL,
+                suspended_at TEXT NOT NULL,
+                owner TEXT NOT NULL DEFAULT 'rolling',
+                PRIMARY KEY (cluster_id, rule, owner)
+            )
+        ''')
+        if _sh_keyed:
+            cursor.execute("INSERT OR IGNORE INTO suspended_ha_rules (cluster_id, rule, rule_type, suspended_at, owner) "
+                           "SELECT cluster_id, rule, rule_type, suspended_at, 'rolling' FROM suspended_ha_rules_keyed")
+            cursor.execute('DROP TABLE suspended_ha_rules_keyed')
 
         # Server settings table
         cursor.execute('''
@@ -543,12 +702,39 @@ class PegaProxDB:
                 vmid INTEGER,
                 vm_type TEXT,
                 vm_name TEXT,
-                added_at TEXT
+                added_at TEXT,
+                kind TEXT NOT NULL DEFAULT 'vm',
+                node TEXT NOT NULL DEFAULT ''
             )
         ''')
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(username)
         ''')
+        # MK Oct 2026 - a favorite is a VM, a node or a cluster (api/search.py). The table
+        # had columns for a VM only; its rows from before are VMs, which is what the two
+        # defaults say, so they read the same before and after (a sync hashes them alike).
+        try:
+            cursor.execute("PRAGMA table_info(user_favorites)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'kind' not in columns:
+                cursor.execute("ALTER TABLE user_favorites ADD COLUMN kind TEXT NOT NULL DEFAULT 'vm'")
+            if 'node' not in columns:
+                cursor.execute("ALTER TABLE user_favorites ADD COLUMN node TEXT NOT NULL DEFAULT ''")
+            # One row per user and thing. Nodes and clusters have no vmid, and two NULLs
+            # never collide in a unique index, hence the IFNULL.
+            cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_favorites_unique'")
+            if not cursor.fetchone():
+                cursor.execute('''
+                    DELETE FROM user_favorites WHERE id NOT IN (
+                        SELECT MIN(id) FROM user_favorites
+                        GROUP BY username, kind, cluster_id, IFNULL(vmid, -1), node)
+                ''')
+                cursor.execute('''
+                    CREATE UNIQUE INDEX idx_favorites_unique
+                    ON user_favorites(username, kind, cluster_id, IFNULL(vmid, -1), node)
+                ''')
+        except Exception as e:
+            logging.error(f"user_favorites migration failed, favorites stay unavailable: {e}")
         
         # Scheduled actions table - NS Jan 2026
         cursor.execute('''
@@ -600,7 +786,9 @@ class PegaProxDB:
                 next_run TEXT,
                 created_by TEXT,
                 created_at TEXT,
-                updated_at TEXT
+                updated_at TEXT,
+                migrate_templates INTEGER DEFAULT 0,
+                relax_anti_affinity INTEGER DEFAULT 0
             )
         ''')
         # MK #630 — backfill reboot_timeout on schedule tables created before the column existed.
@@ -609,6 +797,10 @@ class PegaProxDB:
             _us_cols = {r[1] for r in cursor.fetchall()}
             if 'reboot_timeout' not in _us_cols:
                 cursor.execute("ALTER TABLE update_schedules ADD COLUMN reboot_timeout INTEGER DEFAULT 600")
+            # MK Oct 2026 (#763, #954) - the two evacuation options; off on an older schedule
+            for _col in ('migrate_templates', 'relax_anti_affinity'):
+                if _col not in _us_cols:
+                    cursor.execute(f"ALTER TABLE update_schedules ADD COLUMN {_col} INTEGER DEFAULT 0")
         except Exception as _e:
             logging.warning(f"update_schedules reboot_timeout migration skipped: {_e}")
 
@@ -706,11 +898,33 @@ class PegaProxDB:
                 escalation_step INTEGER DEFAULT 0,
                 last_escalated_at TEXT,
                 resolved_at TEXT,
-                resolved_by TEXT
+                resolved_by TEXT,
+                object_key TEXT
             )
         ''')
+        # MK Oct 2026 - object_key: what an event incident is about (a task, a Ceph
+        # cluster, a replication job), see background/alert_events.py
+        cursor.execute("PRAGMA table_info(active_alerts)")
+        if 'object_key' not in [col[1] for col in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE active_alerts ADD COLUMN object_key TEXT")
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_alerts_unresolved ON active_alerts(resolved_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_alerts_key ON active_alerts(alert_key)')
+        # a mute holds back what a rule, an object or both would send, until it runs out.
+        # Shared configuration (core/ha.py SYNC_TABLES); only the active reads it to send.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_mutes (
+                id TEXT PRIMARY KEY,
+                cluster_id TEXT NOT NULL,
+                rule_id TEXT NOT NULL DEFAULT '',
+                object_key TEXT NOT NULL DEFAULT '',
+                object_label TEXT,
+                until TEXT NOT NULL,
+                reason TEXT,
+                created_by TEXT,
+                created_at TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_alert_mutes_cluster ON alert_mutes(cluster_id)')
 
         # LW: ESXi integration was a pain, but people kept asking for it
         cursor.execute('''
@@ -958,6 +1172,15 @@ class PegaProxDB:
                 except Exception as e:
                     logging.error(f"Failed to add ldap_dn column: {e}")
             
+            for _col, _decl in (('ldap_permissions', "TEXT DEFAULT '[]'"),
+                                ('ldap_tenant', "TEXT DEFAULT ''")):
+                if _col not in columns:
+                    try:
+                        cursor.execute(f"ALTER TABLE users ADD COLUMN {_col} {_decl}")
+                        logging.info(f"Added {_col} column to users table")
+                    except Exception as e:
+                        logging.error(f"Failed to add {_col} column: {e}")
+
             if 'last_ldap_sync' not in columns:
                 try:
                     cursor.execute("ALTER TABLE users ADD COLUMN last_ldap_sync TEXT DEFAULT ''")
@@ -1000,6 +1223,15 @@ class PegaProxDB:
                     logging.info("Added layout_chosen column to users table")
                 except Exception as e:
                     logging.error(f"Failed to add layout_chosen column: {e}")
+
+            # MK Oct 2026 (#940) - the groups an LDAP/OIDC sign-in saw. Without a column
+            # user['groups'] was never stored, so a pool grant on a group matched nobody.
+            if 'directory_groups' not in columns:
+                try:
+                    cursor.execute("ALTER TABLE users ADD COLUMN directory_groups TEXT DEFAULT '[]'")
+                    logging.info("Added directory_groups column to users table")
+                except Exception as e:
+                    logging.error(f"Failed to add directory_groups column: {e}")
 
         except Exception as e:
             logging.error(f"Error checking users schema: {e}")
@@ -1054,6 +1286,29 @@ class PegaProxDB:
                 except Exception as e:
                     logging.error(f"Failed to add proxlb_tags_enabled column: {e}")
 
+            # A plb_pin_ tag is only a veto on proposed moves - it never pulls a
+            # guest back to its pinned node. Reconciliation does, and like every
+            # other autonomous move it stays off until the operator asks for it.
+            if 'proxlb_pins_auto_migrate' not in cluster_columns:
+                logging.info("Adding proxlb_pins_auto_migrate column to clusters table...")
+                try:
+                    cursor.execute("ALTER TABLE clusters ADD COLUMN proxlb_pins_auto_migrate INTEGER DEFAULT 0")
+                    logging.info("Added proxlb_pins_auto_migrate column to clusters table")
+                except Exception as e:
+                    logging.error(f"Failed to add proxlb_pins_auto_migrate column: {e}")
+
+            # A pin ranks evacuation targets; it does not veto the drain, because a
+            # guest left behind on a node that is about to reboot is the worse
+            # outcome. Operators whose pins are hard constraints (licensing, PCI
+            # passthrough, local disks) turn this on to get the old veto back.
+            if 'proxlb_pins_strict' not in cluster_columns:
+                logging.info("Adding proxlb_pins_strict column to clusters table...")
+                try:
+                    cursor.execute("ALTER TABLE clusters ADD COLUMN proxlb_pins_strict INTEGER DEFAULT 0")
+                    logging.info("Added proxlb_pins_strict column to clusters table")
+                except Exception as e:
+                    logging.error(f"Failed to add proxlb_pins_strict column: {e}")
+
             # MK Feb 2026: Add smbios_autoconfig for per-cluster SMBIOS settings
             if 'smbios_autoconfig' not in cluster_columns:
                 logging.info("Adding smbios_autoconfig column to clusters table...")
@@ -1098,6 +1353,11 @@ class PegaProxDB:
                 ('balance_io_weight', "REAL DEFAULT 1.0"),
                 ('cpu_baseline', "TEXT DEFAULT ''"),
                 ('vnc_tunnel', "INTEGER DEFAULT 0"),
+                # MK Sep 2026 (#941) — an operator-facing off switch for SSH to this
+                # cluster's nodes. A cluster with no usable SSH credential is already
+                # refused without this; the flag is for the site that HAS a key stored
+                # and still wants no SSH from the PegaProx host at all.
+                ('ssh_disabled', "INTEGER DEFAULT 0"),
                 ('backup_sla_max_age_hours', "INTEGER DEFAULT 0"),
                 # MK May 2026 — Proxmox API port override (default 8006). Direct
                 # TLS only — we don't support reverse-proxied PVE by design.
@@ -1221,7 +1481,9 @@ class PegaProxDB:
                     next_run TEXT,
                     created_by TEXT,
                     created_at TEXT,
-                    updated_at TEXT
+                    updated_at TEXT,
+                    migrate_templates INTEGER DEFAULT 0,
+                    relax_anti_affinity INTEGER DEFAULT 0
                 )
             ''')
             try:
@@ -1229,6 +1491,9 @@ class PegaProxDB:
                 _us_cols2 = {r[1] for r in cursor.fetchall()}
                 if 'reboot_timeout' not in _us_cols2:
                     cursor.execute("ALTER TABLE update_schedules ADD COLUMN reboot_timeout INTEGER DEFAULT 600")
+                for _col in ('migrate_templates', 'relax_anti_affinity'):   # #763, #954
+                    if _col not in _us_cols2:
+                        cursor.execute(f"ALTER TABLE update_schedules ADD COLUMN {_col} INTEGER DEFAULT 0")
             except Exception as _e2:
                 logging.warning(f"update_schedules reboot_timeout migration skipped: {_e2}")
             logging.info("Ensured update_schedules table exists")
@@ -1446,6 +1711,23 @@ class PegaProxDB:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_sr_vms_plan ON site_recovery_vms(plan_id, vmid)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_sr_events_plan ON site_recovery_events(plan_id, started_at)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_sr_plans_status ON site_recovery_plans(status)')
+            # MK Oct 2026 - one console frame per guest a test failover booted, the evidence
+            # that it came up. The event's details say what was taken and how long it took;
+            # the pictures live here so the event list stays small. Size-capped and pruned in
+            # background/sr_boot_shots.py
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS site_recovery_screenshots (
+                    event_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    vmid INTEGER NOT NULL,
+                    test_vmid INTEGER,
+                    captured_at TEXT,
+                    duration_ms INTEGER DEFAULT 0,
+                    image BLOB NOT NULL,
+                    PRIMARY KEY (event_id, vmid)
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sr_shots_plan ON site_recovery_screenshots(plan_id)')
             # MK Jul 2026 (#413) — per-plan option: bring Test-Failover clones up with
             # NICs disconnected (link_down) so a DR test can't collide with production
             # IPs on the network. Migrate existing DBs that predate the column.
@@ -1494,6 +1776,16 @@ class PegaProxDB:
             logging.info("Ensured plugin_state table exists")
         except Exception as e:
             logging.error(f"Error creating plugin_state table: {e}")
+
+        # MK: Sep 2026 (#642) - which clusters a plugin applies to, comma separated.
+        # Empty means every cluster, which is what every install had before this.
+        try:
+            cols = [r[1] for r in cursor.execute("PRAGMA table_info(plugin_state)").fetchall()]
+            if 'clusters' not in cols:
+                cursor.execute("ALTER TABLE plugin_state ADD COLUMN clusters TEXT DEFAULT ''")
+                logging.info("Added clusters column to plugin_state table")
+        except Exception as e:
+            logging.error(f"Error adding clusters column to plugin_state: {e}")
 
         # NS: Apr 2026 - Backup verification results
         try:
@@ -1652,8 +1944,14 @@ class PegaProxDB:
             if 'severity' not in cols:
                 cursor.execute("ALTER TABLE audit_log ADD COLUMN severity TEXT DEFAULT 'info'")
                 logging.info("Added severity column to audit_log")
+            # NS Oct 2026 - `cluster` holds the display name, which a cluster.config holder can
+            # set to anyone else's. Who may read a row is decided on the id (#1121).
+            if 'cluster_id' not in cols:
+                cursor.execute("ALTER TABLE audit_log ADD COLUMN cluster_id TEXT DEFAULT ''")
+                logging.info("Added cluster_id column to audit_log")
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_cluster ON audit_log(cluster)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_cluster_id ON audit_log(cluster_id)')
         except Exception as e:
             logging.error(f"Error extending audit_log schema: {e}")
 
@@ -1753,6 +2051,8 @@ class PegaProxDB:
                 ('schedule_day', "INTEGER DEFAULT 1"),
                 ('run_once_at', "TEXT DEFAULT ''"),
                 ('prune_only', "INTEGER DEFAULT 0"),
+                # the role of the API token that wrote the policy, '' for a session (#1073)
+                ('created_role', "TEXT DEFAULT ''"),
             ):
                 if _cn not in _spcols:
                     cursor.execute(f"ALTER TABLE snapshot_policies ADD COLUMN {_cn} {_cd}")
@@ -1908,6 +2208,62 @@ class PegaProxDB:
             logging.info("Ensured multi_cluster_vnets table exists")
         except Exception as e:
             logging.error(f"Error creating multi_cluster_vnets table: {e}")
+
+        # MK Sep 2026 - automated installations: answer files plus the runs the
+        # prepared ISOs report back. The answer file is stored encrypted, it holds
+        # the root password of every machine built from it.
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS auto_install_profiles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    answer_encrypted TEXT NOT NULL,
+                    target_cluster_id TEXT DEFAULT '',
+                    callback_url TEXT DEFAULT '',
+                    callback_fingerprint TEXT DEFAULT '',
+                    token_hash TEXT NOT NULL,
+                    token_hint TEXT DEFAULT '',
+                    enabled INTEGER DEFAULT 1,
+                    max_uses INTEGER DEFAULT 0,
+                    uses INTEGER DEFAULT 0,
+                    expires_at TEXT DEFAULT '',
+                    created_at TEXT,
+                    created_by TEXT DEFAULT '',
+                    updated_at TEXT,
+                    updated_by TEXT DEFAULT ''
+                )
+            ''')
+            cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_auto_install_token '
+                           'ON auto_install_profiles(token_hash)')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS auto_install_runs (
+                    id TEXT PRIMARY KEY,
+                    profile_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'installing',
+                    fingerprint TEXT DEFAULT '',
+                    hostname TEXT DEFAULT '',
+                    product TEXT DEFAULT '',
+                    version TEXT DEFAULT '',
+                    system_info TEXT DEFAULT '{}',
+                    message TEXT DEFAULT '',
+                    client_ip TEXT DEFAULT '',
+                    callback_token_hash TEXT DEFAULT '',
+                    started_at TEXT,
+                    updated_at TEXT
+                )
+            ''')
+            # the first cut of this table (Testing only) had no callback token
+            run_cols = [r[1] for r in cursor.execute("PRAGMA table_info(auto_install_runs)").fetchall()]
+            if 'callback_token_hash' not in run_cols:
+                cursor.execute("ALTER TABLE auto_install_runs ADD COLUMN callback_token_hash TEXT DEFAULT ''")
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_auto_install_runs_profile '
+                           'ON auto_install_runs(profile_id, started_at DESC)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_auto_install_runs_callback '
+                           'ON auto_install_runs(callback_token_hash)')
+            logging.info("Ensured auto_install tables exist")
+        except Exception as e:
+            logging.error(f"Error creating auto_install tables: {e}")
 
         conn.commit()
         logging.info("DB schema initialized")
@@ -2075,27 +2431,64 @@ class PegaProxDB:
         
         if cluster_count > 0 and not needs_user_remigration:
             logging.info("Database already has data, skipping legacy migration")
+            cursor.execute("SELECT COUNT(*) FROM users")
+            if cursor.fetchone()[0]:
+                self._retire_legacy_users_file()
             return
         
         # Migrate clusters (only if no clusters exist)
         if cluster_count == 0:
             if self._migrate_clusters():
+                # commit here so the user rollback further down cannot discard them
+                self.conn.commit()
                 migrated_any = True
-        
-        # Migrate users (always if needs_user_remigration or no users)
-        if needs_user_remigration or cluster_count == 0:
-            # Clear existing users if re-migrating
-            if needs_user_remigration:
-                try:
-                    cursor.execute("DELETE FROM users")
+
+        if needs_user_remigration and not self._read_legacy_users():
+            # MK: the DELETE below used to run unconditionally, and _migrate_users() writes
+            # nothing when the legacy file is gone or no longer decrypts — which is every
+            # install past the migration era. So one local row with an empty password_salt
+            # emptied the entire users table, admins included, with nothing to restore from,
+            # and the next request landed in first-run setup. Never clear what we can't put back.
+            logging.error("Users need re-migration but the legacy user file is unavailable — "
+                          "keeping the existing accounts")
+            needs_user_remigration = False
+
+        # MK Sep 2026 - `cluster_count == 0` is not a "never migrated" signal. A fresh
+        # install has no clusters, and neither does one whose last cluster was removed, so
+        # this branch ran on ordinary restarts and _migrate_users() wrote the legacy file
+        # over the live table: a rotated password fell back to the old one, a demoted
+        # account regained its role, a disabled one came back enabled, a deleted one
+        # reappeared. Import only into an empty table. Re-migration clears the table first
+        # and is the one case allowed to write over what is there.
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+
+        if needs_user_remigration:
+            # The clear and the refill are one unit. Committing the DELETE on its own meant
+            # a refill that wrote nothing left an empty users table with nothing to restore
+            # from, and the next request landed in the first-run setup wizard.
+            try:
+                cursor.execute("DELETE FROM users")
+                if self._migrate_users():
                     self.conn.commit()
-                    logging.info("Cleared users table for re-migration")
-                except Exception as e:
-                    logging.error(f"Error clearing users: {e}")
-            
+                    migrated_any = True
+                    logging.info("Re-migrated users from the legacy store")
+                    self._retire_legacy_users_file()
+                else:
+                    self.conn.rollback()
+                    logging.error("Re-migration wrote no users - kept the existing accounts")
+            except Exception as e:
+                self.conn.rollback()
+                logging.error(f"Error re-migrating users: {e}")
+        elif user_count == 0:
             if self._migrate_users():
+                self.conn.commit()
                 migrated_any = True
-        
+                self._retire_legacy_users_file()
+        else:
+            # the table already holds the accounts: the file is a stale copy
+            self._retire_legacy_users_file()
+
         # Migrate sessions
         if self._migrate_sessions():
             migrated_any = True
@@ -2227,33 +2620,59 @@ class PegaProxDB:
         logging.info(f"Migrated {len(data)} clusters to SQLite")
         return True
     
-    def _migrate_users(self) -> bool:
-        """Migrate users from encrypted file"""
+    def _read_legacy_users(self):
+        """The legacy encrypted user file as a dict, or None when it isn't there or won't
+        decrypt. Split out of _migrate_users so the re-migration path can find out whether it
+        has anything to restore BEFORE it clears the table."""
         from pegaprox.core.config import get_fernet
         fernet = get_fernet()
         if not fernet or not os.path.exists(USERS_FILE_ENCRYPTED):
-            return False
-        
+            return None
+
         try:
             with open(USERS_FILE_ENCRYPTED, 'rb') as f:
                 encrypted_data = f.read()
-            decrypted = fernet.decrypt(encrypted_data)
-            data = json.loads(decrypted.decode('utf-8'))
+            return json.loads(fernet.decrypt(encrypted_data).decode('utf-8'))
         except Exception as e:
             logging.error(f"Failed to load users: {e}")
+            return None
+
+    def _retire_legacy_users_file(self):
+        """NS Oct 2026 (#1053) - users.enc was never retired after the import. Once the users
+        table holds the accounts it is a stale copy, and the salt-repair re-migration above
+        would bring its old passwords, roles and deleted accounts back over the live ones.
+        Moved aside, so it stays as a backup that nothing reads."""
+        if not os.path.exists(USERS_FILE_ENCRYPTED):
+            return
+        retired = USERS_FILE_ENCRYPTED + '.migrated'
+        try:
+            os.replace(USERS_FILE_ENCRYPTED, retired)
+            logging.info(f"Legacy user file moved to {retired}, the database holds the accounts")
+        except OSError as e:
+            logging.warning(f"Could not move the legacy user file aside ({e}) - "
+                            f"remove {USERS_FILE_ENCRYPTED} by hand")
+
+    def _migrate_users(self) -> bool:
+        """Migrate users from encrypted file"""
+        data = self._read_legacy_users()
+        if not data:
             return False
-        
+
         cursor = self.conn.cursor()
         now = datetime.now().isoformat()
-        
+        written = 0
+
         for username, user in data.items():
             try:
+                # OR IGNORE, not OR REPLACE: importing the legacy store must never write
+                # over an account that already exists here. The caller clears the table
+                # first when it really does mean to replace everything.
                 cursor.execute('''
-                    INSERT OR REPLACE INTO users
+                    INSERT OR IGNORE INTO users
                     (username, password_salt, password_hash, role, permissions, tenant, 
                      created_at, last_login, password_expiry, 
-                     totp_secret_encrypted, totp_enabled, force_password_change)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     totp_secret_encrypted, totp_enabled, force_password_change, enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     username,
                     user.get('password_salt', ''),
@@ -2266,13 +2685,19 @@ class PegaProxDB:
                     user.get('password_expiry'),
                     self._encrypt(user.get('totp_secret', '')),
                     1 if user.get('totp_enabled', False) else 0,
-                    1 if user.get('force_password_change', False) else 0
+                    1 if user.get('force_password_change', False) else 0,
+                    # the column defaults to 1, so leaving it out brought a disabled
+                    # legacy account back enabled. Truthiness, not `is False`: the JSON
+                    # store wrote this as 0/1 as often as true/false.
+                    1 if user.get('enabled', True) else 0
                 ))
+                if cursor.rowcount > 0:
+                    written += 1
             except Exception as e:
                 logging.error(f"Failed to migrate user {username}: {e}")
-        
-        logging.info(f"Migrated {len(data)} users to SQLite")
-        return True
+
+        logging.info(f"Migrated {written}/{len(data)} users to SQLite")
+        return written > 0
     
     def _migrate_sessions(self) -> bool:
         """Migrate sessions from encrypted file"""
@@ -2890,6 +3315,8 @@ class PegaProxDB:
                 'balance_containers': bool(row['balance_containers']),
                 'balance_local_disks': bool(row['balance_local_disks']),
                 'proxlb_tags_enabled': bool(row['proxlb_tags_enabled']) if 'proxlb_tags_enabled' in row.keys() else False,
+                'proxlb_pins_auto_migrate': bool(row['proxlb_pins_auto_migrate']) if 'proxlb_pins_auto_migrate' in row.keys() else False,
+                'proxlb_pins_strict': bool(row['proxlb_pins_strict']) if 'proxlb_pins_strict' in row.keys() else False,
                 'dry_run': bool(row['dry_run']),
                 'enabled': bool(row['enabled']),
                 'ha_enabled': bool(row['ha_enabled']),
@@ -2910,6 +3337,7 @@ class PegaProxDB:
                 'balance_io_weight': row['balance_io_weight'] if 'balance_io_weight' in row.keys() else 1.0,
                 'cpu_baseline': row['cpu_baseline'] if 'cpu_baseline' in row.keys() else '',
                 'vnc_tunnel': bool(row['vnc_tunnel']) if 'vnc_tunnel' in row.keys() else False,
+                'ssh_disabled': bool(row['ssh_disabled']) if 'ssh_disabled' in row.keys() else False,
                 'backup_sla_max_age_hours': int(row['backup_sla_max_age_hours']) if 'backup_sla_max_age_hours' in row.keys() and row['backup_sla_max_age_hours'] is not None else 0,
                 'api_port': int(row['api_port']) if 'api_port' in row.keys() and row['api_port'] is not None else 8006,
                 # MK May 2026 — worldmap fields (per-cluster)
@@ -2977,6 +3405,8 @@ class PegaProxDB:
             'balance_containers': bool(row['balance_containers']),
             'balance_local_disks': bool(row['balance_local_disks']),
             'proxlb_tags_enabled': bool(row['proxlb_tags_enabled']) if 'proxlb_tags_enabled' in row.keys() else False,
+            'proxlb_pins_auto_migrate': bool(row['proxlb_pins_auto_migrate']) if 'proxlb_pins_auto_migrate' in row.keys() else False,
+            'proxlb_pins_strict': bool(row['proxlb_pins_strict']) if 'proxlb_pins_strict' in row.keys() else False,
             'dry_run': bool(row['dry_run']),
             'enabled': bool(row['enabled']),
             'ha_enabled': bool(row['ha_enabled']),
@@ -2997,6 +3427,7 @@ class PegaProxDB:
             'balance_io_weight': row['balance_io_weight'] if 'balance_io_weight' in row.keys() else 1.0,
             'cpu_baseline': row['cpu_baseline'] if 'cpu_baseline' in row.keys() else '',
             'vnc_tunnel': bool(row['vnc_tunnel']) if 'vnc_tunnel' in row.keys() else False,
+            'ssh_disabled': bool(row['ssh_disabled']) if 'ssh_disabled' in row.keys() else False,
             'backup_sla_max_age_hours': int(row['backup_sla_max_age_hours']) if 'backup_sla_max_age_hours' in row.keys() and row['backup_sla_max_age_hours'] is not None else 0,
             # MK May 2026 — Proxmox API port override (default 8006). Direct-TLS only, never proxied.
             'api_port': int(row['api_port']) if 'api_port' in row.keys() and row['api_port'] is not None else 8006,
@@ -3012,7 +3443,9 @@ class PegaProxDB:
         now = datetime.now().isoformat()
 
         # MK: Mar 2026 - preserve group_id/display_name/sort_order that aren't in config data (#111)
-        cursor.execute('SELECT group_id, display_name, sort_order, created_at FROM clusters WHERE id = ?', (cluster_id,))
+        cursor.execute('SELECT group_id, display_name, sort_order, created_at, '
+                       'proxlb_tags_enabled, proxlb_pins_auto_migrate, proxlb_pins_strict '
+                       'FROM clusters WHERE id = ?', (cluster_id,))
         existing = cursor.fetchone()
 
         # MK May 2026 — preserve previously-set worldmap location across save_cluster
@@ -3045,15 +3478,15 @@ class PegaProxDB:
              cluster_type,
              predictive_balancing, predictive_threshold,
              balance_cpu_weight, balance_mem_weight, balance_io_weight,
-             cpu_baseline, vnc_tunnel,
+             cpu_baseline, vnc_tunnel, ssh_disabled,
              backup_sla_max_age_hours,
              api_port,
              latitude, longitude, location_label,
              node_ui_suffix,
-             proxlb_tags_enabled,
+             proxlb_tags_enabled, proxlb_pins_auto_migrate, proxlb_pins_strict,
              created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             cluster_id,
             data.get('name', ''),
@@ -3090,13 +3523,20 @@ class PegaProxDB:
             float(data.get('balance_io_weight', 1.0) or 1.0),
             data.get('cpu_baseline', '') or '',
             1 if data.get('vnc_tunnel', False) else 0,
+            1 if data.get('ssh_disabled', False) else 0,
             int(data.get('backup_sla_max_age_hours', 0) or 0),
             int(data.get('api_port', 8006) or 8006),
             data.get('latitude', existing_lat),
             data.get('longitude', existing_lon),
             data.get('location_label', existing_loc_label) or '',
             (data.get('node_ui_suffix', existing_node_ui_suffix) or '').strip().lstrip('.'),
-            1 if data.get('proxlb_tags_enabled', False) else 0,
+            # INSERT OR REPLACE rewrites every column, so a flag the payload omits
+            # gets forced to 0. A merge-restore from an older backup that predates
+            # these fields would silently switch them off. Fall back to the stored
+            # value when the key is absent. An explicit False still wins.
+            1 if data.get('proxlb_tags_enabled', existing['proxlb_tags_enabled'] if existing else False) else 0,
+            1 if data.get('proxlb_pins_auto_migrate', existing['proxlb_pins_auto_migrate'] if existing else False) else 0,
+            1 if data.get('proxlb_pins_strict', existing['proxlb_pins_strict'] if existing else False) else 0,
             existing['created_at'] if existing else now,
             now
         ))
@@ -3133,21 +3573,59 @@ class PegaProxDB:
         self.conn.commit()
 
     def delete_cluster(self, cluster_id: str):
-        """Delete cluster"""
+        """Delete a cluster and ALL of its cluster-scoped rows.
+
+        #779 (zobsg) — this used to remove only the clusters row + xcpng_vmid_map, leaving orphaned
+        rows in pool_permissions, vm_acls, node_maintenance, migration_history and ~20 other
+        cluster_id-keyed tables (stale UI counts, DB bloat, and a small tail where a reused 8-char
+        cluster id could inherit a stale pool/VM grant). Sweep every table that actually carries a
+        cluster_id column so the delete is exhaustive and stays correct as new cluster-scoped tables
+        are added, instead of a hand-maintained list that silently drifts. tenants.clusters is a JSON
+        array (not a cluster_id column) — the caller prunes that separately.
+        """
         cursor = self.conn.cursor()
         cursor.execute('DELETE FROM clusters WHERE id = ?', (cluster_id,))
-        cursor.execute('DELETE FROM xcpng_vmid_map WHERE cluster_id = ?', (cluster_id,))
+        # table names come from sqlite_master (not user input) → safe to interpolate; cluster_id is bound
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        for (tbl,) in cursor.fetchall():
+            try:
+                cols = [row[1] for row in cursor.execute('PRAGMA table_info("%s")' % tbl).fetchall()]
+            except Exception:
+                continue
+            if 'cluster_id' in cols:
+                cursor.execute('DELETE FROM "%s" WHERE cluster_id = ?' % tbl, (cluster_id,))
         self.conn.commit()
 
     # XCP-ng VMID mapping helpers - MK Mar 2026
-    def xcpng_get_vmid(self, cluster_id, vm_uuid):
-        """Get or create synthetic VMID for XCP-ng VM UUID"""
+    #
+    # MK Sep 2026: a retired mapping keeps its row with this in place of the uuid, so the
+    # vmid stays spent and cannot be handed to a new VM (the allocator takes MAX+1 from
+    # this table). NOT NULL and the (cluster_id, uuid) primary key rule out a plain NULL,
+    # and a real XenAPI uuid never looks like this.
+    XCPNG_RETIRED_UUID = 'retired:'
+
+    def xcpng_retire_vmid(self, cluster_id, vmid):
+        """Mark a synthetic vmid as spent without freeing it for reuse."""
+        cursor = self.conn.cursor()
+        cursor.execute('UPDATE xcpng_vmid_map SET uuid = ? WHERE cluster_id = ? AND vmid = ?',
+                       (f'{self.XCPNG_RETIRED_UUID}{int(vmid)}', cluster_id, int(vmid)))
+        self.conn.commit()
+        return cursor.rowcount or 0
+
+    def xcpng_get_vmid(self, cluster_id, vm_uuid, create=True):
+        """Get or create synthetic VMID for XCP-ng VM UUID.
+
+        create=False only looks it up and gives None for a UUID without an id. That
+        is what a PegaProx standby does: the map is synced, and an id made up there
+        could differ from the one the active hands the same VM (#625)."""
         cursor = self.conn.cursor()
         cursor.execute('SELECT vmid FROM xcpng_vmid_map WHERE cluster_id = ? AND uuid = ?',
                        (cluster_id, vm_uuid))
         row = cursor.fetchone()
         if row:
             return row['vmid']
+        if not create:
+            return None
         # allocate next vmid starting at 100
         cursor.execute('SELECT MAX(vmid) FROM xcpng_vmid_map WHERE cluster_id = ?', (cluster_id,))
         max_row = cursor.fetchone()
@@ -3163,16 +3641,44 @@ class PegaProxDB:
         cursor.execute('SELECT uuid FROM xcpng_vmid_map WHERE cluster_id = ? AND vmid = ?',
                        (cluster_id, int(vmid)))
         row = cursor.fetchone()
-        return row['uuid'] if row else None
+        if not row:
+            return None
+        _u = row['uuid'] or ''
+        # a retired row holds the id, not a guest
+        return None if _u.startswith(self.XCPNG_RETIRED_UUID) else _u
 
     # ========================================
     # USER OPERATIONS
     # ========================================
     
+    # NS Oct 2026 (#991) - rows only somebody signed in can have written: the systems this
+    # install connects to and the credentials it issued. Settings, tenants and the rate
+    # tables are left out on purpose, a fresh install fills those before its setup runs.
+    CONFIGURATION_TABLES = ('clusters', 'pbs_servers', 'vmware_servers', 'xcpng_pools',
+                            'storage_clusters', 'api_tokens', 'webauthn_credentials')
+
+    def holds_configuration(self) -> bool:
+        """True once this database holds anything from CONFIGURATION_TABLES. Raises
+        when it cannot tell."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        present = {row[0] for row in cursor.fetchall()}
+        for table in self.CONFIGURATION_TABLES:
+            if table in present:
+                cursor.execute(f'SELECT 1 FROM "{table}" LIMIT 1')
+                if cursor.fetchone():
+                    return True
+        return False
+
     def get_all_users(self) -> dict:
         """Get all users"""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT * FROM users')
+        # MK Oct 2026 (#940) - every column but directory_groups. This read runs on every
+        # authorized request, and a directory user's nested memberships run to hundreds of
+        # DNs; the pool lookups read them by username (get_user_directory_groups).
+        cursor.execute('PRAGMA table_info(users)')
+        _cols = ', '.join('"%s"' % r[1] for r in cursor.fetchall() if r[1] != 'directory_groups')
+        cursor.execute(f'SELECT {_cols or "*"} FROM users')
         
         def build_avatar_url(row_data: dict) -> str:
             avatar_mime = row_data.get('avatar_mime', '') or ''
@@ -3224,6 +3730,8 @@ class PegaProxDB:
                 'avatar_url': build_avatar_url(row_dict),
                 'ldap_dn': row_dict.get('ldap_dn', ''),
                 'last_ldap_sync': row_dict.get('last_ldap_sync', ''),
+                'ldap_permissions': json.loads(row_dict.get('ldap_permissions') or '[]'),
+                'ldap_tenant': row_dict.get('ldap_tenant', '') or '',
                 # NS: Feb 2026 - OIDC and tenant permission fields
                 'tenant_permissions': json.loads(row_dict.get('tenant_permissions') or '{}'),
                 'denied_permissions': json.loads(row_dict.get('denied_permissions') or '[]'),
@@ -3290,6 +3798,8 @@ class PegaProxDB:
             'avatar_url': build_avatar_url(row_dict),
             'ldap_dn': row_dict.get('ldap_dn', ''),
             'last_ldap_sync': row_dict.get('last_ldap_sync', ''),
+            'ldap_permissions': json.loads(row_dict.get('ldap_permissions') or '[]'),
+            'ldap_tenant': row_dict.get('ldap_tenant', '') or '',
             # NS: Feb 2026 - OIDC and tenant permission fields
             'tenant_permissions': json.loads(row_dict.get('tenant_permissions') or '{}'),
             'denied_permissions': json.loads(row_dict.get('denied_permissions') or '[]'),
@@ -3313,14 +3823,18 @@ class PegaProxDB:
              totp_secret_encrypted, totp_pending_secret_encrypted, totp_enabled, force_password_change,
             enabled, theme, language, ui_layout, taskbar_auto_expand,
              auth_source, display_name, email, avatar_mime, avatar_data, ldap_dn, last_ldap_sync,
+             ldap_permissions, ldap_tenant,
              tenant_permissions, denied_permissions, oidc_sub, last_oidc_sync,
-             layout_chosen, portal_only, sidebar_show_vmid, user_folder)
+             layout_chosen, portal_only, sidebar_show_vmid, user_folder,
+             directory_groups)
             VALUES (?, ?, ?, ?, ?, ?,
                     COALESCE((SELECT created_at FROM users WHERE username = ?), ?),
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?,
                     ?, ?, ?, ?,
-                    ?, ?, ?, ?)
+                    ?, ?, ?, ?,
+                    COALESCE(?, (SELECT directory_groups FROM users WHERE username = ?), '[]'))
         ''', (
             username,
             data.get('password_salt', ''),
@@ -3347,6 +3861,8 @@ class PegaProxDB:
             data.get('avatar_data', ''),
             data.get('ldap_dn', ''),
             data.get('last_ldap_sync', ''),
+            json.dumps(list(data.get('ldap_permissions') or [])),
+            data.get('ldap_tenant', '') or '',
             # NS: Feb 2026 - OIDC and tenant permission fields
             json.dumps(data.get('tenant_permissions', {})),
             json.dumps(data.get('denied_permissions', [])),
@@ -3356,6 +3872,12 @@ class PegaProxDB:
             1 if data.get('portal_only', False) else 0,
             1 if data.get('sidebar_show_vmid', False) else 0,
             data.get('user_folder', ''),
+            # #940 - user dicts from get_all_users carry no groups, and a sign-in writes the
+            # whole table back: without a 'groups' key the stored ones stay as they are
+            (json.dumps(_directory_groups(data.get('auth_source', 'local'), data.get('groups')))
+             if 'groups' in data or data.get('auth_source', 'local') not in DIRECTORY_AUTH_SOURCES
+             else None),
+            username,
         ))
         self.conn.commit()
     
@@ -3364,11 +3886,123 @@ class PegaProxDB:
         for username, data in users.items():
             self.save_user(username, data)
     
+    def purge_user_grants(self, username: str) -> dict:
+        """Drop every per-resource grant tied to this username. Returns what went.
+
+        MK Sep 2026 - deleting an account revoked its sessions, its console tokens and
+        its API tokens, but left its VM-ACL memberships and pool permissions behind.
+        Both are keyed by the bare username, so the next account created under the same
+        name - a rehire, an MSP reusing a customer login, a tenant delegate naming a new
+        user after one another tenant deleted - silently inherited every VM and pool the
+        old account held, with nothing in the UI to show for it.
+
+        A `*` entry in an ACL is a wildcard, not this user, and is left alone.
+        """
+        removed = {'vm_acls': 0, 'pool_permissions': 0}
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("DELETE FROM pool_permissions WHERE subject_type = 'user' "
+                           "AND subject_id = ?", (username,))
+            removed['pool_permissions'] = cursor.rowcount or 0
+        except Exception as e:
+            logging.error(f"Failed to purge pool permissions for '{username}': {e}")
+
+        try:
+            # full scan on purpose: the member list is JSON in a column, so there is no
+            # index to ask, and a LIKE prefilter would quietly miss an escaped name. This
+            # runs on an admin deleting an account, not on a request path.
+            cursor.execute('SELECT id, users FROM vm_acls')
+            rows = cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Failed to read VM ACLs while purging '{username}': {e}")
+            rows = []
+
+        for row in rows:
+            try:
+                members = json.loads(row['users'] or '[]')
+            except Exception:
+                continue
+            if username not in members:
+                continue
+            members = [m for m in members if m != username]
+            try:
+                if members:
+                    cursor.execute('UPDATE vm_acls SET users = ? WHERE id = ?',
+                                   (json.dumps(members), row['id']))
+                else:
+                    # an ACL row with no members grants nobody anything, but it still
+                    # makes the cluster "have ACLs", which narrows what OTHER callers
+                    # are shown. Drop it rather than leave the litter behind.
+                    cursor.execute('DELETE FROM vm_acls WHERE id = ?', (row['id'],))
+                removed['vm_acls'] += 1
+            except Exception as e:
+                logging.error(f"Failed to purge VM ACL {row['id']} for '{username}': {e}")
+
+        self.conn.commit()
+        if removed['vm_acls'] or removed['pool_permissions']:
+            logging.info(f"purged grants for deleted user '{username}': "
+                         f"{removed['vm_acls']} VM ACL(s), "
+                         f"{removed['pool_permissions']} pool permission(s)")
+            # late import: utils.rbac imports this module, so it cannot be at the top
+            try:
+                from pegaprox.utils.rbac import invalidate_vm_acls_cache, invalidate_pool_cache
+                invalidate_vm_acls_cache()
+                invalidate_pool_cache()
+            except Exception as e:
+                logging.warning(f"could not invalidate the authz caches after the purge: {e}")
+        return removed
+
+    def purge_vm_grants(self, cluster_id: str, vmid) -> dict:
+        """Drop every per-resource grant that pointed at one VM. Returns what went.
+
+        A vmid is only unique while the guest exists. Once it is gone the number can
+        come back - PVE reuses freely, and our XCP-ng mapping did too until the id was
+        retired instead of deleted. A VM-ACL row or a scheduled action left pointing at
+        it then applies to whatever takes the number next. The client portal's teardown
+        route has done this for its own deletions since #556; everything else had not.
+        MK Sep 2026
+        """
+        removed = {'vm_acls': 0, 'scheduled_actions': 0, 'favorites': 0}
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('DELETE FROM vm_acls WHERE cluster_id = ? AND vmid = ?',
+                           (cluster_id, str(vmid)))
+            removed['vm_acls'] = cursor.rowcount or 0
+        except Exception as e:
+            logging.error(f"Failed to purge VM ACL for {cluster_id}/{vmid}: {e}")
+        try:
+            cursor.execute('DELETE FROM scheduled_actions WHERE cluster_id = ? AND vmid = ?',
+                           (cluster_id, int(vmid)))
+            removed['scheduled_actions'] = cursor.rowcount or 0
+        except Exception as e:
+            logging.error(f"Failed to purge schedules for {cluster_id}/{vmid}: {e}")
+        try:
+            # a star on the number would light the next guest that takes it, and hold a slot
+            cursor.execute("DELETE FROM user_favorites WHERE cluster_id = ? AND kind = 'vm' AND vmid = ?",
+                           (cluster_id, int(vmid)))
+            removed['favorites'] = cursor.rowcount or 0
+        except Exception as e:
+            logging.error(f"Failed to purge favorites for {cluster_id}/{vmid}: {e}")
+        self.conn.commit()
+        if any(removed.values()):
+            logging.info(f"purged grants for removed VM {cluster_id}/{vmid}: {removed}")
+            try:
+                from pegaprox.utils.rbac import invalidate_vm_acls_cache
+                invalidate_vm_acls_cache()
+            except Exception:
+                pass
+        return removed
+
     def delete_user(self, username: str):
         """Delete user"""
         cursor = self.conn.cursor()
         cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+        # the next account under this name starts without them
+        cursor.execute('DELETE FROM user_favorites WHERE username = ?', (username,))
         self.conn.commit()
+        # the grants outlive the account otherwise, and the next account with this
+        # name inherits them
+        self.purge_user_grants(username)
     
     # ========================================
     # SESSION OPERATIONS
@@ -3465,18 +4099,24 @@ class PegaProxDB:
     # ========================================
     
     def _generate_audit_hmac(self, timestamp: str, user: str, action: str, details: str,
-                             ip: str, cluster: str = '', severity: str = '') -> str:
+                             ip: str, cluster: str = '', severity: str = '',
+                             cluster_id: str = '') -> str:
         """Generate HMAC signature for audit entry (tamper detection).
 
         MK May 2026 (audit fix M-2) — added cluster + severity to the canonical
         string. Old entries (signed before May 2026) won't have those fields
         in their HMAC; the verify path tries the new format first, then
         falls back to the legacy format for backward compat.
+
+        The cluster id joins the string only when the row has one, so every row
+        written before it existed keeps the signature it had.
         """
         if not self.aes_key:
             return ''
-        # Canonical: timestamp|user|action|details|ip|cluster|severity
+        # Canonical: timestamp|user|action|details|ip|cluster|severity[|cluster_id]
         data = f"{timestamp}|{user or ''}|{action}|{details or ''}|{ip or ''}|{cluster or ''}|{severity or ''}"
+        if cluster_id:
+            data += f"|{cluster_id}"
         signature = hmac.new(self.aes_key, data.encode('utf-8'), hashlib.sha256).hexdigest()
         return signature
 
@@ -3500,6 +4140,7 @@ class PegaProxDB:
             entry.get('ip_address', ''),
             entry.get('cluster', ''),
             entry.get('severity', ''),
+            entry.get('cluster_id', ''),
         )
         if hmac.compare_digest(stored_sig, expected_new):
             return True
@@ -3515,11 +4156,12 @@ class PegaProxDB:
         return hmac.compare_digest(stored_sig, legacy_sig)
     
     def add_audit_entry(self, user: str, action: str, details: str = '', ip: str = '',
-                        cluster: str = '', severity: str = None):
+                        cluster: str = '', severity: str = None, cluster_id: str = ''):
         """Add audit log entry with HMAC signature for integrity verification.
 
         cluster/severity added MK May 2026 — keep optional so existing callers
-        keep working unchanged.
+        keep working unchanged. cluster is the name shown, cluster_id the cluster
+        the row belongs to (#1121).
         """
         cursor = self.conn.cursor()
         timestamp = datetime.now().isoformat()
@@ -3537,13 +4179,14 @@ class PegaProxDB:
                 severity = 'info'
 
         signature = self._generate_audit_hmac(timestamp, user, action, details, ip,
-                                               cluster or '', severity)
+                                               cluster or '', severity, cluster_id or '')
 
         cursor.execute('''
             INSERT INTO audit_log (timestamp, user, action, details, ip_address,
-                                   hmac_signature, cluster, severity)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (timestamp, user, action, details, ip, signature, cluster or '', severity))
+                                   hmac_signature, cluster, severity, cluster_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (timestamp, user, action, details, ip, signature, cluster or '', severity,
+              cluster_id or ''))
         last_id = cursor.lastrowid
         self.conn.commit()
 
@@ -3623,21 +4266,35 @@ class PegaProxDB:
             logging.warning(f"audit_facets failed: {e}")
         return out
     
-    def get_audit_log(self, limit: int = 1000, user: str = None, action: str = None, verify_integrity: bool = False) -> list:
-        """Get audit log entries, optionally verifying HMAC integrity"""
+    def get_audit_log(self, limit: int = 1000, user: str = None, action: str = None, verify_integrity: bool = False,
+                      scope: tuple = None) -> list:
+        """Get audit log entries, optionally verifying HMAC integrity.
+
+        scope=(cluster_ids, username) keeps the rows of those clusters plus the user's own,
+        in the query so the limit still counts what the caller gets (#1044)."""
         cursor = self.conn.cursor()
-        
+
         query = 'SELECT * FROM audit_log'
         params = []
         conditions = []
-        
+
         if user:
             conditions.append('user = ?')
             params.append(user)
         if action:
             conditions.append('action LIKE ?')
             params.append(f'%{action}%')
-        
+        if scope is not None:
+            cids, own = list(scope[0] or []), scope[1] or ''
+            parts = []
+            if cids:
+                parts.append(f"cluster_id IN ({','.join('?' * len(cids))})")
+                params.extend(cids)
+            if own:
+                parts.append('user = ?')
+                params.append(own)
+            conditions.append(f"({' OR '.join(parts)})" if parts else '1 = 0')
+
         if conditions:
             query += ' WHERE ' + ' AND '.join(conditions)
         
@@ -3827,16 +4484,23 @@ class PegaProxDB:
         """Delete a VM ACL entry from the database
         
         NS: This was missing! save_all_vm_acls only adds/updates, never deletes.
+
+        NS Oct 2026 - a failed DELETE raises. It used to log and answer False, which reads
+        as "there was no grant": the VM delete route took that as done and the grant stayed
+        for the next guest on that VMID, and the ACL route answered success.
         """
+        cursor = self.conn.cursor()
         try:
-            cursor = self.conn.cursor()
             cursor.execute('DELETE FROM vm_acls WHERE cluster_id = ? AND vmid = ?',
                           (cluster_id, str(vmid)))
             self.conn.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            logging.error(f"Failed to delete VM ACL: {e}")
-            return False
+        except Exception:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            raise
+        return cursor.rowcount > 0
     
     # ========================================
     # POOL PERMISSIONS - MK Jan 2026
@@ -3927,66 +4591,113 @@ class PegaProxDB:
         # an exact match silently missed and the pool user saw zero VMs. User grants stay
         # case-sensitive (usernames are). Caveat: two groups differing only by case would
         # collide here — realm group names are unique case-wise in practice.
-        if groups:
-            for group in groups:
-                cursor.execute('''
-                    SELECT pool_id, permissions FROM pool_permissions
-                    WHERE cluster_id = ? AND subject_type = 'group' AND LOWER(subject_id) = LOWER(?)
-                ''', (cluster_id, group))
-                
-                for row in cursor.fetchall():
-                    pool_id = row[0]
-                    perms = json.loads(row[1]) if row[1] else []
-                    if pool_id in result:
-                        # Merge permissions (union)
-                        result[pool_id] = list(set(result[pool_id] + perms))
-                    else:
-                        result[pool_id] = perms
-        
+        # #940 - match the DN as stored AND its bare group name, because the dialog that
+        # writes these grants asks for a name while the login stores a DN.
+        # One read of this cluster's group grants, matched here: a query per group was
+        # free while `groups` was always empty, but a directory user now brings every
+        # group the login saw, nested AD memberships included - easily a few hundred.
+        # The stored groups are read only when a group grant exists, and by username,
+        # so callers need not carry them (get_all_users leaves them out).
+        cursor.execute('''
+            SELECT pool_id, subject_id, permissions FROM pool_permissions
+            WHERE cluster_id = ? AND subject_type = 'group'
+        ''', (cluster_id,))
+        _grants = cursor.fetchall()
+        _want = self._group_keys_of(username, groups) if _grants else set()
+        if _want:
+            for row in _grants:
+                if (row[1] or '').lower() not in _want:
+                    continue
+                pool_id = row[0]
+                perms = json.loads(row[2]) if row[2] else []
+                if pool_id in result:
+                    # Merge permissions (union)
+                    result[pool_id] = list(set(result[pool_id] + perms))
+                else:
+                    result[pool_id] = perms
+
         return result
 
     def get_user_pool_clusters(self, username: str, groups: List[str] = None) -> List[str]:
         """#555 — distinct cluster_ids where this user (or their groups) holds ANY pool
-        permission. Cheap: one indexed SELECT per subject on pool_permissions
-        (idx_pool_perms_cluster). Used by the cluster-list + get_user_clusters gates."""
+        permission. Cheap: one SELECT for the user and one for all of their groups on
+        pool_permissions. Used by the cluster-list + get_user_clusters gates."""
         cursor = self.conn.cursor()
-        subjects = [('user', username)]
-        for g in (groups or []):
-            subjects.append(('group', g))
         out = set()
-        for stype, sid in subjects:
-            # MK #555 — group names match case-insensitively (see get_user_pool_permissions),
-            # users stay exact.
-            if stype == 'group':
-                cursor.execute(
-                    "SELECT DISTINCT cluster_id FROM pool_permissions WHERE subject_type = 'group' AND LOWER(subject_id) = LOWER(?)",
-                    (sid,))
-            else:
-                cursor.execute(
-                    "SELECT DISTINCT cluster_id FROM pool_permissions WHERE subject_type = ? AND subject_id = ?",
-                    (stype, sid))
-            for row in cursor.fetchall():
+        cursor.execute(
+            "SELECT DISTINCT cluster_id FROM pool_permissions "
+            "WHERE subject_type = 'user' AND subject_id = ?" + _NON_EMPTY_GRANT,
+            (username,))
+        for row in cursor.fetchall():
+            out.add(row[0])
+        # MK #555 - group names match case-insensitively (see get_user_pool_permissions),
+        # users stay exact.
+        # #940 - same two spellings as get_user_pool_permissions. This one gates whether
+        # the cluster is visible at all, so missing it left the pool user without even the
+        # cluster the grant was on. One read for all groups, as there.
+        cursor.execute(
+            "SELECT cluster_id, subject_id FROM pool_permissions "
+            "WHERE subject_type = 'group'" + _NON_EMPTY_GRANT)
+        _grants = cursor.fetchall()
+        _want = self._group_keys_of(username, groups) if _grants else set()
+        for row in _grants:
+            if (row[1] or '').lower() in _want:
                 out.add(row[0])
         return list(out)
+
+    def get_user_directory_groups(self, username: str) -> List[str]:
+        """The directory / IdP groups the account's last sign-in stored (#940), none for a
+        local account. One indexed row, so the users-table read on every request does not
+        have to carry hundreds of DNs per directory user."""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT auth_source, directory_groups FROM users WHERE username = ?',
+                       (username,))
+        row = cursor.fetchone()
+        return _directory_groups(row[0], row[1]) if row else []
+
+    def _group_keys_of(self, username, groups=None):
+        # what the caller passed (tests, an in-flight row) plus what is stored
+        return _group_grant_keys(list(groups or []) + self.get_user_directory_groups(username))
+
+    def group_grants_lost(self, held: List[str], kept: List[str]) -> bool:
+        """Whether going from groups `held` to `kept` drops a spelling that a pool grant
+        with permissions names (#625 standby check, #940).
+
+        Not every dropped group: nested AD memberships churn (distribution lists, an OU
+        move that keeps the CN) without touching anything a grant reads. MK Oct 2026"""
+        lost = _group_grant_keys(held) - _group_grant_keys(kept)
+        if not lost:
+            return False
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT subject_id FROM pool_permissions WHERE subject_type = 'group'"
+                       + _NON_EMPTY_GRANT)
+        return any((row[0] or '').lower() in lost for row in cursor.fetchall())
 
     # ========================================
     # KEY ROTATION (HIPAA/ISO Compliance)
     # ========================================
     
-    def rotate_encryption_key(self) -> dict:
+    def rotate_encryption_key(self, new_key: bytes = None) -> dict:
         """Rotate the AES-256 encryption key and re-encrypt all data
-        
+
         This is required for HIPAA/ISO 27001 compliance (periodic key rotation).
         Process:
         1. Generate new AES-256 key
         2. Decrypt all encrypted data with old key
         3. Re-encrypt with new key
         4. Replace old key file
-        
+
+        MK Sep 2026 (#625) - new_key: take this key instead of a fresh one. A standby
+        adopting its active's key needs exactly what a rotation does for what stays
+        local (the acme_* secrets, the audit signatures); the synced rows are replaced
+        by the first sync anyway.
+
         Returns statistics about the rotation.
         """
         if not ENCRYPTION_AVAILABLE or not self.aesgcm:
             return {'error': 'Encryption not available'}
+        if new_key is not None and (not isinstance(new_key, (bytes, bytearray)) or len(new_key) != 32):
+            return {'error': 'The new key must be 32 bytes'}
         
         aes_key_file = os.path.join(CONFIG_DIR, '.pegaprox_aes256.key')
         
@@ -3996,7 +4707,7 @@ class PegaProxDB:
         old_aesgcm = AESGCM(old_key)
         
         # Generate new key
-        new_key = os.urandom(32)  # 256 bits
+        new_key = bytes(new_key) if new_key is not None else os.urandom(32)  # 256 bits
         new_aesgcm = AESGCM(new_key)
         
         stats = {
@@ -4047,11 +4758,23 @@ class PegaProxDB:
                     stats['errors'].append(f"Cluster {row['id']}: {str(e)}")
 
             # Also rotate SSH keys and API token secrets if present.
-            cursor.execute('SELECT id, ssh_key_encrypted, api_token_secret_encrypted FROM clusters')
+            # NOTE: ha_settings has no _encrypted suffix but IS encrypted (save_cluster stores
+            # _encrypt(json.dumps(...)) and both read paths _decrypt it). It was missed here, and
+            # _decrypt RAISES on a key mismatch — so rotating the key, a compliance feature, made
+            # get_all_clusters throw and every cluster vanish from the UI. Rotate it too.
+            cursor.execute('SELECT id, ssh_key_encrypted, api_token_secret_encrypted, ha_settings '
+                           'FROM clusters')
             for row in cursor.fetchall():
                 try:
                     ssh_key = row['ssh_key_encrypted']
                     api_token = row['api_token_secret_encrypted']
+                    ha_settings = row['ha_settings']
+
+                    if ha_settings and str(ha_settings).startswith('aes256:'):
+                        decrypted = self._decrypt_with_key(ha_settings, old_aesgcm)
+                        new_encrypted = self._encrypt_with_key(decrypted, new_aesgcm)
+                        cursor.execute('UPDATE clusters SET ha_settings = ? WHERE id = ?',
+                                     (new_encrypted, row['id']))
 
                     if ssh_key and ssh_key.startswith('aes256:'):
                         decrypted = self._decrypt_with_key(ssh_key, old_aesgcm)
@@ -4112,18 +4835,184 @@ class PegaProxDB:
             # because clusters failed first). stats['sessions_rotated'] stays
             # at 0 for backwards-compat with the UI counter.
             
-            self.conn.commit()
-            
-            # 4. Save new key (backup old key first)
-            backup_file = aes_key_file + f'.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-            with open(backup_file, 'wb') as f:
-                f.write(old_key)
-            os.chmod(backup_file, 0o600)
-            
-            with open(aes_key_file, 'wb') as f:
-                f.write(new_key)
-            os.chmod(aes_key_file, 0o600)
-            
+            # 3a2. Rotate the remaining encrypted stores.
+            # sec (audit): the loop above only covers columns whose NAME ends in _encrypted,
+            # so BMC endpoint passwords and every secret living in server_settings were left on
+            # the old key. _decrypt RAISES, so after a rotation ldap_bind_password broke every
+            # LDAP login, smtp_password broke all alert mail, and the ACME DNS secrets broke
+            # renewals — silently, on a feature run FOR compliance.
+            try:
+                cursor.execute("SELECT cluster_id, node, bmc_password_encrypted "
+                               "FROM node_bmc_endpoints "
+                               "WHERE bmc_password_encrypted IS NOT NULL "
+                               "AND bmc_password_encrypted != ''")
+                for _r in cursor.fetchall():
+                    _v = _r['bmc_password_encrypted']
+                    if _v and str(_v).startswith('aes256:'):
+                        _p = self._decrypt_with_key(_v, old_aesgcm)
+                        cursor.execute('UPDATE node_bmc_endpoints SET bmc_password_encrypted = ? '
+                                       'WHERE cluster_id = ? AND node = ?',
+                                       (self._encrypt_with_key(_p, new_aesgcm), _r['cluster_id'], _r['node']))
+            except Exception as e:
+                stats['errors'].append(f"BMC secrets: {e}")
+
+            # sec (audit): the loop above walks clusters/users/esxi/bmc, but PBS and ESXi server
+            # credentials live in their own tables and were never rotated — and _decrypt RAISES,
+            # so a rotation silently broke every PBS backup and every ESXi connection until
+            # someone re-entered the passwords. Same shape as the server_settings gap below.
+            for _tbl, _cols in (('pbs_servers', ('pass_encrypted', 'api_token_secret_encrypted',
+                                                 'ssh_key_encrypted')),
+                                ('vmware_servers', ('pass_encrypted',)),
+                                # MK Sep 2026 - an auto-install answer file holds the root
+                                # password of the host it builds. Missing here would mean a
+                                # rotation leaves every stored profile unreadable and the
+                                # next ISO fetch answering 500.
+                                ('auto_install_profiles', ('answer_encrypted',))):
+                try:
+                    cursor.execute(f"SELECT id, {', '.join(_cols)} FROM {_tbl}")
+                    for _r in cursor.fetchall():
+                        for _c in _cols:
+                            _v = _r[_c]
+                            if _v and str(_v).startswith('aes256:'):
+                                cursor.execute(f'UPDATE {_tbl} SET {_c} = ? WHERE id = ?',
+                                               (self._encrypt_with_key(
+                                                   self._decrypt_with_key(_v, old_aesgcm), new_aesgcm),
+                                                _r['id']))
+                except Exception as e:
+                    stats['errors'].append(f"{_tbl} secrets: {e}")
+
+            try:
+                _ss = self.get_server_settings() or {}
+                _SECRET_KEYS = ('smtp_password', 'ldap_bind_password', 'oidc_client_secret',
+                                'acme_dns_rfc2136_secret', 'acme_dns_cloudflare_token')
+                for _k in _SECRET_KEYS:
+                    _v = _ss.get(_k)
+                    if _v and isinstance(_v, str) and _v.startswith('aes256:'):
+                        # write through our own cursor, NOT save_server_settings — that helper
+                        # commits per key, which would land every re-encrypted row above while
+                        # the new key is still only in memory, and leave step 4's rollback with
+                        # nothing to undo. Everything here has to reach the same transaction.
+                        # MK Sep 2026 (#625) - one try per key: a value that does not open
+                        # used to abort the loop and leave every key after it behind
+                        try:
+                            cursor.execute('INSERT OR REPLACE INTO server_settings (key, value) '
+                                           'VALUES (?, ?)',
+                                           (_k, json.dumps(self._encrypt_with_key(
+                                               self._decrypt_with_key(_v, old_aesgcm), new_aesgcm))))
+                        except Exception as e:
+                            stats['errors'].append(f"Server setting {_k}: {e}")
+
+                # the VAPID private key is a setting too, but nested one level down inside the
+                # keypair object, so the loop above walks straight past it. Left behind it fails
+                # to decrypt, and _load_vapid answers that by generating a fresh keypair — which
+                # silently invalidates every existing push subscription.
+                _vk = _ss.get('webpush_vapid_keypair')
+                if isinstance(_vk, dict) and str(_vk.get('private_pem', '')).startswith('aes256:'):
+                    cursor.execute('INSERT OR REPLACE INTO server_settings (key, value) '
+                                   'VALUES (?, ?)',
+                                   ('webpush_vapid_keypair', json.dumps({
+                                       **_vk,
+                                       'private_pem': self._encrypt_with_key(
+                                           self._decrypt_with_key(_vk['private_pem'], old_aesgcm),
+                                           new_aesgcm)})))
+            except Exception as e:
+                stats['errors'].append(f"Server settings secrets: {e}")
+
+            # 3b. Re-sign the audit log.
+            # sec (audit): _audit_hmac signs with self.aes_key, so after a rotation every
+            # historical row verifies against a key that no longer exists and the whole trail
+            # reads as tampered — on a feature offered FOR compliance, where an intact audit
+            # trail is the other half of the requirement. Verify each row with the OLD key
+            # first: anything that already failed stays failed and is counted, so rotation
+            # cannot be used to launder a tampered entry.
+            stats['audit_resigned'] = 0
+            stats['audit_unverifiable'] = 0
+            try:
+                _saved_key = self.aes_key
+                cursor.execute('SELECT id, timestamp, user, action, details, ip_address, '
+                               'cluster, severity, cluster_id, hmac_signature FROM audit_log '
+                               'WHERE hmac_signature IS NOT NULL AND hmac_signature != ""')
+                _rows = cursor.fetchall()
+                for _r in _rows:
+                    _entry = {
+                        'timestamp': _r['timestamp'], 'user': _r['user'], 'action': _r['action'],
+                        'details': _r['details'], 'ip_address': _r['ip_address'],
+                        'cluster': _r['cluster'], 'severity': _r['severity'],
+                        'cluster_id': _r['cluster_id'], 'hmac_signature': _r['hmac_signature'],
+                    }
+                    self.aes_key = old_key
+                    _ok = self._verify_audit_hmac(_entry)
+                    if not _ok:
+                        stats['audit_unverifiable'] += 1
+                        continue                     # leave it as-is; it was already broken
+                    self.aes_key = new_key
+                    _new_sig = self._generate_audit_hmac(
+                        _r['timestamp'], _r['user'], _r['action'], _r['details'],
+                        _r['ip_address'], _r['cluster'], _r['severity'], _r['cluster_id'])
+                    cursor.execute('UPDATE audit_log SET hmac_signature = ? WHERE id = ?',
+                                   (_new_sig, _r['id']))
+                    stats['audit_resigned'] += 1
+                self.aes_key = _saved_key
+            except Exception as e:
+                self.aes_key = _saved_key
+                stats['errors'].append(f"Audit re-sign: {e}")
+
+            # 4. Persist the new key BEFORE committing the re-encrypted rows.
+            # sec (audit): this used to commit first and write the key afterwards, so a failure
+            # in the file step (full disk, permissions, read-only mount) left a database
+            # encrypted with a key that existed only in this process's memory — unreadable
+            # after the next restart, with no way back. Write the key first, fsync it, and roll
+            # the transaction back if anything about the file step fails; the rows are still
+            # readable with the old key in that case.
+            # MK Oct 2026 (#625) - the name goes by the second and the file was opened with
+            # 'wb': a second rotation within that second wrote over the backup of the
+            # first, and the key from before it was gone. A name that is taken gets a
+            # counter, as ha._install_field_key does for .pre-ha.
+            backup_base = aes_key_file + f'.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            backup_file, _taken = backup_base, 0
+            try:
+                while True:
+                    try:
+                        _fd = os.open(backup_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        break
+                    except FileExistsError:
+                        _taken += 1
+                        backup_file = f'{backup_base}.{_taken}'
+                with os.fdopen(_fd, 'wb') as f:
+                    f.write(old_key)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(backup_file, 0o600)
+
+                with open(aes_key_file, 'wb') as f:
+                    f.write(new_key)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(aes_key_file, 0o600)
+            except Exception as e:
+                self.conn.rollback()
+                logging.error(f"Key rotation aborted while persisting the new key: {e}")
+                stats['errors'].append(f"Could not persist the new key: {e}")
+                stats['success'] = False
+                return stats
+
+            try:
+                self.conn.commit()
+            except Exception as e:
+                # the rows did not land — put the old key back so the database stays readable
+                try:
+                    with open(aes_key_file, 'wb') as f:
+                        f.write(old_key)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.chmod(aes_key_file, 0o600)
+                except Exception:
+                    logging.critical("Key rotation: commit failed AND the old key could not be "
+                                     f"restored — recover it from {backup_file}")
+                stats['errors'].append(f"Commit failed, rotation rolled back: {e}")
+                stats['success'] = False
+                return stats
+
             # 5. Update in-memory key
             self.aes_key = new_key
             self.aesgcm = new_aesgcm
@@ -4195,26 +5084,62 @@ class PegaProxDB:
     # AFFINITY RULES OPERATIONS
     # ========================================
     
-    def save_node_maintenance(self, cluster_id: str, node: str):
-        """#720 — persist a soft (non-HA) node-maintenance entry so it survives a PegaProx restart."""
+    def save_node_maintenance(self, cluster_id: str, node: str, native_ha: bool = False):
+        """#720 — persist a node-maintenance entry so it survives a PegaProx restart.
+
+        native_ha records whether PVE also holds the node in HA maintenance, so a restored
+        entry can still clear the upstream flag when the user exits maintenance.
+        """
         cursor = self.conn.cursor()
         cursor.execute(
-            'INSERT OR REPLACE INTO node_maintenance (cluster_id, node, entered_at) VALUES (?, ?, '
-            'COALESCE((SELECT entered_at FROM node_maintenance WHERE cluster_id=? AND node=?), ?))',
-            (cluster_id, node, cluster_id, node, datetime.now().isoformat()))
+            'INSERT OR REPLACE INTO node_maintenance (cluster_id, node, entered_at, native_ha) '
+            'VALUES (?, ?, '
+            'COALESCE((SELECT entered_at FROM node_maintenance WHERE cluster_id=? AND node=?), ?), ?)',
+            (cluster_id, node, cluster_id, node, datetime.now().isoformat(), 1 if native_ha else 0))
         self.conn.commit()
 
     def remove_node_maintenance(self, cluster_id: str, node: str):
-        """#720 — drop a persisted soft-maintenance entry on exit."""
+        """#720 — drop a persisted maintenance entry on exit."""
         cursor = self.conn.cursor()
         cursor.execute('DELETE FROM node_maintenance WHERE cluster_id=? AND node=?', (cluster_id, node))
         self.conn.commit()
 
     def get_node_maintenance(self, cluster_id: str) -> list:
-        """#720 — [(node, entered_at), ...] of a cluster's persisted soft maintenance, for restore."""
+        """#720 — [(node, entered_at, native_ha), ...] of a cluster's persisted maintenance."""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT node, entered_at FROM node_maintenance WHERE cluster_id=?', (cluster_id,))
-        return [(r['node'], r['entered_at']) for r in cursor.fetchall()]
+        cursor.execute('SELECT node, entered_at, native_ha FROM node_maintenance WHERE cluster_id=?',
+                       (cluster_id,))
+        return [(r['node'], r['entered_at'], bool(r['native_ha'])) for r in cursor.fetchall()]
+
+    def save_suspended_ha_rules(self, cluster_id: str, rules: list, rule_type: str = 'resource-affinity',
+                                owner: str = 'rolling'):
+        """#954 - remember HA rules before they are switched off, for `owner` (a rolling update,
+        or 'maintenance:<node>'). A rule this owner already holds keeps its first timestamp."""
+        cursor = self.conn.cursor()
+        now = datetime.now().isoformat()
+        for rule in rules:
+            cursor.execute('INSERT OR IGNORE INTO suspended_ha_rules (cluster_id, rule, rule_type, suspended_at, owner) '
+                           'VALUES (?, ?, ?, ?, ?)', (cluster_id, rule, rule_type, now, owner))
+        self.conn.commit()
+
+    def remove_suspended_ha_rule(self, cluster_id: str, rule: str, owners=None):
+        """The rows of `rule`: of every owner, or only of those in `owners`."""
+        cursor = self.conn.cursor()
+        if owners is None:
+            cursor.execute('DELETE FROM suspended_ha_rules WHERE cluster_id=? AND rule=?', (cluster_id, rule))
+        else:
+            for owner in ([owners] if isinstance(owners, str) else owners):
+                cursor.execute('DELETE FROM suspended_ha_rules WHERE cluster_id=? AND rule=? AND owner=?',
+                               (cluster_id, rule, owner))
+        self.conn.commit()
+
+    def get_suspended_ha_rules(self, cluster_id: str) -> list:
+        """#954 - [(rule, rule_type, suspended_at, owner), ...] still waiting to be switched on
+        again; a rule held by two owners comes twice."""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT rule, rule_type, suspended_at, owner FROM suspended_ha_rules WHERE cluster_id=? '
+                       'ORDER BY rule, owner', (cluster_id,))
+        return [(r['rule'], r['rule_type'], r['suspended_at'], r['owner']) for r in cursor.fetchall()]
 
     def get_affinity_rules(self, cluster_id: str = None) -> dict:
         """Get affinity rules"""
@@ -4352,7 +5277,10 @@ class PegaProxDB:
             'quota_max_vms': _q(row, 'quota_max_vms', 0),
             'quota_max_cores': _q(row, 'quota_max_cores', 0),
             'quota_max_memory_gb': _q(row, 'quota_max_memory_gb', 0),
+            'quota_max_disk_gb': _q(row, 'quota_max_disk_gb', 0),
             'quota_enforcement': _q(row, 'quota_enforcement', 'block') or 'block',
+            'vmid_range_start': _q(row, 'vmid_range_start', 0),
+            'vmid_range_end': _q(row, 'vmid_range_end', 0),
         } for row in cursor.fetchall()]
     
     def save_tenant(self, tenant_id: str, data: dict):
@@ -4362,9 +5290,10 @@ class PegaProxDB:
         
         cursor.execute('''
             INSERT OR REPLACE INTO tenants (id, name, clusters, created_at,
-                quota_max_vms, quota_max_cores, quota_max_memory_gb, quota_enforcement)
+                quota_max_vms, quota_max_cores, quota_max_memory_gb, quota_max_disk_gb,
+                quota_enforcement, vmid_range_start, vmid_range_end)
             VALUES (?, ?, ?, COALESCE((SELECT created_at FROM tenants WHERE id = ?), ?),
-                ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?, ?)
         ''', (
             tenant_id,
             data.get('name', ''),
@@ -4373,7 +5302,10 @@ class PegaProxDB:
             int(data.get('quota_max_vms', 0) or 0),
             int(data.get('quota_max_cores', 0) or 0),
             int(data.get('quota_max_memory_gb', 0) or 0),
+            int(data.get('quota_max_disk_gb', 0) or 0),
             (data.get('quota_enforcement') or 'block'),
+            int(data.get('vmid_range_start', 0) or 0),
+            int(data.get('vmid_range_end', 0) or 0),
         ))
         self.conn.commit()
     

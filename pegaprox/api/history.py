@@ -11,6 +11,7 @@ from pegaprox.constants import *
 from pegaprox.globals import *
 from pegaprox.models.permissions import *
 from pegaprox.core.db import get_db
+from pegaprox.core import ha
 
 from pegaprox.utils.auth import require_auth
 from pegaprox.utils.audit import log_audit
@@ -27,8 +28,12 @@ def get_scheduled_tasks():
     # NS Jul 2026 (CodeAnt IDOR) — scope the task list to the caller's reachable clusters
     # (was returning every tenant's scheduled tasks to any cluster.view holder).
     from pegaprox.utils.rbac import get_user_clusters
-    from flask import g as _g
-    _allowed = get_user_clusters(getattr(_g, 'current_user', None) or {})
+    # MK Sep 2026 - g.current_user is the RAW stored record; it has no effective_role, so a
+    # restricted bearer token was scoped as its OWNER. For an admin owner get_user_clusters
+    # then answers None ("all clusters") and the filter below is skipped entirely, which is
+    # how a viewer-capped token read every tenant's rows. acting_user applies the token floor.
+    from pegaprox.api.helpers import acting_user
+    _allowed = get_user_clusters(acting_user())
     if _allowed is not None:
         config = dict(config)
         config['tasks'] = [t for t in config.get('tasks', []) if t.get('cluster_id') in _allowed]
@@ -116,7 +121,8 @@ def run_scheduled_task_now(task_id):
     for task in config['tasks']:
         if task['id'] == task_id:
             execute_scheduled_task(task)
-            task['last_run'] = datetime.now().isoformat()
+            # the scheduler compares this stamp with the group's clock, not the host's (#625)
+            task['last_run'] = ha.schedule_now().isoformat()
             save_scheduled_tasks(config)
             return jsonify({'success': True, 'message': f"Task '{task['name']}' executed"})
     
@@ -253,8 +259,12 @@ def get_migration_history():
 
     # NS Jul 2026 (CodeAnt IDOR) — scope the global migration log to the caller's clusters.
     from pegaprox.utils.rbac import get_user_clusters
-    from flask import g as _g
-    _allowed = get_user_clusters(getattr(_g, 'current_user', None) or {})
+    # MK Sep 2026 - g.current_user is the RAW stored record; it has no effective_role, so a
+    # restricted bearer token was scoped as its OWNER. For an admin owner get_user_clusters
+    # then answers None ("all clusters") and the filter below is skipped entirely, which is
+    # how a viewer-capped token read every tenant's rows. acting_user applies the token floor.
+    from pegaprox.api.helpers import acting_user
+    _allowed = get_user_clusters(acting_user())
     if _allowed is not None:
         migrations = [m for m in migrations if m.get('cluster_id') in _allowed]
 
@@ -280,10 +290,11 @@ def get_vm_migration_history(cluster_id, vmid):
     # NS Aug 2026 (audit) — per-VM object check; cluster access alone let a VM-ACL/pool-scoped user
     # read a foreign VM's migration metadata (name, node placement, operator, timestamps) by
     # substituting the vmid — same BOLA class as the console CVE. Mirror snapshots.py / nodes.py.
-    from pegaprox.utils.auth import load_users
+    from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import user_can_access_vm
-    _u = load_users().get(request.session['user'], {})
-    _u['username'] = request.session['user']
+    # sec (audit): was the raw stored record, so an admin-owned viewer-scoped token got
+    # user_can_access_vm's admin bypass. (It also mutated load_users()' cached dict.)
+    _u = build_authz_user(request.session.get('user', ''), request.session)
     if not user_can_access_vm(_u, cluster_id, vmid, 'vm.view'):
         return jsonify({'error': 'Permission denied'}), 403
 
@@ -421,11 +432,32 @@ def get_affinity_rules(cluster_id=None):
         if not ok:
             return err
         config['rules'] = [r for r in config['rules'] if r.get('cluster_id') == cluster_id]
+        # sec (audit): a rule names every VM it groups, so this listed guests the caller cannot
+        # see. Show a confined caller only the rules whose members they may all view.
+        from pegaprox.utils.auth import build_authz_user
+        from pegaprox.utils.rbac import user_can_access_vm
+        from pegaprox.api.helpers import caller_is_scoped
+        _au = build_authz_user(request.session.get('user', ''), request.session)
+        if caller_is_scoped(_au, cluster_id):
+            def _visible(rule):
+                members = rule.get('vm_ids') or rule.get('vms') or []
+                if not members:
+                    return False
+                try:
+                    return all(user_can_access_vm(_au, cluster_id, int(v), 'vm.view') for v in members)
+                except (TypeError, ValueError):
+                    return False
+            config = dict(config)
+            config['rules'] = [r for r in config['rules'] if _visible(r)]
     else:
         # NS Jul 2026 (CodeAnt IDOR) — scope the unfiltered list to reachable clusters.
         from pegaprox.utils.rbac import get_user_clusters
-        from flask import g as _g
-        _allowed = get_user_clusters(getattr(_g, 'current_user', None) or {})
+        # MK Sep 2026 - g.current_user is the RAW stored record; it has no effective_role, so a
+        # restricted bearer token was scoped as its OWNER. For an admin owner get_user_clusters
+        # then answers None ("all clusters") and the filter below is skipped entirely, which is
+        # how a viewer-capped token read every tenant's rows. acting_user applies the token floor.
+        from pegaprox.api.helpers import acting_user
+        _allowed = get_user_clusters(acting_user())
         if _allowed is not None:
             config = dict(config)
             config['rules'] = [r for r in config.get('rules', []) if r.get('cluster_id') in _allowed]
@@ -514,10 +546,11 @@ def check_vm_affinity(cluster_id, vmid, target_node):
     # NS Aug 2026 (AI-pentest) — per-VM object check; cluster access alone let a VM-ACL/pool-scoped
     # user enumerate a foreign VM's affinity peers + node placement by vmid substitution. Mirror the
     # migration-history sibling above.
-    from pegaprox.utils.auth import load_users
+    from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import user_can_access_vm
-    _u = load_users().get(request.session['user'], {})
-    _u['username'] = request.session['user']
+    # sec (audit): was the raw stored record, so an admin-owned viewer-scoped token got
+    # user_can_access_vm's admin bypass. (It also mutated load_users()' cached dict.)
+    _u = build_authz_user(request.session.get('user', ''), request.session)
     if not user_can_access_vm(_u, cluster_id, vmid, 'vm.view'):
         return jsonify({'error': 'Permission denied'}), 403
 

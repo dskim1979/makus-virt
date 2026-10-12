@@ -166,7 +166,16 @@
                     const imgW = Math.min(block.width || contentW, contentW);
                     const ratio = (block.height || 100) / (block.width || contentW);
                     const imgH = imgW * ratio;
-                    addPageIfNeeded(imgH + 4);
+                    // LW Oct 2026 - a caption goes on the page of its picture, above it
+                    const capLines = block.caption ? doc.splitTextToSize(block.caption, contentW) : [];
+                    addPageIfNeeded(imgH + 4 + capLines.length * 4);
+                    if (capLines.length) {
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(9);
+                        doc.setTextColor(60, 60, 60);
+                        doc.text(capLines, margin, y + 4);
+                        y += capLines.length * 4 + 2;
+                    }
                     try { doc.addImage(block.dataUrl, 'JPEG', margin, y, imgW, imgH); } catch(e) {}
                     y += imgH + 4;
                 }
@@ -193,6 +202,134 @@
             }
 
             doc.save(filename || 'pegaprox-report.pdf');
+        }
+
+        // ═══════════════════════════════════════════════
+        // REQUIRED LEGAL NOTICE — do not remove, hide, disable, obscure or alter.
+        //
+        // This line is part of this Program's "Appropriate Legal Notices" within the
+        // meaning of AGPL-3.0 §0, and a required author attribution under §7(b); see the
+        // NOTICE file at the repository root. It must remain visible, legible and
+        // functional in every copy conveyed and in every instance made available to users
+        // over a network (§13). The full notice — warranty disclaimer, redistribution
+        // terms and the source offer — is in Settings → About, which the license link
+        // below reaches.
+        //
+        // Deliberately not translated: it refers to an English-language license, and a
+        // translated legal notice is a weaker one. NS Sep 2026
+        // ═══════════════════════════════════════════════
+        const LEGAL_REPO = 'https://github.com/PegaProx/project-pegaprox';
+        const LEGAL_STRIP_H = 24;   // what a console window has to leave free for it
+
+        function LegalNotice({ className = '', style = {} }) {
+            const link = {color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2};
+            return (
+                <div id="pegaprox-legal-notice"
+                     className={className}
+                     style={{fontSize: 11, lineHeight: 1.6, textAlign: 'center',
+                             padding: '6px 10px',
+                             // body carries no colour of its own (everything here is Tailwind
+                             // utility classes), so inheriting gives black — invisible on the
+                             // dark skins. --color-text is themed but only defined per layout,
+                             // and the login runs as "modern" whatever the instance default
+                             // theme is; the literal is the modern-dark case.
+                             color: 'var(--color-text, #cbd5e1)', opacity: 0.72, ...style}}>
+                    {/* NBSP before each "·" so a wrap can never start a line with a stray
+                        separator, and a normal space after it so the line CAN break there —
+                        the 224px sidebar is the tight case. nowrap spans were the first
+                        attempt and overflowed it (315px of content in 223px). */}
+                    <a href="https://pegaprox.com" target="_blank" rel="noopener noreferrer"
+                       style={link}>PegaProx</a>
+                    {'\u00A0· © 2025-2026 PegaProx Team\u00A0· '}
+                    <a href={`${LEGAL_REPO}/blob/main/LICENSE`} target="_blank"
+                       rel="noopener noreferrer" style={link}>AGPL-3.0</a>
+                    {'\u00A0· '}
+                    <a href={LEGAL_REPO} target="_blank" rel="noopener noreferrer"
+                       style={link}>Source</a>
+                    {'\u00A0· '}
+                    {/* The funding link sits INSIDE this element on purpose. Not because §7(b)
+                        reaches it — it does not, and NOTICE deliberately keeps naming only the
+                        four attribution elements above so the term stays narrow enough to hold.
+                        It is here because this element is the one thing that renders on every
+                        surface there is, which makes it the widest honest reach a
+                        donation-funded project has. Removing just this link is lawful;
+                        removing the element it lives in is not. */}
+                    <a href="https://opencollective.com/pegaprox" target="_blank"
+                       rel="noopener noreferrer" style={link}>Donate</a>
+                </div>
+            );
+        }
+
+        // LW Sep 2026 (#625) - where the active shows a console, shell or SPICE button, a
+        // standby shows this: the same view on the active instance, in a new tab. A plain
+        // link, so the address shows on hover and a middle click works as well. With a vm
+        // it opens that guest's console window there, without one the start page. Nothing
+        // on any other role, or while the address of the active is not known. button: for
+        // a toolbar whose styles are written for buttons only.
+        // A member that serves users opens its consoles itself and shows no link, except
+        // the one next to a settings note (settings), which stays on every standby and
+        // names the leader there.
+        function HaOnActiveLink({ vm, clusterId, className = '', style, iconOnly = false, iconClass, button = false, settings = false }) {
+            const { ha, haStandby, haConsolesElsewhere, haServing } = useAuth();
+            const { t } = useTranslation();
+            if (!(settings ? haStandby : haConsolesElsewhere)) return null;
+            const href = haActiveHref(ha.peer_url, vm ? haConsoleSearch(vm, clusterId) : '');
+            if (!href) return null;
+            const label = haServing ? t('pgHaOpenOnLeader') : t('pgHaOpenOnActive');
+            const inner = (
+                <>
+                    <Icons.ExternalLink className={iconClass} />
+                    {!iconOnly && <span>{label}</span>}
+                </>
+            );
+            if (button) {
+                return (
+                    <button type="button" onClick={() => window.open(href, '_blank', 'noopener,noreferrer')}
+                        data-ha-on-active={href} className={className} style={style} title={label}
+                        aria-label={iconOnly ? label : undefined}>
+                        {inner}
+                    </button>
+                );
+            }
+            return (
+                <a href={href} target="_blank" rel="noopener noreferrer" data-ha-on-active={href}
+                    className={className} style={style} title={label} aria-label={iconOnly ? label : undefined}>
+                    {inner}
+                </a>
+            );
+        }
+
+        // the node shell tabs and a console window opened on a standby: why there is no
+        // terminal, and the way to the one on the active
+        function HaConsoleOnActive({ vm, clusterId }) {
+            const { t } = useTranslation();
+            return (
+                <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center" data-ha-console-elsewhere="">
+                    <span className="text-gray-500"><Icons.Terminal /></span>
+                    <p className="text-sm text-gray-400 max-w-md">{t('pgHaConsoleOnActive')}</p>
+                    <HaOnActiveLink vm={vm} clusterId={clusterId}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-proxmox-orange hover:bg-orange-600 text-white"
+                        iconClass="w-4 h-4" />
+                </div>
+            );
+        }
+
+        // in place of a save button whose route no standby carries out, forwarding or not
+        // (_STANDBY_NOT_FORWARDED in app.py). own: a form that holds this instance's own
+        // settings (address, port, certificate...), which no sync brings either. A member
+        // that serves users is no standby to them: the same note names the leader
+        function HaSettingsOnActive({ own = false, className = '' }) {
+            const { t } = useTranslation();
+            const { haServing } = useAuth();
+            const text = haServing ? (own ? t('pgHaOwnSettingsOnLeader') : t('pgHaSettingsOnLeader'))
+                : (own ? t('pgHaOwnSettingsHere') : t('pgHaSettingsOnActive'));
+            return (
+                <div data-ha-settings-on-active={own ? 'own' : 'shared'}
+                    className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-400 ${className}`}>
+                    <span className="flex-1 min-w-0">{text}</span>
+                    <HaOnActiveLink settings className="inline-flex items-center gap-1 font-medium text-proxmox-orange hover:underline" iconClass="w-3.5 h-3.5" />
+                </div>
+            );
         }
 
         function _hexToRgb(hex) {
@@ -238,7 +375,10 @@
 
         function UserAvatar({ user, sizeClass = 'w-8 h-8', textClass = 'text-sm', className = '' }) {
             const initials = getUserInitials(user);
-            const classes = `${sizeClass} rounded-full overflow-hidden flex items-center justify-center ${className}`.trim();
+            // LW Sep 2026 (#795) - shrink-0 belongs here, not at one call site: a fixed circle is
+            // what an avatar IS, and as a flex child next to a long username it was being squeezed
+            // to a sliver with the initials bleeding into the text.
+            const classes = `${sizeClass} flex-shrink-0 rounded-full overflow-hidden flex items-center justify-center ${className}`.trim();
 
             if (user?.avatar_url) {
                 return (
@@ -342,14 +482,16 @@
                     const span = timestamps[timestamps.length - 1] - timestamps[0];
                     const useDateOnly = span > 86400 * 14;  // > 2 weeks
                     const useDate = span > 86400 * 2;        // > 2 days
+                    // LW Oct 2026 - the time through fmtClock: browser time, and the 12h/24h
+                    // setting the rest of the UI keeps (the locale's default ignored it)
                     for (let i = 0; i < timestamps.length; i++) {
                         const d = new Date(timestamps[i] * 1000);
                         if (useDateOnly) {
                             rawLabels.push(d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
                         } else if (useDate) {
-                            rawLabels.push(d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                            rawLabels.push(d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + fmtClock(d));
                         } else {
-                            rawLabels.push(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                            rawLabels.push(fmtClock(d));
                         }
                     }
                 } else {
@@ -1083,7 +1225,7 @@
                     setProgress(prev => [
                         ...prev.slice(0, -1),
                         { text: 'Removed from current cluster' + (cleanupOk ? ' (config cleaned)' : ''), status: 'done' },
-                        { text: `Getting join info from ${targetCluster.name}...`, status: 'running' }
+                        { text: `Getting join info from ${clusterLabel(targetCluster)}...`, status: 'running' }
                     ]);
                     
                     // Get join info from target cluster
@@ -1099,8 +1241,8 @@
                     
                     setProgress(prev => [
                         ...prev.slice(0, -1),
-                        { text: `Got join info from ${targetCluster.name}`, status: 'done' },
-                        { text: `Joining node to ${targetCluster.name}...`, status: 'running' }
+                        { text: `Got join info from ${clusterLabel(targetCluster)}`, status: 'done' },
+                        { text: `Joining node to ${clusterLabel(targetCluster)}...`, status: 'running' }
                     ]);
                     
                     // Resolve node IP from current cluster knowledge
@@ -1137,9 +1279,9 @@
                     if (joinData.success) {
                         setProgress(prev => [
                             ...prev.slice(0, -1),
-                            { text: `Successfully joined ${targetCluster.name}!`, status: 'done' }
+                            { text: `Successfully joined ${clusterLabel(targetCluster)}!`, status: 'done' }
                         ]);
-                        if (addToast) addToast(`Node ${nodeName} moved to ${targetCluster.name}`, 'success');
+                        if (addToast) addToast(`Node ${nodeName} moved to ${clusterLabel(targetCluster)}`, 'success');
                         setTimeout(() => { if (onSuccess) onSuccess(); onClose(); }, 2000);
                     } else {
                         setProgress(prev => [
@@ -1198,7 +1340,7 @@
                                                 >
                                                     <span className="flex items-center gap-2">
                                                         <Icons.Server className="w-4 h-4" />
-                                                        {c.name}
+                                                        {clusterLabel(c)}
                                                     </span>
                                                     {targetCluster?.id === c.id && <Icons.CheckCircle className="w-4 h-4 text-blue-400" />}
                                                 </button>
@@ -1501,6 +1643,322 @@
             );
         }
 
+        // LW Oct 2026 - API reference from the user menu. Renders the OpenAPI document the
+        // server builds from its own route table (GET /api/pegaprox/openapi.json). Read-only
+        // on purpose: nothing in here sends a request to the routes it lists.
+        const API_REF_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+        const API_REF_METHOD_CLS = {
+            GET: 'text-blue-400 border-blue-500/50',
+            POST: 'text-green-400 border-green-500/50',
+            PUT: 'text-yellow-400 border-yellow-500/50',
+            PATCH: 'text-purple-400 border-purple-500/50',
+            DELETE: 'text-red-400 border-red-500/50',
+        };
+        // fetched once per page load, an update reloads the page anyway
+        let apiRefDoc = null;
+
+        function apiRefOperations(doc) {
+            const out = [];
+            Object.entries((doc && doc.paths) || {}).forEach(([path, methods]) => {
+                Object.entries(methods || {}).forEach(([method, op]) => {
+                    if (!op || typeof op !== 'object') return;
+                    const m = method.toUpperCase();
+                    const tag = (op.tags && op.tags[0]) || '';
+                    const perms = op['x-pegaprox-permissions'] || [];
+                    const roles = op['x-pegaprox-roles'] || [];
+                    // a URL pasted from the browser finds its route: {cluster_id} stands for one segment
+                    const shape = new RegExp('^' + path.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{[^}/]+\}/g, '[^/]+') + '/?$', 'i');
+                    out.push({
+                        key: `${m} ${path}`, method: m, path, tag, shape, perms, roles,
+                        summary: op.summary || '', description: op.description || '',
+                        auth: op['x-pegaprox-auth'] || '', security: op.security,
+                        params: op.parameters || [], body: !!op.requestBody,
+                        responses: Object.keys(op.responses || {}), operationId: op.operationId || '',
+                        shadowed: op['x-pegaprox-shadowed-by'] || [],
+                        text: [m, path, op.summary, op.description, tag, op.operationId, ...perms, ...roles].join(' ').toLowerCase(),
+                    });
+                });
+            });
+            const rank = (m) => { const i = API_REF_METHODS.indexOf(m); return i < 0 ? 99 : i; };
+            out.sort((a, b) => a.tag.localeCompare(b.tag) || a.path.localeCompare(b.path) || rank(a.method) - rank(b.method));
+            return out;
+        }
+
+        // Words match anywhere. A word starting with / is a path (a full URL works too), and
+        // next to one a method name is the method: "POST /api/clusters/c1/updates/rolling"
+        // as a log line has it. A path that names a route exactly shows that route only.
+        function apiRefMatcher(query) {
+            const words = String(query || '').trim().split(/\s+/).filter(Boolean).map(w => {
+                const url = w.match(/^https?:\/\/[^/]+(\/.*)?$/i);
+                return url ? (url[1] || '/') : w;
+            });
+            if (!words.length) return null;
+            const paths = words.filter(w => w.startsWith('/')).map(w => w.split(/[?#]/)[0].toLowerCase());
+            const methods = paths.length ? words.map(w => w.toUpperCase()).filter(w => API_REF_METHODS.includes(w)) : [];
+            const rest = words.filter(w => !w.startsWith('/') && !methods.includes(w.toUpperCase())).map(w => w.toLowerCase());
+            const base = (op) => (!methods.length || methods.includes(op.method)) && rest.every(w => op.text.includes(w));
+            return {
+                paths: paths.length > 0,
+                exact: (op) => base(op) && paths.every(p => op.shape.test(p)),
+                loose: (op) => base(op) && paths.every(p => op.shape.test(p) || op.path.toLowerCase().includes(p)),
+            };
+        }
+
+        function ApiReferenceModal({ onClose }) {
+            const { t } = useTranslation();
+            const { getAuthHeaders } = useAuth();
+            const { isCorporate } = useLayout();
+            const [doc, setDoc] = useState(apiRefDoc);
+            const [failed, setFailed] = useState(false);
+            const [query, setQuery] = useState('');
+            const [method, setMethod] = useState('');
+            const [area, setArea] = useState('');
+            const [open, setOpen] = useState({});
+            const searchRef = useRef(null);
+
+            const load = useCallback(async () => {
+                setFailed(false);
+                try {
+                    const r = await fetch(`${API_URL}/pegaprox/openapi.json`, { credentials: 'include', headers: getAuthHeaders() });
+                    if (!r.ok) throw new Error(String(r.status));
+                    const body = await r.json();
+                    if (!body || typeof body.paths !== 'object') throw new Error('no paths');
+                    apiRefDoc = body;
+                    setDoc(body);
+                } catch (e) {
+                    setFailed(true);
+                }
+            }, [getAuthHeaders]);
+
+            useEffect(() => { if (!apiRefDoc) load(); }, [load]);
+            useEffect(() => {
+                // capture: "/" is the search of the page behind otherwise
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+                    const el = e.target;
+                    const typing = el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable);
+                    if (e.key === '/' && !typing && searchRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        searchRef.current.focus();
+                    }
+                };
+                window.addEventListener('keydown', onKey, true);
+                return () => window.removeEventListener('keydown', onKey, true);
+            }, [onClose]);
+            useEffect(() => { if (doc && searchRef.current) searchRef.current.focus(); }, [doc]);
+
+            const ops = useMemo(() => apiRefOperations(doc), [doc]);
+            // the field keeps up with the keyboard, the 900-odd rows follow when React has time
+            const typed = React.useDeferredValue(query);
+            // search and method first: the area list counts what they leave
+            const hits = useMemo(() => {
+                const match = apiRefMatcher(typed);
+                const pool = method ? ops.filter(op => op.method === method) : ops;
+                if (!match) return pool;
+                const exact = match.paths ? pool.filter(match.exact) : [];
+                return exact.length ? exact : pool.filter(match.loose);
+            }, [ops, typed, method]);
+            const areas = useMemo(() => {
+                const all = {}, hit = {};
+                ops.forEach(op => { all[op.tag] = 0; });
+                hits.forEach(op => { hit[op.tag] = (hit[op.tag] || 0) + 1; });
+                return Object.keys(all).sort().map(tag => [tag, hit[tag] || 0]);
+            }, [ops, hits]);
+            const shown = area ? hits.filter(op => op.tag === area) : hits;
+
+            const toggle = (key) => setOpen(o => ({ ...o, [key]: !o[key] }));
+            const chip = 'text-[11px] px-1.5 py-0.5 rounded border';
+
+            const who = (op) => {
+                const needs = [
+                    ...op.roles.map(r => <span key={`role:${r}`} className={`${chip} bg-proxmox-dark border-proxmox-border text-gray-300`}>{t('apiRefRole').replace('{role}', r)}</span>),
+                    ...op.perms.map(p => <span key={p} className={`${chip} font-mono bg-proxmox-dark border-proxmox-border text-gray-300`}>{p}</span>),
+                ];
+                if (needs.length) return needs;
+                if (op.auth === 'public') return <span className={`${chip} text-green-400 border-green-500/50`}>{t('apiRefPublic')}</span>;
+                if (op.auth === 'inline') return <span className={`${chip} text-gray-400 border-proxmox-border`}>{t('apiRefOwnAuth')}</span>;
+                return <span className={`${chip} text-gray-400 border-proxmox-border`}>{t('apiRefSignedIn')}</span>;
+            };
+
+            // the securitySchemes of gen_openapi.py
+            const scheme = (name) => {
+                switch (name) {
+                    case 'apiToken': return t('apiRefSchemeApi');
+                    case 'sessionId': return t('apiRefSchemeSession');
+                    case 'installToken': return t('apiRefSchemeInstall');
+                    case 'haPeer': return t('apiRefSchemePeer');
+                    default: return name;
+                }
+            };
+            const schemes = (op) => {
+                if (!Array.isArray(op.security)) return t('apiRefPublic');
+                if (!op.security.length) return t('apiRefSchemeCode');
+                return op.security.map(req => {
+                    const names = Object.keys(req || {});
+                    return names.length ? names.map(scheme).join(' + ') : t('apiRefSchemeCode');
+                }).join(' / ');
+            };
+
+            const detail = (op) => (
+                <div data-api-detail={op.key} className="px-4 pb-4 pt-1 space-y-3 text-sm">
+                    {op.summary && <div className="font-medium">{op.summary}</div>}
+                    {op.description
+                        ? <div className="text-xs text-gray-400 whitespace-pre-wrap">{op.description}</div>
+                        : !op.summary && <div className="text-xs text-gray-500">{t('apiRefNoDescription')}</div>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">{t('apiRefAuth')}</div>
+                            <div className="text-xs text-gray-300">{schemes(op)}</div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">{who(op)}</div>
+                        </div>
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">{t('apiRefResponses')}</div>
+                            <div className="flex flex-wrap gap-1">
+                                {op.responses.map(code => <span key={code} className={`${chip} font-mono bg-proxmox-dark border-proxmox-border text-gray-300`}>{code}</span>)}
+                            </div>
+                        </div>
+                    </div>
+                    {op.params.length > 0 && (
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">{t('apiRefParameters')}</div>
+                            <div className="space-y-1">
+                                {op.params.map(p => (
+                                    <div key={`${p.in}:${p.name}`} className="flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="font-mono text-gray-200">{p.name}</span>
+                                        <span className="text-gray-500">{p.in}</span>
+                                        <span className="font-mono text-gray-400">{[p.schema && p.schema.type, p.schema && p.schema.format].filter(Boolean).join(' / ')}</span>
+                                        {p.required && <span className="text-yellow-400">{t('apiRefRequired')}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {op.body && <div className="text-xs text-gray-400">{t('apiRefBody')}</div>}
+                    {op.shadowed.length > 0 && (
+                        <div className="text-xs text-yellow-400">{t('apiRefShadowed').replace('{endpoints}', op.shadowed.join(', '))}</div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                        <span>{t('apiRefOperationId')}:</span>
+                        <span className="font-mono text-gray-400 break-all">{op.operationId}</span>
+                        <CopyButton value={op.path} title={t('apiRefCopyPath')} />
+                    </div>
+                </div>
+            );
+
+            const rows = [];
+            shown.forEach((op, i) => {
+                if (!area && (i === 0 || shown[i - 1].tag !== op.tag)) {
+                    rows.push(
+                        <div key={`area:${op.tag}`} data-api-area={op.tag} className="px-4 pt-4 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">{op.tag}</div>
+                    );
+                }
+                const isOpen = !!open[op.key];
+                rows.push(
+                    <div key={op.key} data-api-op={op.key} className="border-t border-proxmox-border">
+                        <button type="button" onClick={() => toggle(op.key)} aria-expanded={isOpen}
+                            className={`w-full flex items-center gap-3 px-4 ${isCorporate ? 'py-1.5' : 'py-2'} text-left hover:bg-proxmox-hover transition-colors`}>
+                            <Icons.ChevronRight className={`w-3 h-3 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                            <span className={`w-16 flex-shrink-0 text-center text-[11px] font-bold font-mono py-0.5 rounded border ${API_REF_METHOD_CLS[op.method] || 'text-gray-400 border-proxmox-border'}`}>{op.method}</span>
+                            <span className="font-mono text-sm break-all">{op.path}</span>
+                            <span className="flex-1 min-w-0 truncate text-xs text-gray-400">{op.summary}</span>
+                            <span className="ml-auto flex flex-wrap justify-end gap-1 flex-shrink-0">{who(op)}</span>
+                        </button>
+                        {isOpen && detail(op)}
+                    </div>
+                );
+            });
+
+            const version = doc && doc.info && doc.info.version;
+            // no bg-proxmox-orange on a button here: Corporate paints those as primary buttons
+            const areaBtn = (active) => `w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-xs rounded transition-colors ${active ? 'bg-proxmox-dark text-proxmox-orange font-medium' : 'text-gray-300 hover:bg-proxmox-hover'}`;
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+                    <div data-api-reference="" className="bg-proxmox-card border border-proxmox-border rounded-xl w-full max-w-6xl shadow-2xl flex flex-col" style={{ height: '88vh', color: 'var(--color-text, #e9ecef)' }} onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-proxmox-border">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-proxmox-orange flex-shrink-0"><Icons.Book /></span>
+                                <h3 className="text-lg font-semibold truncate">{t('apiRefTitle')}</h3>
+                                {version && <span className="text-xs font-mono px-2 py-0.5 rounded bg-proxmox-dark border border-proxmox-border text-gray-400">v{version}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {doc && (
+                                    <button type="button" onClick={() => downloadJson(`pegaprox-openapi-${version || 'current'}.json`, doc)}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-proxmox-dark border border-proxmox-border hover:border-proxmox-orange/50 transition-colors">
+                                        <Icons.Download />
+                                        <span className="hidden sm:inline">{t('apiRefDownload')}</span>
+                                    </button>
+                                )}
+                                <button type="button" onClick={onClose} className="text-gray-400 hover:text-white p-1" title={t('close')}><Icons.X /></button>
+                            </div>
+                        </div>
+                        {!doc ? (
+                            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-sm text-gray-400">
+                                {failed ? (
+                                    <>
+                                        <span className="text-red-400">{t('apiRefLoadFailed')}</span>
+                                        <button type="button" onClick={load} className="px-4 py-2 rounded-lg text-sm font-medium bg-proxmox-orange hover:bg-orange-600 text-white">{t('apiRefRetry')}</button>
+                                    </>
+                                ) : (
+                                    <span className="flex items-center gap-2"><span className="animate-spin inline-flex"><Icons.Loader /></span>{t('apiRefLoading')}</span>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <div className="px-6 py-3 space-y-3 border-b border-proxmox-border">
+                                    <p className="text-xs text-gray-400">{t('apiRefIntro')}</p>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2 flex-1 min-w-0" style={{ minWidth: '16rem' }}>
+                                            <Icons.Search className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                                            <input ref={searchRef} type="search" value={query} onChange={e => setQuery(e.target.value)}
+                                                placeholder={t('apiRefSearch')} aria-label={t('apiRefSearch')}
+                                                className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg text-sm focus:outline-none focus:border-proxmox-orange" />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            {['', ...API_REF_METHODS].map(m => (
+                                                <button key={m || 'all'} type="button" onClick={() => setMethod(m)} data-api-method={m || 'all'}
+                                                    className={`px-2 py-1 rounded text-xs font-mono border transition-colors ${method === m ? 'border-proxmox-orange text-proxmox-orange' : 'border-proxmox-border text-gray-400 hover:text-white'}`}>
+                                                    {m || t('apiRefAllMethods')}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <span data-api-count="" className="text-xs text-gray-500 whitespace-nowrap">
+                                            {t('apiRefCount').replace('{shown}', String(shown.length)).replace('{total}', String(ops.length))}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-1" style={{ minHeight: 0 }}>
+                                    {/* sm:inline on a flex item still lays out as a block */}
+                                    <div className="hidden sm:inline w-56 flex-shrink-0 overflow-y-auto border-r border-proxmox-border p-2 space-y-0.5">
+                                        <button type="button" onClick={() => setArea('')} className={areaBtn(!area)}>
+                                            <span>{t('apiRefAllAreas')}</span><span className="text-gray-500">{hits.length}</span>
+                                        </button>
+                                        {areas.map(([tag, n]) => (
+                                            <button key={tag} type="button" data-api-area-pick={tag} onClick={() => setArea(area === tag ? '' : tag)}
+                                                className={`${areaBtn(area === tag)} ${n ? '' : 'opacity-50'}`}>
+                                                <span className="font-mono truncate">{tag}</span><span className="text-gray-500">{n}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex-1 min-w-0 overflow-y-auto pb-4">
+                                        {/* on a phone a select takes the place of the area list */}
+                                        <div className="sm:hidden px-4 pt-3">
+                                            <select value={area} onChange={e => setArea(e.target.value)} aria-label={t('apiRefAllAreas')}
+                                                className="w-full px-3 py-2 bg-proxmox-dark border border-proxmox-border rounded-lg text-sm">
+                                                <option value="">{t('apiRefAllAreas')}</option>
+                                                {areas.map(([tag, n]) => <option key={tag} value={tag}>{tag} ({n})</option>)}
+                                            </select>
+                                        </div>
+                                        {rows.length ? rows : <div className="px-4 py-12 text-center text-sm text-gray-500">{t('apiRefNoMatch')}</div>}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         // NS — sticky banner at top while WS is dropped. Auto-shows after 4s of disconnect
         // so a quick reconnect-blip doesn't flash a scary banner. Passive: gets state via prop.
         function ConnectionLostBanner({ connected, reconnectingMs }) {
@@ -1575,6 +2033,73 @@
             window.PegaProxDownloadCsv = downloadCsv;
             window.PegaProxDownloadJson = downloadJson;
         } catch (_) {}
+
+        // LW Oct 2026 - the guest inventory as CSV, of one cluster or (no clusterId) of every
+        // cluster the user reaches. GET /inventory/guests leaves out each guest they may not see.
+        // Headers stay English so a script reading the file does not break on the language.
+        function inventoryCsvColumns(clusterLabel) {
+            const mib = (b) => b != null ? Math.round(b / 1048576) : '';
+            // 0 is a size too: an empty disk reads 0.0, not a blank cell
+            const gib = (b) => b != null ? (b / 1073741824).toFixed(1) : '';
+            return [
+                { key: 'cluster', label: 'Cluster', map: clusterLabel },
+                { key: 'vmid', label: 'VMID' },
+                { key: 'name', label: 'Name' },
+                { key: 'type', label: 'Type' },
+                { key: 'node', label: 'Node' },
+                { key: 'status', label: 'Status' },
+                { key: 'template', label: 'Template', map: g => g.template ? 'yes' : '' },
+                { key: 'vcpus', label: 'vCPU', map: g => g.vcpus || '' },
+                { key: 'cpu', label: 'CPU%', map: g => g.cpu != null ? Math.round(g.cpu * 100) : '' },
+                { key: 'mem', label: 'Mem (MiB)', map: g => mib(g.mem) },
+                { key: 'memory', label: 'MemMax (MiB)', map: g => mib(g.memory) },
+                { key: 'disk_allocated', label: 'Disk allocated (GiB)', map: g => gib(g.disk_allocated) },
+                { key: 'disk_used', label: 'Disk used (GiB)', map: g => gib(g.disk_used) },
+                { key: 'ip_addresses', label: 'IP addresses', map: g => (g.ip_addresses || []).join(' ') },
+                { key: 'ha_state', label: 'HA state' },
+                { key: 'pool', label: 'Pool' },
+                { key: 'tags', label: 'Tags', map: g => (g.tags || []).join(';') },
+            ];
+        }
+
+        function InventoryCsvButton({ clusterId, clusters, fileName, addToast, className, label }) {
+            const { t } = useTranslation();
+            const { getAuthHeaders } = useAuth();
+            const [busy, setBusy] = useState(false);
+            const run = async () => {
+                if (busy) return;
+                setBusy(true);
+                try {
+                    const q = clusterId ? `?cluster=${encodeURIComponent(clusterId)}` : '';
+                    const r = await fetch(`${API_URL}/inventory/guests${q}`, { headers: getAuthHeaders() });
+                    if (!r.ok) { addToast?.(t('inventoryCsvFailed'), 'error'); return; }
+                    const data = await r.json();
+                    const rows = data.guests || [];
+                    const clusterLabel = (g) => {
+                        const c = (clusters || []).find(x => x.id === g.cluster_id);
+                        return (c && (c.display_name || c.name)) || g.cluster_name;
+                    };
+                    const missing = (data.clusters || []).filter(c => c.state !== 'ok').map(clusterLabel);
+                    if (missing.length) addToast?.(t('inventoryCsvMissing').replace('{clusters}', missing.join(', ')), 'warning');
+                    if (!rows.length) { addToast?.(t('inventoryCsvEmpty'), 'info'); return; }
+                    const fname = fileName || `pegaprox-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+                    downloadCsv(fname, rows, inventoryCsvColumns(clusterLabel));
+                    addToast?.(t('inventoryCsvExported').replace('{n}', rows.length), 'success');
+                } catch (e) {
+                    console.error('inventory export:', e);
+                    addToast?.(t('inventoryCsvFailed'), 'error');
+                } finally {
+                    setBusy(false);
+                }
+            };
+            return (
+                <button type="button" data-inventory-csv={clusterId || 'all'} onClick={run} disabled={busy}
+                    className={className} title={t('inventoryCsvTitle')}>
+                    <span className={`inline-flex ${busy ? 'animate-pulse' : ''}`}><Icons.Download /></span>
+                    {label}
+                </button>
+            );
+        }
 
         // NS — opt-in pre-action snapshot pref. Stored in localStorage so it survives reload.
         // Read by destructive flows (delete VM, restore, change boot, migrate to other cluster).
@@ -2121,6 +2646,7 @@
 
         // PBS Health Badge — mirrors ClusterHealthBadge but for /api/pbs/<id>/health
         function PbsHealthBadge({ pbsId, authFetch, apiUrl }) {
+            const { t } = useTranslation();
             const [data, setData] = React.useState(null);
             const [showDetails, setShowDetails] = React.useState(false);
             const [hovering, setHovering] = React.useState(false);
@@ -2154,10 +2680,10 @@
                         onClick={() => setShowDetails(true)}
                         onMouseEnter={() => setHovering(true)}
                         onMouseLeave={() => setHovering(false)}
-                        title="PBS health — click for breakdown"
+                        title={t('pbsHealthTooltip') || 'PBS health — click for breakdown'}
                     >
                         <span style={{ fontWeight: 700 }}>{data.score}</span>
-                        <span style={{ opacity: 0.75, fontSize: '0.7rem' }}>health</span>
+                        <span style={{ opacity: 0.75, fontSize: '0.7rem' }}>{t('pbsHealthLabel') || 'health'}</span>
                         {hovering && Array.isArray(data.factors) && data.factors.length > 0 && (
                             <div style={{
                                 position: 'absolute', top: '100%', right: 0, marginTop: '4px',
@@ -2217,6 +2743,7 @@
 
         // Live Backup Progress Pane — tails a UPID's task log
         function BackupProgressPane({ clusterId, upid, node, authFetch, apiUrl, onClose }) {
+            const { t } = useTranslation();
             const [lines, setLines] = React.useState([]);
             const [done, setDone] = React.useState(false);
             const [exitstatus, setExitstatus] = React.useState(null);
@@ -2279,10 +2806,10 @@
                                   padding: '8px 12px', borderBottom: '1px solid var(--corp-border)' }}>
                         <div className="flex items-center gap-2">
                             <Icons.Clock className="w-4 h-4" style={{ color: done ? (exitstatus === 'OK' ? '#60b515' : '#f54f47') : '#f7b428' }} />
-                            <span className="font-medium text-sm">Backup {done ? (exitstatus === 'OK' ? 'completed' : `failed (${exitstatus})`) : 'in progress…'}</span>
+                            <span className="font-medium text-sm">{done ? (exitstatus === 'OK' ? (t('pbsBackupCompleted') || 'Backup completed') : `${t('pbsBackupFailed') || 'Backup failed'} (${exitstatus})`) : (t('pbsBackupInProgress') || 'Backup in progress…')}</span>
                             {throughput.length > 0 && (
                                 <span className="text-xs opacity-70" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                    {throughput[throughput.length - 1].mbps.toFixed(1)} MiB/s · peak {peakMbps.toFixed(1)}
+                                    {throughput[throughput.length - 1].mbps.toFixed(1)} MiB/s · {t('pbsPeak') || 'peak'} {peakMbps.toFixed(1)}
                                 </span>
                             )}
                         </div>
@@ -2299,7 +2826,7 @@
                     <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px',
                                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                                   fontSize: '11.5px', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                        {lines.length === 0 ? <span className="opacity-50">Waiting for output…</span>
+                        {lines.length === 0 ? <span className="opacity-50">{t('pbsWaitingForOutput') || 'Waiting for output…'}</span>
                             : lines.map((l, i) => (
                                 <div key={i} style={{
                                     color: /ERROR|FAIL/i.test(l) ? '#f54f47'
@@ -2316,6 +2843,7 @@
 
         // PBS Capacity Forecast Tile
         function PbsCapacityForecast({ pbsId, authFetch, apiUrl }) {
+            const { t } = useTranslation();
             const [data, setData] = React.useState(null);
             React.useEffect(() => {
                 if (!pbsId) return;
@@ -2331,7 +2859,7 @@
             if (!data || data.length === 0) return null;
             return (
                 <div className="rounded-md p-3" style={{ background: 'var(--corp-surface, #1c2733)', border: '1px solid var(--corp-border, #29414e)' }}>
-                    <div className="text-xs uppercase tracking-wide opacity-70 mb-2">Capacity forecast</div>
+                    <div className="text-xs uppercase tracking-wide opacity-70 mb-2">{t('capacityForecast') || 'Capacity forecast'}</div>
                     <div className="space-y-2">
                         {data.map(d => {
                             const days = d.eta_days_to_full;
@@ -2361,6 +2889,7 @@
 
         // Storage-Add Pre-flight Indicator
         function StoragePreflightCheck({ clusterId, config, authFetch, apiUrl, onResult }) {
+            const { t } = useTranslation();
             const [state, setState] = React.useState({ status: 'idle', issues: [], info: {} });
             const run = async () => {
                 if (config.type !== 'pbs') return;
@@ -2386,15 +2915,15 @@
             return (
                 <div style={{ background: 'var(--corp-surface-2, #29414e)', padding: '8px 10px', borderRadius: '4px', fontSize: '12px' }}>
                     <div className="flex items-center justify-between">
-                        <span className="opacity-80">Pre-flight check (PBS)</span>
+                        <span className="opacity-80">{t('preflightCheck') || 'Pre-flight check (PBS)'}</span>
                         <button onClick={run} disabled={state.status === 'checking'}
                             style={{ background: 'var(--corp-accent, #0078a8)', color: '#fff', padding: '2px 8px',
                                      borderRadius: '3px', border: 'none', cursor: 'pointer',
                                      opacity: state.status === 'checking' ? 0.5 : 1 }}>
-                            {state.status === 'checking' ? 'Checking…' : 'Run check'}
+                            {state.status === 'checking' ? (t('pbsCheckingEllipsis') || 'Checking…') : (t('runCheck') || 'Run check')}
                         </button>
                     </div>
-                    {state.status === 'ok' && <div style={{ color: '#60b515', marginTop: '4px' }}>✓ All checks passed. Live fingerprint matches; auth ok; datastore exists.</div>}
+                    {state.status === 'ok' && <div style={{ color: '#60b515', marginTop: '4px' }}>✓ {t('pbsAllChecksPassed') || 'All checks passed. Live fingerprint matches; auth ok; datastore exists.'}</div>}
                     {state.status === 'fail' && (
                         <ul style={{ marginTop: '4px', paddingLeft: '18px' }}>
                             {state.issues.map((iss, i) => <li key={i} style={{ color: '#f54f47' }}>{iss}</li>)}
@@ -2402,7 +2931,7 @@
                     )}
                     {state.info.live_fingerprint && state.status !== 'ok' && (
                         <div style={{ marginTop: '4px', opacity: 0.7, fontFamily: 'ui-monospace, monospace', fontSize: '11px', wordBreak: 'break-all' }}>
-                            Live fingerprint: {state.info.live_fingerprint}
+                            {t('liveFingerprint') || 'Live fingerprint'}: {state.info.live_fingerprint}
                         </div>
                     )}
                 </div>
@@ -2412,10 +2941,11 @@
 
         // Auto-Fingerprint button — fetches the cert fingerprint via probe endpoint
         function FingerprintFetcher({ host, port, authFetch, apiUrl, onFetched }) {
+            const { t } = useTranslation();
             const [busy, setBusy] = React.useState(false);
             const [error, setError] = React.useState(null);
             const fetchIt = async () => {
-                if (!host) { setError('host required'); return; }
+                if (!host) { setError(t('pbsHostRequired') || 'host required'); return; }
                 setBusy(true); setError(null);
                 try {
                     const r = await authFetch(`${apiUrl}/pbs/probe-fingerprint`, {
@@ -2438,8 +2968,8 @@
                         style={{ background: 'var(--corp-accent, #0078a8)', color: '#fff', padding: '4px 10px',
                                  borderRadius: '3px', border: 'none', cursor: 'pointer', fontSize: '12px',
                                  opacity: (busy || !host) ? 0.5 : 1 }}
-                        title="Connect to host and capture the TLS fingerprint">
-                        {busy ? '…' : 'Auto-fetch'}
+                        title={t('pbsCaptureTlsFingerprint') || 'Connect to host and capture the TLS fingerprint'}>
+                        {busy ? '…' : (t('autoFetch') || 'Auto-fetch')}
                     </button>
                     {error && <span style={{ color: '#f54f47', fontSize: '11px' }}>{error}</span>}
                 </span>
@@ -2449,6 +2979,7 @@
 
         // Backup Restore Wizard — three-mode (new/overwrite/test)
         function BackupRestoreWizard({ clusterId, snapshot, datastoreName, nodes, storages, authFetch, apiUrl, onClose, onStarted }) {
+            const { t } = useTranslation();
             // snapshot: {volid, vmid, type, backup_time}
             const [mode, setMode] = React.useState('new');
             const [targetNode, setTargetNode] = React.useState(nodes?.[0] || '');
@@ -2498,9 +3029,9 @@
             };
 
             const modeDescs = {
-                new: 'Restore as a new VM with the chosen VMID. Original VM stays untouched.',
-                overwrite: 'Overwrite an existing VM with the same VMID. Existing config + disks will be lost.',
-                test: 'Test-restore — restore + boot, then keep the test VM (no auto-cleanup). Useful for DR drills.',
+                new: t('pbsRestoreNewDesc') || 'Restore as a new VM with the chosen VMID. Original VM stays untouched.',
+                overwrite: t('pbsRestoreOverwriteDesc') || 'Overwrite an existing VM with the same VMID. Existing config + disks will be lost.',
+                test: t('pbsRestoreTestDesc') || 'Test-restore — restore + boot, then keep the test VM (no auto-cleanup). Useful for DR drills.',
             };
 
             return (
@@ -2511,14 +3042,14 @@
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--corp-border, #29414e)' }}>
-                            <div className="text-base font-semibold">Restore backup</div>
+                            <div className="text-base font-semibold">{t('pbsRestoreBackup') || 'Restore backup'}</div>
                             <button onClick={onClose} className="opacity-60 hover:opacity-100 leading-none" style={{fontSize:'18px'}}>×</button>
                         </div>
                         <div className="p-5 space-y-3">
-                            <div className="text-xs opacity-70">Source: {snapshot?.volid || '(unknown)'}</div>
+                            <div className="text-xs opacity-70">{t('pbsRestoreSource') || 'Source'}: {snapshot?.volid || (t('pbsUnknown') || '(unknown)')}</div>
 
                             <div>
-                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">Mode</div>
+                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">{t('pbsRestoreMode') || 'Mode'}</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {['new', 'overwrite', 'test'].map(m => (
                                         <button key={m} type="button" onClick={() => setMode(m)}
@@ -2537,7 +3068,7 @@
                             </div>
 
                             <div>
-                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">Target node</div>
+                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">{t('pbsTargetNode') || 'Target node'}</div>
                                 <select value={targetNode} onChange={e => setTargetNode(e.target.value)}
                                     className="w-full px-2 py-1.5 text-sm"
                                     style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }}>
@@ -2546,18 +3077,18 @@
                             </div>
 
                             <div>
-                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">Target VMID</div>
+                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">{t('pbsTargetVmid') || 'Target VMID'}</div>
                                 <input type="number" value={targetVmid} onChange={e => setTargetVmid(e.target.value)}
                                     className="w-full px-2 py-1.5 text-sm"
                                     style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }} />
                             </div>
 
                             <div>
-                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">Target storage (optional)</div>
+                                <div className="text-xs uppercase tracking-wide opacity-60 mb-1">{t('pbsTargetStorageOptional') || 'Target storage (optional)'}</div>
                                 <select value={targetStorage} onChange={e => setTargetStorage(e.target.value)}
                                     className="w-full px-2 py-1.5 text-sm"
                                     style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }}>
-                                    <option value="">— use default from backup —</option>
+                                    <option value="">{t('pbsUseBackupDefault') || '— use default from backup —'}</option>
                                     {(storages || []).map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
@@ -2568,14 +3099,14 @@
                                 <button type="button" onClick={onClose}
                                     className="px-3 py-1.5 text-sm"
                                     style={{ background: 'transparent', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)', borderRadius: '3px' }}>
-                                    Cancel
+                                    {t('cancel') || 'Cancel'}
                                 </button>
                                 <button type="button" onClick={submit} disabled={running || !targetNode || !targetVmid}
                                     className="px-3 py-1.5 text-sm font-medium"
                                     style={{ background: mode === 'overwrite' ? '#b94a3a' : 'var(--corp-accent, #0078a8)',
                                              color: '#fff', border: 'none', borderRadius: '3px',
                                              opacity: (running || !targetNode || !targetVmid) ? 0.5 : 1 }}>
-                                    {running ? 'Starting…' : `Start restore (${mode})`}
+                                    {running ? (t('pbsStartingEllipsis') || 'Starting…') : `${t('pbsStartRestore') || 'Start restore'} (${mode})`}
                                 </button>
                             </div>
                         </div>
@@ -2588,6 +3119,7 @@
         // LW May 2026 — Encryption key generator. Generates server-side, shows
         // once, lets the user download the JSON envelope + a printable sheet.
         function EncryptionKeyModal({ authFetch, apiUrl, onClose }) {
+            const { t } = useTranslation();
             const [data, setData] = React.useState(null);
             const [busy, setBusy] = React.useState(false);
             const [err, setErr] = React.useState(null);
@@ -2616,15 +3148,15 @@
                 const w = window.open('', 'pbs-key', 'width=720,height=900');
                 if (!w) return;
                 const safe = (s) => String(s).replace(/[<&>]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;'})[c]);
-                w.document.write(`<!DOCTYPE html><html><head><title>PBS Encryption Key Recovery Sheet</title>
+                w.document.write(`<!DOCTYPE html><html><head><title>${safe(t('pbsEncryptionRecoveryDocumentTitle') || 'PBS Encryption Key Recovery Sheet')}</title>
 <style>body{font-family:ui-monospace,monospace;font-size:11pt;padding:24px;color:#000}
 h1{font-size:14pt;margin-bottom:6px}.warn{color:#a00;font-weight:bold}
 pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px;background:#f7f7f7}
 @media print{body{padding:0}}</style></head><body>
-<h1>PBS Encryption Key — Recovery Sheet</h1>
-<p class="warn">⚠ Without this key, all backups encrypted with it are UNRECOVERABLE. Store offline.</p>
+<h1>${safe(t('pbsEncryptionRecoveryHeading') || 'PBS Encryption Key — Recovery Sheet')}</h1>
+<p class="warn">⚠ ${safe(t('pbsEncryptionRecoveryWarning') || 'Without this key, all backups encrypted with it are UNRECOVERABLE. Store offline.')}</p>
 <pre>${safe(data?.recovery_sheet || '')}</pre>
-<p>JSON envelope (paste into /etc/pve/priv/storage/&lt;id&gt;.enc):</p>
+<p>${safe(t('pbsJsonEnvelopeInstruction') || 'JSON envelope (paste into /etc/pve/priv/storage/<id>.enc):')}</p>
 <pre>${safe(JSON.stringify(data?.key_json, null, 2))}</pre>
 </body></html>`);
                 w.document.close();
@@ -2641,7 +3173,7 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                         <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--corp-border, #29414e)' }}>
                             <div className="text-base font-semibold flex items-center gap-2">
                                 <Icons.Lock className="w-4 h-4" />
-                                PBS Encryption Key
+                                {t('pbsEncryptionKey') || 'PBS Encryption Key'}
                             </div>
                             <button onClick={onClose} className="opacity-60 hover:opacity-100 leading-none" style={{fontSize:'18px'}}>×</button>
                         </div>
@@ -2649,12 +3181,11 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                             {!data && (
                                 <>
                                     <div className="text-sm opacity-80">
-                                        Generates a fresh AES-256 encryption key in PBS format. Without this key,
-                                        encrypted backups are unrecoverable — store offline.
+                                        {t('pbsEncryptionKeyDesc') || 'Generates a fresh AES-256 encryption key in PBS format. Without this key, encrypted backups are unrecoverable — store offline.'}
                                     </div>
                                     <div style={{ background: 'rgba(245,79,71,0.08)', border: '1px solid rgba(245,79,71,0.4)',
                                                   borderRadius: '4px', padding: '8px 10px', fontSize: '12px', color: '#f54f47' }}>
-                                        ⚠ The key is shown <strong>once</strong>. MOAVI does not retain a copy.
+                                        ⚠ {t('pbsEncryptionKeyShown') || 'The key is shown'} <strong>{t('pbsOnce') || 'once'}</strong>. {t('pbsEncryptionKeyNotRetained') || 'MOAVI does not retain a copy.'}
                                     </div>
                                     {err && <div style={{ color: '#f54f47', fontSize: '12px' }}>{err}</div>}
                                     <div className="flex justify-end">
@@ -2662,18 +3193,18 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                             className="px-4 py-2 text-sm font-medium"
                                             style={{ background: 'var(--corp-accent, #0078a8)', color: '#fff', border: 'none', borderRadius: '3px',
                                                      opacity: busy ? 0.5 : 1 }}>
-                                            {busy ? 'Generating…' : 'Generate key'}
+                                            {busy ? (t('pbsGeneratingEllipsis') || 'Generating…') : (t('pbsGenerateKey') || 'Generate key')}
                                         </button>
                                     </div>
                                 </>
                             )}
                             {data && (
                                 <>
-                                    <div className="text-xs uppercase tracking-wide opacity-70">Fingerprint</div>
+                                    <div className="text-xs uppercase tracking-wide opacity-70">{t('pbsFingerprint') || 'Fingerprint'}</div>
                                     <div className="font-mono text-xs" style={{ wordBreak: 'break-all', padding: '6px 8px', background: 'var(--corp-surface-2, #29414e)', borderRadius: '3px' }}>
                                         {data.fingerprint}
                                     </div>
-                                    <div className="text-xs uppercase tracking-wide opacity-70 mt-3">Recovery sheet (printable)</div>
+                                    <div className="text-xs uppercase tracking-wide opacity-70 mt-3">{t('pbsRecoverySheetPrintable') || 'Recovery sheet (printable)'}</div>
                                     <pre style={{ fontSize: '10.5px', maxHeight: '260px', overflowY: 'auto',
                                                   padding: '10px 12px', background: 'var(--corp-surface-2, #29414e)',
                                                   borderRadius: '3px', whiteSpace: 'pre-wrap' }}>{data.recovery_sheet}</pre>
@@ -2681,17 +3212,17 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                         <button onClick={() => download(`pbs-key-${data.fingerprint.slice(0,8)}.json`, JSON.stringify(data.key_json, null, 2), 'application/json')}
                                             className="px-3 py-1.5 text-sm"
                                             style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)', borderRadius: '3px' }}>
-                                            Download JSON
+                                            {t('download') || 'Download'} JSON
                                         </button>
                                         <button onClick={() => download(`pbs-key-recovery-${data.fingerprint.slice(0,8)}.txt`, data.recovery_sheet)}
                                             className="px-3 py-1.5 text-sm"
                                             style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)', borderRadius: '3px' }}>
-                                            Download .txt
+                                            {t('download') || 'Download'} .txt
                                         </button>
                                         <button onClick={printSheet}
                                             className="px-3 py-1.5 text-sm font-medium"
                                             style={{ background: 'var(--corp-accent, #0078a8)', color: '#fff', border: 'none', borderRadius: '3px' }}>
-                                            Print recovery sheet
+                                            {t('pbsPrintRecoverySheet') || 'Print recovery sheet'}
                                         </button>
                                     </div>
                                 </>
@@ -2706,6 +3237,7 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
         // NS May 2026 — settings panel for the auto-verify schedule.
         // Backend at /api/pbs/verify-schedule (GET/PUT). Single dialog toggle.
         function VerifyScheduleModal({ authFetch, apiUrl, onClose }) {
+            const { t } = useTranslation();
             const [cfg, setCfg] = React.useState(null);
             const [busy, setBusy] = React.useState(false);
             const [err, setErr] = React.useState(null);
@@ -2747,25 +3279,25 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                         <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--corp-border, #29414e)' }}>
                             <div className="text-base font-semibold flex items-center gap-2">
                                 <Icons.Clock className="w-4 h-4" />
-                                Auto Backup Verification
+                                {t('pbsAutoBackupVerification') || 'Auto Backup Verification'}
                             </div>
                             <button onClick={onClose} className="opacity-60 hover:opacity-100 leading-none" style={{fontSize:'18px'}}>×</button>
                         </div>
                         {!cfg ? (
-                            <div className="p-6 text-center opacity-70">{err || 'Loading…'}</div>
+                            <div className="p-6 text-center opacity-70">{err || (t('pbsLoadingEllipsis') || 'Loading…')}</div>
                         ) : (
                             <div className="p-5 space-y-3">
                                 <p className="text-xs opacity-70">
-                                    Schedules a weekly backup-verification: a small set of recent snapshots is restored to scratch, booted, then cleaned up. Catches silent backup corruption.
+                                    {t('pbsAutoBackupVerificationDesc') || 'Schedules a weekly backup-verification: a small set of recent snapshots is restored to scratch, booted, then cleaned up. Catches silent backup corruption.'}
                                 </p>
                                 <label className="flex items-center gap-3">
                                     <input type="checkbox" checked={!!cfg.enabled} onChange={(e) => update('enabled', e.target.checked)} />
-                                    <span>Enable scheduled auto-verification</span>
+                                    <span>{t('pbsEnableScheduledAutoVerification') || 'Enable scheduled auto-verification'}</span>
                                 </label>
                                 <div style={{ opacity: cfg.enabled ? 1 : 0.5 }}>
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="text-sm">
-                                            <div className="opacity-70 mb-1">Day</div>
+                                            <div className="opacity-70 mb-1">{t('day') || 'Day'}</div>
                                             <select value={cfg.day || 'sun'} onChange={(e) => update('day', e.target.value)}
                                                 className="w-full px-2 py-1.5 text-sm" disabled={!cfg.enabled}
                                                 style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }}>
@@ -2773,7 +3305,7 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                             </select>
                                         </label>
                                         <label className="text-sm">
-                                            <div className="opacity-70 mb-1">Hour (0-23)</div>
+                                            <div className="opacity-70 mb-1">{t('pbsHourRange') || 'Hour (0-23)'}</div>
                                             <input type="number" min="0" max="23" value={cfg.hour ?? 4}
                                                 onChange={(e) => update('hour', Math.max(0, Math.min(23, parseInt(e.target.value) || 0)))}
                                                 disabled={!cfg.enabled}
@@ -2782,7 +3314,7 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                         </label>
                                     </div>
                                     <label className="text-sm block mt-3">
-                                        <div className="opacity-70 mb-1">Snapshots per run (1-50)</div>
+                                        <div className="opacity-70 mb-1">{t('pbsSnapshotsPerRun') || 'Snapshots per run (1-50)'}</div>
                                         <input type="number" min="1" max="50" value={cfg.weekly_count ?? 5}
                                             onChange={(e) => update('weekly_count', Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
                                             disabled={!cfg.enabled}
@@ -2790,13 +3322,13 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                             style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }} />
                                     </label>
                                     <label className="text-sm block mt-3">
-                                        <div className="opacity-70 mb-1">Scope</div>
+                                        <div className="opacity-70 mb-1">{t('scope') || 'Scope'}</div>
                                         <select value={cfg.scope || 'latest_per_vm'} onChange={(e) => update('scope', e.target.value)}
                                             disabled={!cfg.enabled}
                                             className="w-full px-2 py-1.5 text-sm"
                                             style={{ background: 'var(--corp-surface-2, #29414e)', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)' }}>
-                                            <option value="latest_per_vm">Latest snapshot per VM</option>
-                                            <option value="all">All snapshots in pool</option>
+                                            <option value="latest_per_vm">{t('pbsLatestSnapshotPerVm') || 'Latest snapshot per VM'}</option>
+                                            <option value="all">{t('pbsAllSnapshotsInPool') || 'All snapshots in pool'}</option>
                                         </select>
                                     </label>
                                 </div>
@@ -2805,13 +3337,13 @@ pre{white-space:pre-wrap;word-break:break-all;border:1px solid #ccc;padding:12px
                                     <button onClick={onClose}
                                         className="px-3 py-1.5 text-sm"
                                         style={{ background: 'transparent', color: 'var(--corp-text)', border: '1px solid var(--corp-border, #485764)', borderRadius: '3px' }}>
-                                        Cancel
+                                        {t('cancel') || 'Cancel'}
                                     </button>
                                     <button onClick={save} disabled={busy}
                                         className="px-3 py-1.5 text-sm font-medium"
                                         style={{ background: 'var(--corp-accent, #0078a8)', color: '#fff', border: 'none', borderRadius: '3px',
                                                  opacity: busy ? 0.5 : 1 }}>
-                                        {busy ? 'Saving…' : 'Save'}
+                                        {busy ? (t('pbsSavingEllipsis') || 'Saving…') : (t('save') || 'Save')}
                                     </button>
                                 </div>
                             </div>

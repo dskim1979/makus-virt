@@ -21,12 +21,46 @@ from pegaprox.models.permissions import *
 
 from pegaprox.utils.auth import require_auth, load_users
 from pegaprox.utils.rbac import get_user_clusters
-from pegaprox.api.helpers import check_cluster_access, load_server_settings
+from pegaprox.api.helpers import check_cluster_access, load_server_settings, scope_vm_rows, require_unconfined
 from pegaprox.background.metrics import load_metrics_history, start_metrics_collector
 from pegaprox.background.syslog_server import DB_FILE, SEVERITY_MAP
 from pegaprox.api.schedules import start_scheduler
 
 bp = Blueprint('reports', __name__)
+
+
+# The three report endpoints below take period=hour|day|week and used to cut the
+# window out of "the newest 1000 snapshot rows". At the 5-min cadence that cap is
+# ~3.5 days, and less whenever rows land more often, so "Last Week" quietly ended
+# wherever those rows ended and looked identical to "Last 24h". Load the window
+# the caller actually asked for instead.
+# All three read a cluster's name and totals and nothing else, so they ask the
+# loader for just that (totals_only): the cached window stays small at 10k guests.
+def _period_cutoff(period):
+    """(window_days, cutoff_datetime) for a period param. hour shares the 1-day
+    window with day so the two views hit the same cached read."""
+    now = datetime.now()
+    if period == 'hour':
+        return 1, now - timedelta(hours=1)
+    if period == 'week':
+        return 7, now - timedelta(days=7)
+    return 1, now - timedelta(days=1)
+
+
+def _with_offset(ts):
+    """A stored timestamp as ISO with the server's UTC offset.
+
+    MK Oct 2026 - snapshots, scans and syslog rows store datetime.now().isoformat():
+    server-local and naive. A browser reads a naive ISO string as ITS local time, so
+    with server and browser in different zones every chart label was off by the
+    difference. The stored format stays, the answer carries the offset.
+    """
+    if not ts or not isinstance(ts, str):
+        return ts
+    try:
+        return datetime.fromisoformat(ts).astimezone().isoformat()
+    except ValueError:
+        return ts
 
 
 def _syslog_search_terms(search_text):
@@ -79,7 +113,8 @@ def _syslog_hostname_tokens(value):
     if not value:
         return set()
     tokens = {value}
-    if '.' in value:
+    # the short form of an address is its first octet, and LIKE '10.%' is every sender in 10/8 (#1119)
+    if '.' in value and not re.fullmatch(r'[0-9.]+', value):
         tokens.add(value.split('.', 1)[0])
     return tokens
 
@@ -110,6 +145,67 @@ def _syslog_cluster_hostnames(cluster_id):
     return hostnames
 
 
+_AMBIGUOUS_HOSTS = {'at': 0.0, 'tokens': frozenset()}
+_AMBIGUOUS_HOSTS_TTL = 60.0
+_AMBIGUOUS_HOSTS_LOCK = threading.Lock()
+
+
+def _syslog_ambiguous_hostnames():
+    """Host tokens that more than one cluster claims.
+
+    MK Sep 2026 - _syslog_hostname_tokens derives a short form from every node name, so
+    two clusters with a node called pve1 both claim the token "pve1". The gate below
+    turns each token into `= token` OR `LIKE 'token.%'`, and that second half is the
+    leak: tenant A's "pve1" matches tenant B's "pve1.b.example" and hands over its
+    syslog. A token two clusters claim also cannot attribute a bare "pve1" line to
+    either of them, so it is dropped rather than guessed - the same answer every other
+    ambiguous authorization question in this tree gets.
+
+    Memoised for a minute: node names change on the timescale of a reinstall, and
+    working them out walks every cluster's node list.
+    """
+    now = time.time()
+    cached = _AMBIGUOUS_HOSTS
+    if cached['tokens'] is not None and (now - cached['at']) < _AMBIGUOUS_HOSTS_TTL:
+        return cached['tokens']
+    with _AMBIGUOUS_HOSTS_LOCK:
+        if (time.time() - _AMBIGUOUS_HOSTS['at']) < _AMBIGUOUS_HOSTS_TTL:
+            return _AMBIGUOUS_HOSTS['tokens']
+        claims = {}
+        for _cid in list(cluster_managers.keys()):
+            for _tok in _syslog_cluster_hostnames(_cid):
+                claims.setdefault(_tok, set()).add(_cid)
+        tokens = frozenset(t for t, cids in claims.items() if len(cids) > 1)
+        if tokens:
+            logging.info(f"[Syslog] {len(tokens)} host name(s) claimed by more than one "
+                         f"cluster - excluded from syslog scoping: {sorted(tokens)[:5]}")
+        _AMBIGUOUS_HOSTS['tokens'] = tokens
+        _AMBIGUOUS_HOSTS['at'] = time.time()
+        return tokens
+
+
+def _syslog_like_literal(value):
+    """`value` with LIKE's wildcards escaped, for `LIKE ? ESCAPE '\\'`."""
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+def _syslog_host_clause(values, params):
+    """`(host = x OR host LIKE 'x.%' OR ...)` over the tokens that identify one cluster.
+
+    NS Oct 2026 - the tokens come from the cluster name and host, which a cluster.config
+    holder sets on their own cluster. A name of '%' made the LIKE half match every host
+    with a dot in it, so the caller read every tenant's syslog (#1119). Only the '.%' we
+    add is a wildcard now."""
+    _ambiguous = _syslog_ambiguous_hostnames()
+    parts = []
+    for value in sorted(set(values) - _ambiguous):
+        parts.append("LOWER(logs.hostname) = ?")
+        params.append(value)
+        parts.append("LOWER(logs.hostname) LIKE ? ESCAPE '\\'")
+        params.append(f"{_syslog_like_literal(value)}.%")
+    return f"({' OR '.join(parts)})" if parts else "1 = 0"
+
+
 @bp.route('/api/reports/summary', methods=['GET'])
 @require_auth()
 def get_reports_summary():
@@ -121,25 +217,20 @@ def get_reports_summary():
     period = request.args.get('period', 'day')
 
     # NS: Feb 2026 - tenant filtering for multi-tenant security
+    # sec (audit): was the raw stored record, so an admin-owned viewer-scoped token inherited the
+    # owner's admin reach and get_user_clusters returned None = every cluster. (top-vms in this
+    # same file already builds its identity correctly — these three were the stragglers.)
+    from pegaprox.utils.auth import build_authz_user
     usr = getattr(request, 'session', {}).get('user', 'system')
-    users_db = load_users()
-    user_data = users_db.get(usr, {})
+    user_data = build_authz_user(usr, getattr(request, 'session', {}) or {})
     accessible_clusters = get_user_clusters(user_data)  # None = admin (all clusters)
 
-    history = load_metrics_history()
+    window_days, cutoff = _period_cutoff(period)
+    history = load_metrics_history(days=window_days, totals_only=True)
     snapshots = history.get('snapshots', [])
 
     if not snapshots:
         return jsonify({'error': 'No historical data available yet'}), 404
-
-    # Filter by period
-    now = datetime.now()
-    if period == 'hour':
-        cutoff = now - timedelta(hours=1)
-    elif period == 'week':
-        cutoff = now - timedelta(days=7)
-    else:  # day
-        cutoff = now - timedelta(days=1)
 
     cutoff_str = cutoff.isoformat()
     filtered = [s for s in snapshots if s.get('timestamp', '') >= cutoff_str]
@@ -151,8 +242,8 @@ def get_reports_summary():
     report = {
         'period': period,
         'data_points': len(filtered),
-        'start_time': filtered[0].get('timestamp'),
-        'end_time': filtered[-1].get('timestamp'),
+        'start_time': _with_offset(filtered[0].get('timestamp')),
+        'end_time': _with_offset(filtered[-1].get('timestamp')),
         'clusters': {}
     }
 
@@ -326,17 +417,7 @@ def get_integrated_syslog_events():
         ok, err = check_cluster_access(cluster_id)
         if not ok:
             return err
-        cluster_hostnames = sorted(_syslog_cluster_hostnames(cluster_id))
-        if cluster_hostnames:
-            cluster_hostname_where = []
-            for value in cluster_hostnames:
-                cluster_hostname_where.append("LOWER(logs.hostname) = ?")
-                params.append(value)
-                cluster_hostname_where.append("LOWER(logs.hostname) LIKE ?")
-                params.append(f"{value}.%")
-            where.append(f"({' OR '.join(cluster_hostname_where)})")
-        else:
-            where.append("1 = 0")
+        where.append(_syslog_host_clause(_syslog_cluster_hostnames(cluster_id), params))
 
     # NS Aug 2026 (AI-pentest) — always confine a non-all-cluster caller to the hostnames of the
     # clusters they can actually reach, independent of the syslog_filter_by_selected_cluster flag and
@@ -344,19 +425,15 @@ def get_integrated_syslog_events():
     # cluster's syslog to a tenant-scoped admin.audit holder.
     from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import get_user_clusters
-    _acc = get_user_clusters(build_authz_user(request.session.get('user', ''), request.session))
+    # NS Oct 2026 - a node's syslog is the whole node's, so only clusters the caller's tenant
+    # owns count. A pool grant on a foreign cluster reaches that pool's guests, not its hosts (#1010).
+    _acc = get_user_clusters(build_authz_user(request.session.get('user', ''), request.session),
+                             include_pools=False)
     if _acc is not None:  # None = global-admin / all-cluster; a list = confine to it
         _allowed_hosts = set()
         for _cid in _acc:
             _allowed_hosts.update(_syslog_cluster_hostnames(_cid))
-        if _allowed_hosts:
-            _hw = []
-            for _h in sorted(_allowed_hosts):
-                _hw.append("LOWER(logs.hostname) = ?"); params.append(_h)
-                _hw.append("LOWER(logs.hostname) LIKE ?"); params.append(f"{_h}.%")
-            where.append(f"({' OR '.join(_hw)})")
-        else:
-            where.append("1 = 0")
+        where.append(_syslog_host_clause(_allowed_hosts, params))
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ''
     joins_sql = f"{' '.join(joins)}" if joins else ''
@@ -403,7 +480,7 @@ def get_integrated_syslog_events():
     total_pages = (total + per_page - 1) // per_page if total else 0
 
     return jsonify({
-        'items': [dict(row) for row in rows],
+        'items': [dict(dict(row), timestamp=_with_offset(row['timestamp'])) for row in rows],
         'pagination': {
             'page': page,
             'per_page': per_page,
@@ -432,25 +509,20 @@ def get_reports_timeline():
     metric = request.args.get('metric', 'all')
 
     # NS: Feb 2026 - tenant filtering for multi-tenant security
+    # sec (audit): was the raw stored record, so an admin-owned viewer-scoped token inherited the
+    # owner's admin reach and get_user_clusters returned None = every cluster. (top-vms in this
+    # same file already builds its identity correctly — these three were the stragglers.)
+    from pegaprox.utils.auth import build_authz_user
     usr = getattr(request, 'session', {}).get('user', 'system')
-    users_db = load_users()
-    user_data = users_db.get(usr, {})
+    user_data = build_authz_user(usr, getattr(request, 'session', {}) or {})
     accessible_clusters = get_user_clusters(user_data)  # None = admin (all clusters)
 
-    history = load_metrics_history()
+    window_days, cutoff = _period_cutoff(period)
+    history = load_metrics_history(days=window_days, totals_only=True)
     snapshots = history.get('snapshots', [])
 
     if not snapshots:
         return jsonify({'error': 'No historical data available'}), 404
-
-    # Filter by period
-    now = datetime.now()
-    if period == 'hour':
-        cutoff = now - timedelta(hours=1)
-    elif period == 'week':
-        cutoff = now - timedelta(days=7)
-    else:
-        cutoff = now - timedelta(days=1)
 
     cutoff_str = cutoff.isoformat()
     filtered = [s for s in snapshots if s.get('timestamp', '') >= cutoff_str]
@@ -464,7 +536,7 @@ def get_reports_timeline():
 
     for snapshot in filtered:
         timestamp = snapshot.get('timestamp', '')
-        timeline['timestamps'].append(timestamp)
+        timeline['timestamps'].append(_with_offset(timestamp))
 
         for cluster_id, cluster_data in snapshot.get('clusters', {}).items():
             if filter_cluster and cluster_id != filter_cluster:
@@ -518,14 +590,17 @@ def get_top_vms():
     limit = int(request.args.get('limit', 10))
 
     # NS: Feb 2026 - tenant filtering for multi-tenant security
+    # sec (audit): was the raw stored record, so an admin-owned viewer-scoped token inherited the
+    # owner's admin reach and get_user_clusters returned None = every cluster. (top-vms in this
+    # same file already builds its identity correctly — these three were the stragglers.)
+    from pegaprox.utils.auth import build_authz_user
     usr = getattr(request, 'session', {}).get('user', 'system')
-    users_db = load_users()
-    user_data = users_db.get(usr, {})
+    user_data = build_authz_user(usr, getattr(request, 'session', {}) or {})
     accessible_clusters = get_user_clusters(user_data)  # None = admin (all clusters)
 
     vms = []
 
-    for cluster_id, mgr in cluster_managers.items():
+    for cluster_id, mgr in list(cluster_managers.items()):
         # Skip clusters the user cannot access
         if accessible_clusters is not None and cluster_id not in accessible_clusters:
             continue
@@ -533,11 +608,13 @@ def get_top_vms():
             continue
         
         try:
-            resources = mgr.get_vm_resources()
+            # #773 audit — tenant filtering (accessible_clusters) gates the CLUSTER; still scope
+            # the per-VM rows so a pool-/ACL-scoped user doesn't see every VM on a cluster they own.
+            resources = scope_vm_rows(cluster_id, mgr.get_vm_resources())
             for r in resources:
                 if r.get('status') != 'running':
                     continue
-                
+
                 vm_data = {
                     'cluster_id': cluster_id,
                     'cluster_name': mgr.config.name,
@@ -581,6 +658,15 @@ def scan_all_nodes_cves(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    # sec (audit): node.view is a default viewer perm and check_cluster_access admits a
+    # pool-/ACL-scoped caller by design — but this returns every node's kernel, pveversion,
+    # pending-reboot state and full CVE list (an unpatched-target map), and fans out one SSH
+    # session per node. There is no per-object notion for a node, so deny a confined caller.
+    from pegaprox.utils.auth import build_authz_user
+    from pegaprox.api.helpers import caller_is_scoped
+    if caller_is_scoped(build_authz_user(request.session.get('user', ''), request.session), cluster_id):
+        return jsonify({'error': 'Access denied to this cluster'}), 403
+
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -603,9 +689,12 @@ def scan_all_nodes_cves(cluster_id):
             continue
         try:
             scan = mgr.scan_node_packages(node_name)
+            if isinstance(scan, dict) and scan.get('timestamp'):
+                scan['timestamp'] = _with_offset(scan['timestamp'])
             results.append(scan)
         except Exception as e:
-            results.append({'node': node_name, 'error': str(e)})
+            logging.warning(f"[cve-scan] node {node_name} scan failed: {e}")  # detail to logs, not the response
+            results.append({'node': node_name, 'error': 'package scan failed'})   # sec (audit): no raw str(e) to the client
 
     total_sec = sum(r.get('security_count', 0) for r in results)
     total_upd = sum(r.get('total_count', 0) for r in results)
@@ -615,7 +704,7 @@ def scan_all_nodes_cves(cluster_id):
     return jsonify({
         'cluster_id': cluster_id,
         'cluster_name': getattr(mgr.config, 'name', cluster_id),
-        'scanned_at': datetime.now().isoformat(),
+        'scanned_at': datetime.now().astimezone().isoformat(),
         'nodes': results,
         'summary': {
             'nodes_scanned': len(results),
@@ -635,6 +724,15 @@ def scan_single_node_cves(cluster_id, node):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    # sec (audit): node.view is a default viewer perm and check_cluster_access admits a
+    # pool-/ACL-scoped caller by design — but this returns every node's kernel, pveversion,
+    # pending-reboot state and full CVE list (an unpatched-target map), and fans out one SSH
+    # session per node. There is no per-object notion for a node, so deny a confined caller.
+    from pegaprox.utils.auth import build_authz_user
+    from pegaprox.api.helpers import caller_is_scoped
+    if caller_is_scoped(build_authz_user(request.session.get('user', ''), request.session), cluster_id):
+        return jsonify({'error': 'Access denied to this cluster'}), 403
+
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -644,6 +742,8 @@ def scan_single_node_cves(cluster_id, node):
         return jsonify({'error': 'Cluster not connected'}), 503
 
     result = mgr.scan_node_packages(node)
+    if isinstance(result, dict) and result.get('timestamp'):
+        result['timestamp'] = _with_offset(result['timestamp'])
     return jsonify(result)
 
 
@@ -654,6 +754,9 @@ def install_debsecan(cluster_id):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
 
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
@@ -687,12 +790,63 @@ def install_debsecan(cluster_id):
 # CIS Hardening Endpoints - MK Mar 2026
 # ============================================
 
+# NS Sep 2026 (#717) — every SSH-backed node check answered a bare 502 "SSH to <node>
+# failed", which the compliance dashboard rendered as the string "err 502" next to the
+# node and nothing else. On a token-only cluster that is EVERY node, so the dashboard
+# looked broken rather than unconfigured. Same shape for all of them: a code the UI can
+# branch on, a sentence saying what happened, and one saying what to do about it.
+_SSH_ERRORS = {
+    'SSH_NO_CREDENTIALS': (412, 'Add an SSH key or a password to this cluster under '
+                                'Settings > Clusters. An API token alone cannot open a '
+                                'shell, which these checks need.'),
+    'SSH_DISABLED':       (412, 'SSH to this cluster is switched off in its settings. '
+                                'These checks read the node over SSH, so they cannot '
+                                'run until it is switched back on.'),
+    'NODE_BACKOFF':       (503, 'The node stopped answering and is being retried with a '
+                                'backoff. Check that it is up and reachable from PegaProx.'),
+    'SSH_FAILED':         (502, 'Credentials are configured but the connection did not '
+                                'succeed — check reachability on port 22, the stored '
+                                'username, and whether the host key changed.'),
+}
+
+
+def _ssh_unavailable(mgr, node):
+    """One JSON shape for 'this node check needs SSH and SSH did not happen'."""
+    # every manager class that reaches this route should have ssh_diagnose, but this is
+    # the error path — it must not be the thing that raises. Anything unexpected back
+    # from it falls through to the generic reason.
+    reason = None
+    try:
+        probe = getattr(mgr, 'ssh_diagnose', None)
+        if callable(probe):
+            reason = probe(node)
+    except Exception:
+        logging.debug('[hardening] ssh_diagnose failed on %s', node, exc_info=True)
+    if not (isinstance(reason, (tuple, list)) and len(reason) == 2):
+        reason = ('SSH_FAILED', None)
+    code, detail = reason
+    status, hint = _SSH_ERRORS.get(code, _SSH_ERRORS['SSH_FAILED'])
+    return jsonify({
+        'error': f'Cannot read {node} over SSH' + (f': {detail}' if detail else ''),
+        'code': code,
+        'hint': hint,
+        'node': node,
+        # cluster-wide causes let the caller stop asking about the other 99 nodes
+        'cluster_wide': code == 'SSH_NO_CREDENTIALS',
+    }), status
+
+
 @bp.route('/api/clusters/<cluster_id>/nodes/<node>/hardening', methods=['GET'])
 @require_auth(perms=['node.maintenance'])
 def check_hardening(cluster_id, node):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    # NS Oct 2026 - runs root checks over SSH and reads back the node's own security
+    # evidence, nothing a pool or VM grant reaches; same gate as the apply route below
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
     mgr = cluster_managers[cluster_id]
@@ -708,9 +862,14 @@ def check_hardening(cluster_id, node):
         return jsonify({'error': f'unknown profile: {profile}'}), 400
     result = mgr.check_node_hardening(node, verbose=verbose, profile=profile)
     if result is None:
-        return jsonify({'error': f'SSH to {node} failed'}), 502
+        return _ssh_unavailable(mgr, node)
 
-    return jsonify({'node': node, 'controls': result, 'verbose': verbose, 'profile': profile or 'cis-l1'})
+    # Report the profile that actually ran, not the one that was asked for - cis-l2 has no
+    # control set of its own and a PDF naming it would be claiming a level nobody checked.
+    _eff = mgr._effective_profile(profile) if hasattr(mgr, '_effective_profile') else None
+    _eff = _eff or (profile or 'cis-l1')   # always a string - consumers indexed on it before
+    return jsonify({'node': node, 'controls': result, 'verbose': verbose,
+                    'profile': _eff, 'requested_profile': profile or 'cis-l1'})
 
 
 @bp.route('/api/clusters/<cluster_id>/nodes/<node>/hardening', methods=['POST'])
@@ -720,6 +879,9 @@ def apply_hardening(cluster_id, node):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
     mgr = cluster_managers[cluster_id]
@@ -772,6 +934,9 @@ def rollback_hardening(cluster_id, node):
     ok, err = check_cluster_access(cluster_id)
     if not ok:
         return err
+    _cerr = require_unconfined(cluster_id)
+    if _cerr:
+        return _cerr
     if cluster_id not in cluster_managers:
         return jsonify({'error': 'Cluster not found'}), 404
     mgr = cluster_managers[cluster_id]
@@ -947,18 +1112,11 @@ def get_cluster_report_summary(cluster_id):
     live_cpu_pct = round(live_cpu, 1)
     live_mem_pct = round(mem_used / max(mem_total, 1) * 100, 1) if mem_total > 0 else 0
 
-    # Load historical metrics
-    history = load_metrics_history()
+    # Load historical metrics for the requested window (oldest first, so the
+    # chart below runs left-to-right and 'current' really is the newest sample)
+    window_days, cutoff = _period_cutoff(period)
+    history = load_metrics_history(days=window_days, totals_only=True)
     snapshots = history.get('snapshots', [])
-
-    # Filter by period
-    now = datetime.now()
-    if period == 'hour':
-        cutoff = now - timedelta(hours=1)
-    elif period == 'week':
-        cutoff = now - timedelta(days=7)
-    else:
-        cutoff = now - timedelta(days=1)
 
     cutoff_str = cutoff.isoformat()
     filtered = [s for s in snapshots if s.get('timestamp', '') >= cutoff_str]
@@ -990,7 +1148,7 @@ def get_cluster_report_summary(cluster_id):
         if not cluster_data:
             continue
 
-        report['timestamps'].append(snapshot.get('timestamp', ''))
+        report['timestamps'].append(_with_offset(snapshot.get('timestamp', '')))
         report['data_points'] += 1
 
         totals = cluster_data.get('totals', {})

@@ -158,6 +158,21 @@ def _load_vapid():
     return kp
 
 
+def _synced_vapid_public():
+    """The public key as the active stored it, or None. Reads only: no keypair is
+    made, migrated or re-encrypted, and the private half is not even decrypted."""
+    try:
+        c = get_db().conn.cursor()
+        c.execute('SELECT value FROM server_settings WHERE key = ?', (_VAPID_KEY_NAME,))
+        r = c.fetchone()
+        stored = json.loads(r['value']) if r and r['value'] else {}
+    except Exception as e:
+        logging.warning(f"[push] vapid read failed: {e}")
+        return None
+    pub = stored.get('public_b64') if isinstance(stored, dict) else None
+    return pub if isinstance(pub, str) and pub else None
+
+
 def _vapid_jwt(audience: str) -> str:
     """Sign a VAPID JWT for one push-service origin. ES256."""
     kp = _load_vapid()
@@ -408,6 +423,17 @@ def register_alert_handler():
 @bp.route('/api/push/vapid-key', methods=['GET'])
 @require_auth()
 def vapid_key():
+    # MK Sep 2026 (#625) - the keypair is shared configuration in server_settings. A
+    # standby that generated or rewrote one here would hand out its own public key, and
+    # keep that row apart from the active's until the active changed something itself.
+    from pegaprox.core import ha
+    if ha.is_standby():
+        pub = _synced_vapid_public()
+        if not pub:
+            return jsonify({'error': 'Push notifications are not available on a standby until '
+                                     'the active instance has set them up',
+                            'code': 'HA_STANDBY'}), 409
+        return jsonify({'public_key': pub})
     kp = _load_vapid()
     return jsonify({'public_key': kp['public_b64']})
 
@@ -419,47 +445,49 @@ def _is_internal_or_metadata_host(host):
     or metadata-fetch oracle by registering an internal endpoint and watching
     /api/siem/targets-style status fields. Blocking at subscribe time makes
     the attack surface basically nil."""
-    import ipaddress, socket
     if not host:
         return True
-    # NS Aug 2026 (Aikido #469089273) — parsed.hostname is already port/bracket-free; do NOT
-    # split on ':' (that mangled every IPv6 literal, e.g. '::1' -> '', bypassing the block).
-    h = host.strip().strip('[]')
-    # quick string checks
-    if h in ('localhost', '0.0.0.0', '::', '::1'):
-        return True
-    if h.endswith('.local') or h.endswith('.internal') or h.endswith('.localdomain'):
-        return True
-    # parse as IP
+    # sec (private disclosure Sep 2026 — audit): delegate to the central SSRF guard. The old inline
+    # check FAILED OPEN when DNS didn't resolve ("can't resolve — let it through") and used an
+    # IPv4-only socket.gethostbyname, so an IPv6-only or 6to4/NAT64/Teredo-encoded internal target
+    # slipped past. is_safe_outbound_url resolves + fails CLOSED and classifies transition addresses,
+    # and pins the resolved IP. public/safe => not internal; anything it rejects => block.
     try:
-        ip = ipaddress.ip_address(h)
-        if getattr(ip, 'ipv4_mapped', None):   # unwrap ::ffff:a.b.c.d so private/metadata checks apply
-            ip = ip.ipv4_mapped
-        # block private + loopback + link-local + multicast + unspecified +
-        # carrier-grade NAT (100.64/10) + AWS/GCP metadata (169.254.169.254)
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_multicast or ip.is_unspecified or ip.is_reserved):
-            return True
-        if str(ip).startswith('100.'):  # CGN range — too coarse but safer
-            try:
-                if ipaddress.ip_address('100.64.0.0') <= ip <= ipaddress.ip_address('100.127.255.255'):
-                    return True
-            except Exception:
-                pass
-    except ValueError:
-        # not an IP — try DNS resolution to catch hostnames pointing internal
-        try:
-            resolved = socket.gethostbyname(h)
-            return _is_internal_or_metadata_host(resolved)
-        except Exception:
-            # can't resolve — let it through (offline DNS shouldn't deny)
-            return False
-    return False
+        from pegaprox.utils.url_security import is_safe_outbound_url
+        # parsed.hostname is bracket-free, so re-bracket a bare IPv6 literal or the URL is malformed
+        _h = f'[{host}]' if (':' in host and not host.startswith('[')) else host
+        safe, _reason = is_safe_outbound_url(f'https://{_h}/', allow_private=False)
+        return not safe   # guard says safe(public) => not internal; anything it rejects => block
+    except Exception:
+        return True   # fail closed
+
+
+def _reject_api_token(what):
+    """Refuse an API-token session on the routes that carry alert CONTENT.
+
+    MK Sep 2026 - a Web Push subscription is registered under the caller's username,
+    and _alert_handler decides what to deliver from that account's stored record. An
+    API token presents its owner's name, so a token deliberately capped at viewer could
+    register an https endpoint of its choosing and have every cluster the OWNER can see
+    delivered to it - cluster, node and guest names plus live metrics, none of which the
+    token itself may read. The inbox is the same content through a different door.
+
+    A push subscription comes out of a service worker in a browser. A token has no
+    browser, so there is nothing legitimate to break here. Returns an error response,
+    or None.
+    """
+    if not (getattr(request, 'session', None) or {}).get('api_token'):
+        return None
+    return jsonify({'error': f'{what} is not available to API tokens - '
+                             'use an interactive session'}), 403
 
 
 @bp.route('/api/push/subscribe', methods=['POST'])
 @require_auth()
 def subscribe():
+    _terr = _reject_api_token('Push subscription')
+    if _terr:
+        return _terr
     body = request.get_json(silent=True) or {}
     endpoint = body.get('endpoint')
     keys = body.get('keys') or {}
@@ -487,16 +515,19 @@ def subscribe():
         return jsonify({'error': 'session missing'}), 401
 
     try:
+        # sec (audit): the upsert used to overwrite `username` too, so anyone who knew a victim's
+        # endpoint could re-point it at their own account — the victim then received the
+        # attacker's alerts and stopped receiving their own. Only the owner may refresh a row.
         c = get_db().conn.cursor()
         c.execute('''
             INSERT INTO push_subscriptions (username, endpoint, p256dh, auth, user_agent, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(endpoint) DO UPDATE SET
-                username=excluded.username,
                 p256dh=excluded.p256dh,
                 auth=excluded.auth,
                 user_agent=excluded.user_agent,
                 failures=0
+            WHERE push_subscriptions.username = excluded.username
         ''', (user, endpoint, p256dh, auth, ua, datetime.now().isoformat()))
         get_db().conn.commit()
         return jsonify({'ok': True})
@@ -512,8 +543,11 @@ def unsubscribe():
     if not endpoint:
         return jsonify({'error': 'endpoint required'}), 400
     try:
+        # sec (audit): scoped to the caller — an endpoint alone used to be enough to delete
+        # someone else's subscription.
         c = get_db().conn.cursor()
-        c.execute('DELETE FROM push_subscriptions WHERE endpoint = ?', (endpoint,))
+        c.execute('DELETE FROM push_subscriptions WHERE endpoint = ? AND username = ?',
+                  (endpoint, request.session.get('user', '')))
         get_db().conn.commit()
         return jsonify({'ok': True})
     except Exception as e:
@@ -557,6 +591,9 @@ def send_test():
 @bp.route('/api/push/inbox', methods=['GET'])
 @require_auth()
 def inbox():
+    _terr = _reject_api_token('The notification inbox')
+    if _terr:
+        return _terr
     user = _current_user()
     if not user:
         return jsonify({'items': []})
@@ -583,6 +620,9 @@ def inbox():
 @bp.route('/api/push/inbox/clear', methods=['POST'])
 @require_auth()
 def inbox_clear():
+    _terr = _reject_api_token('The notification inbox')
+    if _terr:
+        return _terr
     user = _current_user()
     try:
         c = get_db().conn.cursor()

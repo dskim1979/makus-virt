@@ -5,7 +5,7 @@ import uuid
 import logging
 import time
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from pegaprox.constants import *
 from pegaprox.globals import *
@@ -36,7 +36,9 @@ def _safe_spawn_failover(func, plan_id, *args):
                            (datetime.utcnow().isoformat(), plan_id))
             except Exception:
                 pass
-    gevent.spawn(_wrapper)
+    # in an automatic group what goes out between the confirms of the run asks at its exit (#625)
+    from pegaprox.core import ha
+    gevent.spawn(ha.as_job(_wrapper, f'site recovery plan {plan_id}'))
 
 
 
@@ -84,19 +86,97 @@ def _plan_with_vms(plan):
 # protects, otherwise they could failover/read VMs outside their explicit grant.
 # ACL-scope-wins (mirrors add_plan_vm's per-VM gate). Returns (True, None) when the
 # caller can access every plan VM, else (False, <403 response>) to `return err`.
-def _authz_plan_vms(plan):
+def _approved_vmids(plan):
+    """The VM ids that _authz_plan_vms just signed off on, for the worker to hold to.
+
+    The route authorizes a list and then spawns a greenlet that reads the list again.
+    Anything added in between was acted on unauthorized, so the worker gets told what
+    was approved rather than looking it up a second time. MK Sep 2026
+
+    NS Oct 2026 - looking it up here was that second time: the checks can wait on the
+    cluster, and a guest added meanwhile came back from this read unchecked. The list
+    _authz_plan_vms checked is kept for the request.
+    """
+    from flask import g
+    checked = (getattr(g, '_sr_checked_vmids', None) or {}).get(plan['id'])
+    if checked is not None:
+        return list(checked)
+    return [v.get('vmid') for v in _get_plan_vms(plan['id'])]
+
+
+def _authz_plan_vms(plan, starts_vms=False):
+    """Every VM in the plan has to be one the caller may touch.
+
+    NS Sep 2026 (Aikido 469089217) — starts_vms=True on the routes that actually power VMs on at
+    the target. For a caller confined by a pool or a VM-ACL, vm.view was too weak a question there:
+    a read-only pool grant let them fire a failover that starts every VM in it. Ask for vm.start
+    instead, but only for a confined caller — site_recovery.failover is admin-only by default, so
+    demanding vm.start from an unconfined DR operator would just break a legitimate custom role
+    without closing anything."""
     from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import user_can_access_vm
+    from pegaprox.api.helpers import caller_is_scoped
     user = build_authz_user(request.session['user'], request.session)
-    for vm in _get_plan_vms(plan['id']):
+    _src = plan.get('source_cluster') or ''
+    _tgt = plan.get('target_cluster') or ''
+    _confined = caller_is_scoped(user, _src) or (_tgt and caller_is_scoped(user, _tgt))
+    perm = 'vm.view'
+    if starts_vms and _confined:
+        perm = 'vm.start'
+
+    _vms = _get_plan_vms(plan['id'])
+    # one read, checked below and handed to the worker by _approved_vmids
+    from flask import g
+    if not hasattr(g, '_sr_checked_vmids'):
+        g._sr_checked_vmids = {}
+    g._sr_checked_vmids[plan['id']] = [v.get('vmid') for v in _vms]
+
+    # MK Sep 2026 - an EMPTY plan walked straight out of the loop below and answered
+    # "authorized". That is the wrong default for a plan a confined caller does not own:
+    # every write route in this file gates on this helper, so an empty plan was editable
+    # by anyone - add VMs to it afterwards and the plan is yours. An unconfined operator
+    # keeps the old answer, because an empty plan is a perfectly normal draft for them.
+    if not _vms:
+        if _confined:
+            return False, (jsonify({'error': 'Access denied: this plan has no VMs to '
+                                             'authorize you against'}), 403)
+        return True, None
+
+    for vm in _vms:
         try:
             vmid = int(vm['vmid'])
         except (ValueError, TypeError, KeyError):
             # can't derive the vmid → deny for scoped users
             return False, (jsonify({'error': 'Access denied: unresolved VM in plan'}), 403)
-        if not user_can_access_vm(user, plan['source_cluster'], vmid, 'vm.view', vm.get('vm_type', 'qemu')):
+        if not user_can_access_vm(user, plan['source_cluster'], vmid, perm, vm.get('vm_type', 'qemu')):
             return False, (jsonify({'error': 'Access denied: you do not have permission for every VM in this plan'}), 403)
+
+    # MK Sep 2026 - and the TARGET. Every check above asks about the source cluster, but a
+    # failover starts these guests on the target: it consumes that cluster's CPU, memory and
+    # storage and puts a running workload there. A caller confined on the target has no
+    # standing to place one, however well they own the source side.
+    if starts_vms and _tgt and caller_is_scoped(user, _tgt):
+        return False, (jsonify({'error': 'Access denied: you are not authorized to place '
+                                         'workloads on the target cluster'}), 403)
     return True, None
+
+
+def _console_vmids(plan):
+    """The plan's guests the caller may open the console of, the question the screenshot
+    route asks (api/vms.py get_vm_screenshot). A test failover takes its boot screenshots
+    of those only: the job that takes them has no caller to ask. MK Oct 2026"""
+    from pegaprox.utils.auth import build_authz_user
+    from pegaprox.utils.rbac import user_can_access_vm
+    user = build_authz_user(request.session['user'], request.session)
+    out = []
+    for vm in _get_plan_vms(plan['id']):
+        try:
+            vmid = int(vm['vmid'])
+        except (ValueError, TypeError, KeyError):
+            continue
+        if user_can_access_vm(user, plan['source_cluster'], vmid, 'vm.console', vm.get('vm_type', 'qemu')):
+            out.append(vmid)
+    return out
 
 
 # ---- CRUD: Plans ----
@@ -111,6 +191,7 @@ def list_plans():
     # allowed=None = all, unchanged (same pattern as the replication-jobs fix).
     from pegaprox.utils.auth import build_authz_user
     from pegaprox.utils.rbac import get_user_clusters
+    from pegaprox.api.helpers import caller_is_scoped
     _user = build_authz_user(request.session.get('user', ''), request.session)
     _allowed = get_user_clusters(_user)
     rows = db.query('SELECT * FROM site_recovery_plans ORDER BY created_at DESC')
@@ -119,6 +200,18 @@ def list_plans():
         p = dict(row)
         if _allowed is not None and p.get('source_cluster') not in _allowed and p.get('target_cluster') not in _allowed:
             continue
+        # sec (audit): the cluster filter alone left two holes. get_user_clusters returns None
+        # (= all) for a default-tenant VM-ACL user, so they saw every plan in the install; and a
+        # pool-scoped caller saw plans the detail route (_authz_plan_vms) refuses to open. Confine
+        # a genuinely scoped caller to the plans whose VMs they may all view.
+        if caller_is_scoped(_user, p.get('source_cluster') or ''):
+            _ok, _ = _authz_plan_vms(p)
+            if not _ok:
+                continue
+        # a list view has no use for the failover webhooks, and those URLs are bearer secrets —
+        # get_plan_detail (properly gated) still serves them.
+        p.pop('pre_failover_webhook', None)
+        p.pop('post_failover_webhook', None)
         for k in ('network_mappings', 'storage_mappings'):
             try:
                 p[k] = json.loads(p[k] or '{}')
@@ -221,6 +314,12 @@ def update_plan(plan_id):
     ok, err = check_cluster_access(plan['target_cluster'])
     if not ok:
         return err
+    # sec (private disclosure Sep 2026 — audit): the read/failover siblings gate the plan's VMs
+    # per-object (_authz_plan_vms); the write routes did not, so a co-tenant reaching the plan's
+    # clusters could edit/delete another tenant's DR plan (and repoint its failover webhooks). Match them.
+    ok, err = _authz_plan_vms(plan)
+    if not ok:
+        return err
 
     data = request.json or {}
     allowed = {'name', 'network_mappings', 'storage_mappings', 'auto_failover',
@@ -269,6 +368,9 @@ def delete_plan(plan_id):
     ok, err = check_cluster_access(plan['target_cluster'])
     if not ok:
         return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
+    if not ok:
+        return err
 
     # #238: allow force-delete of stuck plans via ?force=1 query param
     if plan['status'] in ('running', 'testing'):
@@ -280,6 +382,7 @@ def delete_plan(plan_id):
     db = get_db()
     db.execute('DELETE FROM site_recovery_vms WHERE plan_id = ?', (plan_id,))
     db.execute('DELETE FROM site_recovery_events WHERE plan_id = ?', (plan_id,))
+    db.execute('DELETE FROM site_recovery_screenshots WHERE plan_id = ?', (plan_id,))
     db.execute('DELETE FROM site_recovery_plans WHERE id = ?', (plan_id,))
 
     usr = getattr(request, 'session', {}).get('user', 'system')
@@ -325,6 +428,12 @@ def add_plan_vm(plan_id):
     if not ok:
         return err
     ok, err = check_cluster_access(plan['target_cluster'])
+    if not ok:
+        return err
+    # sec (audit): every other plan-mutating route gates the plan itself; this one only gated the
+    # VM being added, so a scoped caller could inject their VM into another tenant's DR plan and
+    # have it dragged along on the next failover.
+    ok, err = _authz_plan_vms(plan)
     if not ok:
         return err
 
@@ -385,6 +494,9 @@ def update_plan_vm(plan_id, vm_id):
     ok, err = check_cluster_access(plan['target_cluster'])
     if not ok:
         return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
+    if not ok:
+        return err
 
     db = get_db()
     row = db.query_one('SELECT * FROM site_recovery_vms WHERE id = ? AND plan_id = ?', (vm_id, plan_id))
@@ -424,6 +536,9 @@ def remove_plan_vm(plan_id, vm_id):
     ok, err = check_cluster_access(plan['target_cluster'])
     if not ok:
         return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
+    if not ok:
+        return err
 
     db = get_db()
     row = db.query_one('SELECT vmid FROM site_recovery_vms WHERE id = ? AND plan_id = ?', (vm_id, plan_id))
@@ -450,6 +565,9 @@ def check_readiness(plan_id):
     if not ok:
         return err
     ok, err = check_cluster_access(plan['target_cluster'])
+    if not ok:
+        return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
     if not ok:
         return err
 
@@ -556,7 +674,7 @@ def execute_planned_failover(plan_id):
 
     # per-VM scope (BOLA sec-report): cluster reach isn't enough — the caller must
     # be scoped to every VM in the plan before we drive an authorized failover.
-    ok, err = _authz_plan_vms(plan)
+    ok, err = _authz_plan_vms(plan, starts_vms=True)
     if not ok:
         return err
 
@@ -595,7 +713,7 @@ def execute_planned_failover(plan_id):
         return jsonify({'error': f"Cannot start failover — plan is in state '{actual}' (need ready/completed/failed)"}), 409
 
     from pegaprox.background.site_recovery import execute_failover
-    _safe_spawn_failover(execute_failover, plan_id, 'planned')
+    _safe_spawn_failover(execute_failover, plan_id, 'planned', _approved_vmids(plan))
 
     usr = getattr(request, 'session', {}).get('user', 'system')
     log_audit(usr, 'site_recovery.failover', f"Planned failover started: {plan['name']}")
@@ -620,7 +738,7 @@ def execute_emergency_failover(plan_id):
         return err
 
     # per-VM scope (BOLA sec-report): scoped caller must be scoped to every plan VM
-    ok, err = _authz_plan_vms(plan)
+    ok, err = _authz_plan_vms(plan, starts_vms=True)
     if not ok:
         return err
 
@@ -652,7 +770,7 @@ def execute_emergency_failover(plan_id):
         return jsonify({'error': f"Cannot start emergency failover — plan is in state '{actual}' (need ready/completed/failed)"}), 409
 
     from pegaprox.background.site_recovery import execute_failover
-    _safe_spawn_failover(execute_failover, plan_id, 'emergency')
+    _safe_spawn_failover(execute_failover, plan_id, 'emergency', _approved_vmids(plan))
 
     usr = getattr(request, 'session', {}).get('user', 'system')
     log_audit(usr, 'site_recovery.emergency', f"Emergency failover started: {plan['name']}")
@@ -676,7 +794,7 @@ def execute_test_failover(plan_id):
         return err
 
     # per-VM scope (BOLA sec-report): scoped caller must be scoped to every plan VM
-    ok, err = _authz_plan_vms(plan)
+    ok, err = _authz_plan_vms(plan, starts_vms=True)
     if not ok:
         return err
 
@@ -692,7 +810,7 @@ def execute_test_failover(plan_id):
     db.execute("UPDATE site_recovery_plans SET status = 'testing', updated_at = ? WHERE id = ?", (now, plan_id))
 
     from pegaprox.background.site_recovery import execute_test_failover
-    _safe_spawn_failover(execute_test_failover, plan_id)
+    _safe_spawn_failover(execute_test_failover, plan_id, _console_vmids(plan), _approved_vmids(plan))
 
     usr = getattr(request, 'session', {}).get('user', 'system')
     log_audit(usr, 'site_recovery.test', f"Test failover started: {plan['name']}")
@@ -712,6 +830,9 @@ def cleanup_test_failover(plan_id):
     if not ok:
         return err
     ok, err = check_cluster_access(plan['target_cluster'])
+    if not ok:
+        return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
     if not ok:
         return err
 
@@ -741,7 +862,7 @@ def execute_failback(plan_id):
         return err
 
     # per-VM scope (BOLA sec-report): scoped caller must be scoped to every plan VM
-    ok, err = _authz_plan_vms(plan)
+    ok, err = _authz_plan_vms(plan, starts_vms=True)
     if not ok:
         return err
 
@@ -761,7 +882,7 @@ def execute_failback(plan_id):
     db.execute("UPDATE site_recovery_plans SET status = 'running', updated_at = ? WHERE id = ?", (now, plan_id))
 
     from pegaprox.background.site_recovery import execute_failover
-    _safe_spawn_failover(execute_failover, plan_id, 'failback')
+    _safe_spawn_failover(execute_failover, plan_id, 'failback', _approved_vmids(plan))
 
     usr = getattr(request, 'session', {}).get('user', 'system')
     log_audit(usr, 'site_recovery.failback', f"Failback started: {plan['name']}")
@@ -781,6 +902,9 @@ def cancel_action(plan_id):
     if not ok:
         return err
     ok, err = check_cluster_access(plan['target_cluster'])
+    if not ok:
+        return err
+    ok, err = _authz_plan_vms(plan)   # sec (audit): per-VM gate, matching the read/failover routes
     if not ok:
         return err
 
@@ -832,3 +956,43 @@ def get_plan_events(plan_id):
             ev['details'] = {}
         events.append(ev)
     return jsonify(events)
+
+
+# MK Oct 2026 - the boot screenshots of a test failover (background/sr_boot_shots.py)
+@bp.route('/api/site-recovery/plans/<plan_id>/events/<event_id>/screenshots/<int:vmid>', methods=['GET'])
+@require_auth(perms=['site_recovery.view'])
+def get_event_screenshot(plan_id, event_id, vmid):
+    """The boot screenshot a test failover took of one guest, as image/png.
+
+    It is a picture of a console, so on top of what the event list asks the caller has
+    to pass what the screenshot route asks: vm.console on the guest it shows, the plan's
+    guest on the source and its test clone on the target."""
+    plan = _get_plan(plan_id)
+    if not plan:
+        return jsonify({'error': 'Plan not found'}), 404
+    ok, err = check_cluster_access(plan['source_cluster'])
+    if not ok:
+        return err
+    ok, err = check_cluster_access(plan['target_cluster'])
+    if not ok:
+        return err
+    ok, err = _authz_plan_vms(plan)
+    if not ok:
+        return err
+
+    from pegaprox.background import sr_boot_shots
+    ev = get_db().query_one('SELECT id FROM site_recovery_events WHERE id = ? AND plan_id = ?',
+                            (event_id, plan_id))
+    test_vmid, png = sr_boot_shots.load(event_id, vmid) if ev else (None, None)
+    if png is None:
+        return jsonify({'error': 'No screenshot of this guest in this event'}), 404
+
+    from pegaprox.utils.auth import build_authz_user
+    from pegaprox.utils.rbac import user_can_access_vm
+    user = build_authz_user(request.session['user'], request.session)
+    if not (user_can_access_vm(user, plan['source_cluster'], vmid, 'vm.console', 'qemu')
+            and user_can_access_vm(user, plan['target_cluster'], int(test_vmid or 0), 'vm.console', 'qemu')):
+        return jsonify({'error': 'Permission denied: vm.console'}), 403
+    resp = Response(png, mimetype='image/png')
+    resp.headers['Cache-Control'] = 'private, max-age=300'
+    return resp

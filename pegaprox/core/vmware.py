@@ -32,7 +32,7 @@ class VMwareManager:
     
     def __init__(self, vmware_id: str, config: dict):
         self.id = vmware_id
-        self.name = config.get('name', 'vCenter')
+        self.name = config.get('name', 'ESXi server')
         self.host = config.get('host', '')
         self.port = int(config.get('port', 443))
         self.username = config.get('username', 'administrator@vsphere.local')
@@ -269,7 +269,10 @@ class VMwareManager:
                 sslContext=ssl_context,
                 disableSslCertValidation=(not self.ssl_verify)
             )
-            
+            # every *_Task and guest operation asks the guard of an automatic group (#625)
+            from pegaprox.core import ha_transport
+            ha_transport.guard_soap(self._si)
+
             self._soap_content = self._si.RetrieveContent()
             self._connection_type = 'soap'
             self.connected = True
@@ -412,13 +415,14 @@ class VMwareManager:
     def api_post(self, path: str, data: dict = None) -> dict:
         """POST request to vSphere REST API"""
         try:
-            import requests
             try:
                 url = self._build_validated_url(path)
             except ValueError as ve:
                 return {'error': f'invalid path: {ve}'}
-            resp = requests.post(
-                url,
+            # asked at the exit and once its connection is up in an automatic group (#625)
+            from pegaprox.core import ha_transport
+            resp = ha_transport.http(
+                'POST', url,
                 headers={**self._headers(), 'Content-Type': 'application/json'},
                 json=data,
                 verify=self.ssl_verify,
@@ -426,9 +430,10 @@ class VMwareManager:
             )
             if resp.status_code == 401:
                 if self.connect():
-                    resp = requests.post(url,
-                                        headers={**self._headers(), 'Content-Type': 'application/json'},
-                                        json=data, verify=self.ssl_verify, timeout=60)
+                    # the same call once more: checked again, the lease may be gone by now
+                    resp = ha_transport.http('POST', url, again=True,
+                                             headers={**self._headers(), 'Content-Type': 'application/json'},
+                                             json=data, verify=self.ssl_verify, timeout=60)
             if resp.status_code in (200, 201, 204):
                 try:
                     return {'data': resp.json()}
@@ -441,13 +446,13 @@ class VMwareManager:
     def api_delete(self, path: str) -> dict:
         """DELETE request to vSphere REST API"""
         try:
-            import requests
             try:
                 url = self._build_validated_url(path)
             except ValueError as ve:
                 return {'error': f'invalid path: {ve}'}
-            resp = requests.delete(
-                url,
+            from pegaprox.core import ha_transport
+            resp = ha_transport.http(
+                'DELETE', url,
                 headers=self._headers(),
                 verify=self.ssl_verify,
                 timeout=30
@@ -1135,10 +1140,11 @@ class VMwareManager:
         result = self.api_post(f'/api/vcenter/vm/{vm_id}', spec)
         # REST PATCH for notes
         if 'notes' in config and 'error' not in result:
-            import requests
+            from pegaprox.core import ha_transport
             try:
-                resp = requests.patch(
-                    f"{self._base_url}/api/vcenter/vm/{vm_id}",
+                url = f"{self._base_url}/api/vcenter/vm/{vm_id}"
+                resp = ha_transport.http(
+                    'PATCH', url,
                     headers={**self._headers(), 'Content-Type': 'application/json'},
                     json={'annotation': config['notes']},
                     verify=self.ssl_verify, timeout=30
@@ -1882,15 +1888,18 @@ class VMwareManager:
         }
 
 
-def load_vmware_servers():
-    """Load all VMware server configs from DB and create managers"""
+def load_vmware_servers(only=None):
+    """Load all VMware server configs from DB and create managers. `only` limits it to
+    those ids (a warm standby rebuilding a few, core/ha.py reload_managers)."""
     global vmware_managers
     try:
         db = get_db()
         cursor = db.conn.cursor()
         cursor.execute("SELECT * FROM vmware_servers WHERE enabled = 1")
         rows = cursor.fetchall()
-        
+        if only is not None:
+            rows = [r for r in rows if r['id'] in only]
+
         for row in rows:
             row_dict = dict(row)
             vmware_id = row_dict['id']
@@ -1911,7 +1920,7 @@ def load_vmware_servers():
             logging.warning(f"[VMware:{vmware_id}] Connecting as '{username}' to {row_dict.get('host', '?')}")
             
             config = {
-                'name': row_dict.get('name', 'vCenter'),
+                'name': row_dict.get('name', 'ESXi server'),
                 'host': row_dict.get('host', ''),
                 'port': row_dict.get('port', 443),
                 'username': username,
@@ -1950,7 +1959,19 @@ def save_vmware_server(vmware_id: str, config: dict):
     pass_encrypted = ''
     if config.get('password') and config['password'] != '********':
         pass_encrypted = db._encrypt(config['password'])
-    
+
+    # MK Sep 2026 - linked_clusters decides who may reach this server (check_vmware_access),
+    # and an EMPTY list means "reachable by everyone" for backwards compatibility. Writing
+    # config.get('linked_clusters', []) turned an update that simply did not mention the
+    # field into a silent grant of the whole ESXi server to every tenant. Same rule and same
+    # reason as the PBS side: omission preserves, only an explicit list replaces.
+    _prev = cursor.execute("SELECT linked_clusters FROM vmware_servers WHERE id = ?",
+                           (vmware_id,)).fetchone()
+    if 'linked_clusters' in config:
+        linked_json = json.dumps(list(config.get('linked_clusters') or []))
+    else:
+        linked_json = (_prev[0] if _prev else None) or '[]'
+
     cursor.execute('''
         INSERT OR REPLACE INTO vmware_servers 
         (id, name, host, port, username, pass_encrypted, server_type,
@@ -1958,12 +1979,12 @@ def save_vmware_server(vmware_id: str, config: dict):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 COALESCE((SELECT created_at FROM vmware_servers WHERE id = ?), ?), ?)
     ''', (
-        vmware_id, config.get('name', 'vCenter'), config.get('host', ''), int(config.get('port', 443)),
+        vmware_id, config.get('name', 'ESXi server'), config.get('host', ''), int(config.get('port', 443)),
         config.get('username', 'administrator@vsphere.local'),
         pass_encrypted or (cursor.execute("SELECT pass_encrypted FROM vmware_servers WHERE id = ?", (vmware_id,)).fetchone() or [''])[0],
         config.get('server_type', 'vcenter'),
         int(config.get('ssl_verify', False)),
-        int(config.get('enabled', True)), json.dumps(config.get('linked_clusters', [])),
+        int(config.get('enabled', True)), linked_json,
         config.get('notes', ''),
         vmware_id, datetime.now().isoformat(), datetime.now().isoformat(),
     ))

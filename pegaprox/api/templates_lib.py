@@ -32,8 +32,9 @@ from flask import Blueprint, jsonify, request
 
 from pegaprox.globals import cluster_managers
 from pegaprox.utils.auth import require_auth
-from pegaprox.api.helpers import check_cluster_access
+from pegaprox.api.helpers import check_cluster_access, scope_vm_rows
 from pegaprox.core.db import get_db
+from pegaprox.utils.ssh import read_capped as _read_capped
 
 bp = Blueprint('templates_lib', __name__)
 
@@ -42,8 +43,25 @@ bp = Blueprint('templates_lib', __name__)
 # Catalog
 # Curated list — kept small intentionally. Adding entries: image_url must
 # be a direct .img / .qcow2 URL the node can wget.
+# MK Oct 2026 - `eol` is the day security support ends (Debian/Ubuntu: end of
+# LTS); `cpu` is set where the image won't start on the kvm64 qm create defaults
+# to (EL9 needs x86-64-v2, EL10 v3). A weekly workflow runs
+# scripts/check_image_catalog.py, which parses this literal and fails on a dead
+# URL or a passed eol. Prefer latest/ or current/ paths where a distro has them.
 # ──────────────────────────────────────────────────────────────────────────
 CATALOG = [
+    {
+        'id': 'ubuntu-2604',
+        'name': 'Ubuntu 26.04 LTS (Resolute)',
+        'distro': 'ubuntu',
+        'version': '26.04',
+        'image_url': 'https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img',
+        'default_user': 'ubuntu',
+        'cores': 2, 'memory': 2048, 'disk_gb': 10,
+        'description': 'Latest LTS - cloud-init ready.',
+        'tags': ['lts', 'general', 'recommended'],
+        'eol': '2031-05-29',
+    },
     {
         'id': 'ubuntu-2404',
         'name': 'Ubuntu 24.04 LTS (Noble)',
@@ -52,8 +70,9 @@ CATALOG = [
         'image_url': 'https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img',
         'default_user': 'ubuntu',
         'cores': 2, 'memory': 2048, 'disk_gb': 10,
-        'description': 'Latest LTS — cloud-init ready.',
-        'tags': ['lts', 'general', 'recommended'],
+        'description': 'Previous LTS - broad compatibility.',
+        'tags': ['lts', 'general'],
+        'eol': '2029-05-31',
     },
     {
         'id': 'ubuntu-2204',
@@ -63,8 +82,21 @@ CATALOG = [
         'image_url': 'https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img',
         'default_user': 'ubuntu',
         'cores': 2, 'memory': 2048, 'disk_gb': 10,
-        'description': 'Previous LTS — broad compatibility.',
-        'tags': ['lts', 'general'],
+        'description': 'Older LTS, standard support until mid 2027.',
+        'tags': ['lts'],
+        'eol': '2027-06-01',
+    },
+    {
+        'id': 'debian-13',
+        'name': 'Debian 13 (Trixie)',
+        'distro': 'debian',
+        'version': '13',
+        'image_url': 'https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2',
+        'default_user': 'debian',
+        'cores': 1, 'memory': 1024, 'disk_gb': 8,
+        'description': 'Lean Debian generic-cloud image.',
+        'tags': ['lean', 'recommended'],
+        'eol': '2030-06-30',
     },
     {
         'id': 'debian-12',
@@ -74,19 +106,22 @@ CATALOG = [
         'image_url': 'https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2',
         'default_user': 'debian',
         'cores': 1, 'memory': 1024, 'disk_gb': 8,
-        'description': 'Lean Debian generic-cloud image.',
-        'tags': ['lean', 'recommended'],
+        'description': 'Previous stable Debian, now in LTS.',
+        'tags': ['lean'],
+        'eol': '2028-06-30',
     },
     {
-        'id': 'debian-11',
-        'name': 'Debian 11 (Bullseye)',
-        'distro': 'debian',
-        'version': '11',
-        'image_url': 'https://cloud.debian.org/images/cloud/bullseye/latest/debian-11-genericcloud-amd64.qcow2',
-        'default_user': 'debian',
-        'cores': 1, 'memory': 1024, 'disk_gb': 8,
-        'description': 'Older stable Debian.',
-        'tags': ['lean'],
+        'id': 'almalinux-10',
+        'name': 'AlmaLinux 10',
+        'distro': 'almalinux',
+        'version': '10',
+        'image_url': 'https://repo.almalinux.org/almalinux/10/cloud/x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2',
+        'default_user': 'almalinux',
+        'cores': 2, 'memory': 2048, 'disk_gb': 10,
+        'description': 'RHEL-compatible, needs a Haswell or newer host CPU.',
+        'tags': ['rhel'],
+        'eol': '2035-05-31',
+        'cpu': 'x86-64-v3',
     },
     {
         'id': 'almalinux-9',
@@ -98,6 +133,21 @@ CATALOG = [
         'cores': 2, 'memory': 2048, 'disk_gb': 10,
         'description': 'RHEL-compatible drop-in replacement.',
         'tags': ['rhel'],
+        'eol': '2032-05-31',
+        'cpu': 'x86-64-v2-AES',
+    },
+    {
+        'id': 'rocky-10',
+        'name': 'Rocky Linux 10',
+        'distro': 'rocky',
+        'version': '10',
+        'image_url': 'https://download.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2',
+        'default_user': 'rocky',
+        'cores': 2, 'memory': 2048, 'disk_gb': 10,
+        'description': 'Community RHEL rebuild, needs a Haswell or newer host CPU.',
+        'tags': ['rhel'],
+        'eol': '2035-05-31',
+        'cpu': 'x86-64-v3',
     },
     {
         'id': 'rocky-9',
@@ -109,28 +159,36 @@ CATALOG = [
         'cores': 2, 'memory': 2048, 'disk_gb': 10,
         'description': 'Community RHEL rebuild.',
         'tags': ['rhel'],
+        'eol': '2032-05-31',
+        'cpu': 'x86-64-v2-AES',
     },
     {
-        'id': 'fedora-40',
-        'name': 'Fedora 40 Cloud',
+        # Fedora has no release-independent path: the GA image is fixed for a release and
+        # leaves the mirrors when it reaches end of life. Bump to the next release then.
+        'id': 'fedora-44',
+        'name': 'Fedora 44 Cloud',
         'distro': 'fedora',
-        'version': '40',
-        'image_url': 'https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2',
+        'version': '44',
+        'image_url': 'https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2',
         'default_user': 'fedora',
         'cores': 2, 'memory': 2048, 'disk_gb': 10,
         'description': 'Cutting-edge Red Hat upstream.',
         'tags': ['cutting-edge'],
+        'eol': '2027-06-02',
     },
     {
-        'id': 'alpine-319',
-        'name': 'Alpine Linux 3.19',
+        # Alpine names its images by point release and keeps the old ones, so this stays
+        # downloadable; `apk upgrade` brings a deployed guest current.
+        'id': 'alpine-324',
+        'name': 'Alpine Linux 3.24',
         'distro': 'alpine',
-        'version': '3.19',
-        'image_url': 'https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/cloud/nocloud_alpine-3.19.1-x86_64-bios-cloudinit-r0.qcow2',
+        'version': '3.24',
+        'image_url': 'https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud/generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2',
         'default_user': 'alpine',
         'cores': 1, 'memory': 512, 'disk_gb': 4,
-        'description': 'Tiny musl-based — perfect for k3s.',
+        'description': 'Tiny musl-based - perfect for k3s.',
         'tags': ['minimal', 'container-host'],
+        'eol': '2028-06-01',
     },
 ]
 
@@ -160,6 +218,26 @@ def _row_to_template(r):
         'custom': True,
         'created_by': r['created_by'] or '',
     }
+
+
+def _shown_url(url):
+    """`url` with any user:password@ replaced, for every place it is shown.
+
+    NS Oct 2026 - a mirror that wants a login gets it in the URL, which the node needs
+    as typed. The catalog is one list for every account though, and the deploy log is
+    read by the cluster's viewers, so neither gets the login."""
+    try:
+        from urllib.parse import urlsplit, urlunsplit
+        p = urlsplit(url or '')
+        if '@' not in p.netloc:
+            return url
+        return urlunsplit(p._replace(netloc='****@' + p.netloc.rpartition('@')[2]))
+    except Exception:
+        return ''
+
+
+def _public_template(tpl):
+    return dict(tpl, image_url=_shown_url(tpl.get('image_url')))
 
 
 def _load_custom_templates():
@@ -266,7 +344,12 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
         return
 
     img_basename = tpl['image_url'].rsplit('/', 1)[-1]
-    img_path = f"/tmp/pegaprox-ci-{template_id}-{img_basename}"
+    # MK Sep 2026 - this used to be /tmp/pegaprox-ci-<template>-<image>, which any local
+    # account on the node can work out from the template list and pre-create as a symlink.
+    # `wget -O` follows one, so a root download landed wherever the symlink pointed. A random
+    # name inside a 0700 directory of our own removes both halves of that.
+    _img_dir = f"/tmp/pegaprox-ci-{uuid.uuid4().hex}"
+    img_path = f"{_img_dir}/{img_basename}"
 
     # use management IP if we have one, otherwise cluster host
     try:
@@ -278,6 +361,12 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
     _update_dep(dep_id, status='running', progress=5,
                 log_append=f"deploying {tpl['name']} to {node} ({target_host}) as VMID {vmid}")
 
+    # the log keeps the command lines, which carry the URL; not its login (see _shown_url)
+    _url, _url_shown = tpl['image_url'], _shown_url(tpl['image_url'])
+
+    def _scrub(text):
+        return text.replace(_url, _url_shown) if _url and _url != _url_shown else text
+
     ssh = None
     try:
         ssh = mgr._ssh_connect(target_host)
@@ -287,11 +376,11 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
             return
 
         def run(cmd, label, weight=10):
-            _update_dep(dep_id, log_append=f"$ {cmd}")
+            _update_dep(dep_id, log_append=f"$ {_scrub(cmd)}")
             stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=False, timeout=900)
             rc = stdout.channel.recv_exit_status()
-            out = stdout.read().decode('utf-8', errors='replace').strip()
-            err = stderr.read().decode('utf-8', errors='replace').strip()
+            out = _scrub(_read_capped(stdout).strip())
+            err = _scrub(_read_capped(stderr).strip())
             if out:
                 _update_dep(dep_id, log_append=out[:1000])
             if err and rc != 0:
@@ -310,7 +399,12 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
         # never fetches a URL that skipped it. allow_private=True keeps air-gapped mirrors working.
         from pegaprox.utils.url_security import sanitize_outbound_url, SsrfError
         try:
-            sanitize_outbound_url(tpl['image_url'], allowed_schemes=('https', 'http'), allow_private=True)
+            # NS Sep 2026 — allow_loopback=False: an internal mirror lives on the LAN, never on
+            # the fetching node's own 127.0.0.1, and the bytes wget pulls become a disk image the
+            # requester can boot and read. That turns a blind SSRF into a read of whatever is
+            # bound to the node's loopback, which no guest could otherwise reach.
+            sanitize_outbound_url(tpl['image_url'], allowed_schemes=('https', 'http'),
+                                  allow_private=True, allow_loopback=False)
         except SsrfError as _se:
             raise RuntimeError(f"image_url rejected by SSRF guard: {_se}")
 
@@ -322,6 +416,7 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
 
         # 1. download
         # MK: -nc skip if exists, -q quiet output. show-progress would flood log
+        run(f"mkdir -m 700 -p {shlex.quote(_img_dir)}", 'staging dir', weight=1)
         run(f"wget -q -O {q_img_path} {q_url}", 'download')
         _update_dep(dep_id, progress=35, log_append='download done')
 
@@ -333,6 +428,8 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
             f"--memory {memory} --cores {cores} "
             f"--net0 virtio,bridge=vmbr0 --ostype l26 --agent 1 --serial0 socket --vga serial0"
         )
+        if tpl.get('cpu'):
+            create_cmd += f" --cpu {shlex.quote(str(tpl['cpu']))}"
         run(create_cmd, 'qm create')
         _update_dep(dep_id, progress=50, log_append='VM shell created')
 
@@ -360,7 +457,7 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
         _update_dep(dep_id, progress=95, log_append='converted to template')
 
         # 6. cleanup downloaded img
-        run(f"rm -f {q_img_path}", 'cleanup', weight=2)
+        run(f"rm -rf {shlex.quote(_img_dir)}", 'cleanup', weight=2)
 
         _update_dep(dep_id, status='completed', progress=100,
                     log_append=f"template {vm_name} (vmid {vmid}) ready",
@@ -368,8 +465,8 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
     except Exception as e:
         logging.exception(f"[templates_lib] deploy {dep_id} failed")
         _update_dep(dep_id, status='failed',
-                    error=str(e)[:500],
-                    log_append=f"FAILED: {e}",
+                    error=_scrub(str(e))[:500],
+                    log_append=f"FAILED: {_scrub(str(e))}",
                     finished_at=_now_iso())
     finally:
         try:
@@ -385,7 +482,7 @@ def _run_deploy(dep_id, cluster_id, node, template_id, storage, vmid, vm_name):
 @require_auth()
 def catalog():
     """Curated catalog + user-defined custom templates."""
-    return jsonify({'templates': list(CATALOG) + _load_custom_templates()})
+    return jsonify({'templates': list(CATALOG) + [_public_template(t) for t in _load_custom_templates()]})
 
 
 @bp.route('/api/templates/custom', methods=['POST'])
@@ -418,7 +515,8 @@ def add_custom_template():
     # image mirrors working while cloud-metadata endpoints stay blocked).
     from pegaprox.utils.url_security import sanitize_outbound_url, SsrfError
     try:
-        sanitize_outbound_url(image_url, allowed_schemes=('https', 'http'), allow_private=True)
+        sanitize_outbound_url(image_url, allowed_schemes=('https', 'http'),
+                              allow_private=True, allow_loopback=False)
     except SsrfError as _se:
         return jsonify({'error': f'image_url rejected by SSRF guard: {_se}'}), 400
 
@@ -468,7 +566,7 @@ def add_custom_template():
     c = get_db().conn.cursor()
     c.execute('SELECT * FROM custom_cloud_templates WHERE id = ?', (tpl_id,))
     row = c.fetchone()
-    return jsonify({'template': _row_to_template(row) if row else {'id': tpl_id}})
+    return jsonify({'template': _public_template(_row_to_template(row)) if row else {'id': tpl_id}})
 
 
 @bp.route('/api/templates/custom/<tpl_id>', methods=['DELETE'])
@@ -487,8 +585,13 @@ def delete_custom_template(tpl_id):
         if _row is None:
             return jsonify({'error': 'not found'}), 404
         _owner = (_row['created_by'] if hasattr(_row, 'keys') else _row[0]) or ''
-        from pegaprox.models.permissions import ROLE_ADMIN
-        if _owner != _current_user() and request.session.get('role') != ROLE_ADMIN:
+        from pegaprox.utils.rbac import acts_as_admin
+        # sec (audit): resolve the role live rather than reading the value cached when the session
+        # was minted — same drift the role-template path in users.py had, and build_authz_user also
+        # applies an API token's floor here.
+        from pegaprox.utils.auth import build_authz_user
+        _caller = build_authz_user(_current_user(), request.session)
+        if _owner != _current_user() and not acts_as_admin(_caller):
             return jsonify({'error': 'Access denied'}), 403
         c.execute('DELETE FROM custom_cloud_templates WHERE id = ?', (tpl_id,))
         get_db().conn.commit()
@@ -545,6 +648,35 @@ def deploy(cluster_id):
     if not name:
         name = f"tpl-{tpl['distro']}-{tpl['version']}".replace('.', '')
 
+    # MK Sep 2026 - deploying a template CREATES a guest, on a node and under a VMID the
+    # caller picks, and this route asked neither of the two questions vms.py asks on
+    # create. A caller confined to their own VMs by an ACL or a pool grant has no
+    # cluster-level standing to place a new guest at all, and a tenant with a configured
+    # VMID range must not land outside it - a collision there surfaces at restore time,
+    # long after anyone can tell which guest was meant. The PBS restore-into-a-new-VMID
+    # path was closed the same way earlier this month.
+    from pegaprox.utils.auth import build_authz_user as _bau
+    from pegaprox.api.helpers import require_unconfined as _runc
+    from pegaprox.utils.rbac import acts_as_admin
+    _caller = _bau(request.session.get('user', ''), request.session)
+    if not acts_as_admin(_caller):
+        _cerr = _runc(cluster_id)
+        if _cerr:
+            return _cerr
+        # CodeAnt, same day: erring open here would undo the paragraph above. The range is
+        # the boundary that stops two tenants colliding on an id, and a check that could not
+        # run has not cleared anything - refuse and say why, rather than deploy and find out
+        # at restore time.
+        try:
+            from pegaprox.utils.rbac import check_tenant_vmid, DEFAULT_TENANT_ID as _DT
+            _rok, _rmsg = check_tenant_vmid(_caller.get('tenant_id') or _DT, vmid)
+        except Exception as _re:
+            logging.error(f"[vmid-range] template deploy: range check failed, refusing: {_re}")
+            _rok, _rmsg = False, ('Cannot verify the tenant VMID range right now - '
+                                  'check the server logs')
+        if not _rok:
+            return jsonify({'error': _rmsg}), 403
+
     user = _current_user()
 
     dep_id = uuid.uuid4().hex[:12]
@@ -561,8 +693,10 @@ def deploy(cluster_id):
     except Exception as e:
         return jsonify({'error': f'db insert failed: {e}'}), 500
 
+    # a user job: in an automatic group each call it sends asks for the lease (#625)
+    from pegaprox.core import ha
     t = threading.Thread(
-        target=_run_deploy,
+        target=ha.as_job(_run_deploy, f'template deploy {dep_id}'),
         args=(dep_id, cluster_id, node, template_id, storage, vmid, name),
         daemon=True, name=f"ci-deploy-{dep_id}"
     )
@@ -592,7 +726,8 @@ def deployments(cluster_id):
             ORDER BY started_at DESC LIMIT 50
         ''', (cluster_id,))
         rows = [dict(r) for r in c.fetchall()]
-        return jsonify({'deployments': rows})
+        # sec (audit): deployment rows carry vmid + started_by — scope per-VM like templates/existing
+        return jsonify({'deployments': scope_vm_rows(cluster_id, rows)})
     except Exception as e:
         logging.exception('handler error in templates_lib.py'); return jsonify({'error': 'internal error'}), 500
 
@@ -630,9 +765,11 @@ def existing_templates(cluster_id):
     mgr = cluster_managers[cluster_id]
     out = []
     try:
-        for r in (mgr.get_vm_resources() or []):
-            if r.get('type') != 'qemu': continue
-            if r.get('template') != 1: continue
+        # sec (private disclosure Sep 2026 — audit M4): scope templates to the caller's grant so a
+        # pool-/ACL-scoped user can't enumerate every template VM on the cluster.
+        _templates = [r for r in (mgr.get_vm_resources() or [])
+                      if r.get('type') == 'qemu' and r.get('template') == 1]
+        for r in scope_vm_rows(cluster_id, _templates):
             out.append({
                 'vmid': r.get('vmid'),
                 'name': r.get('name'),

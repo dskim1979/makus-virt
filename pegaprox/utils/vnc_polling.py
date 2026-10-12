@@ -20,6 +20,7 @@ MK Apr 2026 — added as the third defensive layer alongside Stable Mode and the
 SSH tunnel, after a customer reported their WSS was killed at the security
 boundary even with both prior layers active.
 """
+from pegaprox.constants import VNC_PVE_RECV_SLICE, VNC_PVE_SEND_TIMEOUT
 import base64
 import logging
 import secrets
@@ -29,11 +30,94 @@ from collections import deque
 from typing import Optional
 
 import gevent
+import websocket   # #713 — WebSocketTimeoutException for the bounded pve_ws read slice
 
 # defaults
 SESSION_IDLE_TTL = 90.0          # seconds without activity → reaper closes
 RECV_LONG_POLL_DEFAULT = 5.0     # block at most this long for new bytes
 RECV_LONG_POLL_MAX = 25.0
+
+
+# ─────────────────────────────────────────────────────────────────
+# The PVE side of every relay leg (this one and the three in api/vms.py).
+#
+# MK Oct 2026 (#713) - OpenSSL keeps one error queue per OS thread, and SSL_get_error()
+# reads it to tell "no data yet" from "connection broken". Python's _ssl never empties it
+# before SSL_read/SSL_write, and under gevent every greenlet shares that one thread. So an
+# entry some other connection left behind turns the relay's ordinary read timeout into an
+# SSLError, and a healthy console ends. Neither ssl nor gevent expose ERR_clear_error, so
+# it is taken from the libcrypto the _ssl module is linked against, and called right
+# before each read and write on the PVE socket - also the retries gevent makes after
+# waiting, which is where other greenlets got to run in between.
+def _load_err_clear():
+    try:
+        import ctypes
+        import _ssl
+        fn = ctypes.CDLL(getattr(_ssl, '__file__', None)).ERR_clear_error
+        fn.argtypes = []
+        fn.restype = None
+        fn()
+        return fn
+    except Exception as e:
+        logging.debug(f"[VNC] ERR_clear_error not reachable ({e}) - relay reads stay as they are")
+        return None
+
+
+_err_clear = _load_err_clear()
+
+
+class _ClearsErrorQueue:
+    """Stands in for an SSL socket's _sslobj: empties the error queue, then reads or writes."""
+
+    __slots__ = ('_obj',)
+
+    def __init__(self, obj):
+        object.__setattr__(self, '_obj', obj)
+
+    def read(self, *args):
+        _err_clear()
+        return self._obj.read(*args)
+
+    def write(self, data):
+        _err_clear()
+        return self._obj.write(data)
+
+    def __getattr__(self, name):
+        return getattr(self._obj, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._obj, name, value)
+
+
+def clear_tls_errors_before_io(sock):
+    """Install the above on an SSL socket. False for a plain socket, or without libcrypto."""
+    obj = getattr(sock, '_sslobj', None)
+    if _err_clear is None or obj is None or isinstance(obj, _ClearsErrorQueue):
+        return False
+    try:
+        sock._sslobj = _ClearsErrorQueue(obj)
+    except Exception:
+        return False
+    return True
+
+
+def write_with_deadline(pve_ws, write, *args):
+    """One write to PVE under VNC_PVE_SEND_TIMEOUT, then back to the read slice.
+
+    The caller holds the leg's io lock, so nobody reads while the timeout is changed.
+    A write that times out halfway leaves the rest of its TLS record with OpenSSL, and
+    OpenSSL takes the NEXT write for the retry of that one: it sends the pending bytes
+    and skips as many of the new buffer. The stream behind it is garbage, so a write
+    that raises here ends the session - nothing may be written after it. (#713)
+    """
+    pve_ws.settimeout(VNC_PVE_SEND_TIMEOUT)
+    try:
+        return write(*args)
+    finally:
+        try:
+            pve_ws.settimeout(VNC_PVE_RECV_SLICE)
+        except Exception:
+            pass
 
 
 class VncPollSession:
@@ -62,6 +146,8 @@ class VncPollSession:
         self._buf = deque()
         self._buf_lock = threading.Lock()
         self._buf_cond = threading.Condition(self._buf_lock)
+        # #713 — serialise SSL_read (the pump) and SSL_write (send) on the one pve_ws
+        self._pve_io_lock = threading.Lock()
         self._pump = gevent.spawn(self._pump_loop)
 
     # ─────────────────────────────────────────────────────────────────
@@ -75,19 +161,29 @@ class VncPollSession:
     # ─────────────────────────────────────────────────────────────────
     def _pump_loop(self):
         """Copy bytes from PVE into buffer until the connection drops."""
-        # Blocking recv. websocket-client is gevent-friendly thanks to monkey
-        # patching, so this yields the greenlet during socket waits.
+        # #713 — bounded read slice (was settimeout(None), a blocking recv): pve_ws is
+        # one SSL object and send() does an SSL_write on it; a concurrent SSL_read +
+        # SSL_write splices a TLS record and pveproxy tears the session with a tlsv1
+        # decode error. Funnel both through _pve_io_lock and release it between reads.
+        # websocket-client's frame_buffer is resumable across a timed-out recv → no drop.
         try:
-            self.pve_ws.settimeout(None)
+            self.pve_ws.settimeout(VNC_PVE_RECV_SLICE)
         except Exception:
             pass
         while not self._closed:
             try:
-                data = self.pve_ws.recv()
+                with self._pve_io_lock:
+                    data = self.pve_ws.recv()
+            except websocket.WebSocketTimeoutException:
+                gevent.sleep(0)   # empty slice — yield so a pending send() takes the lock
+                continue
             except Exception as e:
-                logging.debug(f"[VncPoll {self.poll_id[:8]}] pve recv ended: {e}")
+                if not self._closed:
+                    logging.warning(f"[VncPoll {self.poll_id[:8]}] session ended host={self.host} "
+                                    f"vm={self.vm_type}/{self.vmid} reason=PVE->Client: {e}")
                 break
             if not data:
+                logging.info(f"[VncPoll {self.poll_id[:8]}] session ended reason=PVE closed")
                 break
             if isinstance(data, str):
                 data = data.encode('latin-1')
@@ -118,8 +214,17 @@ class VncPollSession:
         if self.crypto_session is not None:
             raw = self.crypto_session.decrypt(raw)
         self.bytes_sent += len(raw)
-        # send_binary on websocket-client = ws frame opcode 0x2
-        self.pve_ws.send_binary(raw)
+        # send_binary on websocket-client = ws frame opcode 0x2. #713 — under the
+        # shared lock so it never overlaps the pump's SSL_read on the same pve_ws.
+        try:
+            with self._pve_io_lock:
+                write_with_deadline(self.pve_ws, self.pve_ws.send_binary, raw)
+        except Exception as e:
+            # the next send would land behind a partial frame, see write_with_deadline
+            logging.warning(f"[VncPoll {self.poll_id[:8]}] session ended host={self.host} "
+                            f"vm={self.vm_type}/{self.vmid} reason=Client->PVE: {e}")
+            self.stop()
+            raise
         return len(raw)
 
     def recv(self, max_wait: float = RECV_LONG_POLL_DEFAULT) -> list:
