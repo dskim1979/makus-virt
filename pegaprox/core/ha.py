@@ -324,6 +324,8 @@ LOCAL_TABLES = (
     'balance_recommendations', 'logs', 'logs_fts',
     # who wrote what on the active, and the change counter behind cv_tick
     'ha_change_journal', 'ha_cv_dirty',
+    # MOAVI: hardware (BMC) health history this instance's metrics collector recorded
+    'hw_state', 'hw_events',
 )
 
 # server_settings keys that describe this host, not the deployment

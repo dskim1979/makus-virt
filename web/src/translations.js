@@ -1,6 +1,7 @@
         // ═══════════════════════════════════════════════
         // MOAVI - Translations
-        // Korean only — the ko block of upstream PegaProx 1.3.0, deduplicated and rebranded
+        // 한국어 전용 — 업스트림 PegaProx 1.3.0 의 ko 블록을 scripts/upstream/build_ko.py 로 만든 파일.
+        // 직접 고치지 말고 build_ko.py(KO_EXTRA)를 고친 뒤 다시 만드세요.
         // ═══════════════════════════════════════════════
         const translations = {
             ko: {
@@ -5475,7 +5476,7 @@
                 haNodeIrDismissAsk: '이 실행을 폐기할까요? 더 이상 표시되거나 보고되지 않습니다. 클러스터에는 아무 변화도 없습니다.',
                 haNodeIrDismissed: '실행을 폐기했습니다',
                 haNodeIrCloudHint: '클러스터의 HA 설정에서 시작하거나 폐기하세요 (Modern 또는 Corporate 레이아웃)',
-                // MOAVI — Cloud layout labels (upstream leaves these to English fallbacks)
+                // MOAVI — 업스트림에 한국어가 없는 키 (scripts/upstream/build_ko.py KO_EXTRA)
                 'cloud.overview': '개요',
                 'cloud.vms': '가상 머신',
                 'cloud.containers': '컨테이너',

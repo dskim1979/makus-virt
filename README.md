@@ -199,6 +199,7 @@ sudo dpkg -i ../pegaprox_*.deb
 - 테스트: `pytest tests` (Linux)
 - 화면 빌드: `bash web/Dev/build.sh`
 - 한국형 보고서 양식·문서 변환 빌드: `bash web/reports-src/build.sh` (결과 `static/js/makus-reports.js` 도 함께 커밋)
+- PegaProx 새 버전 반영: `scripts/upstream/sync.sh start` → `finish` — [docs/upstream-sync.md](docs/upstream-sync.md)
 
 ## 💬 문의
 

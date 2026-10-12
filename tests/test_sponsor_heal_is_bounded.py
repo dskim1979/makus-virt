@@ -15,6 +15,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# MOAVI ships no sponsor footer, so the sponsor-logo self-heal (settings.py) is not part of it
+pytestmark = pytest.mark.skip(reason='MOAVI: no sponsor footer, sponsor self-heal removed')
+
 import pegaprox.api.settings as settings_api
 
 
