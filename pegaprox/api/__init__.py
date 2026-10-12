@@ -54,6 +54,7 @@ def register_blueprints(app):
     from pegaprox.api.frontend_audit import bp as frontend_audit_bp  # MAKUS: 앞단(MOAVI 화면)의 감사 기록
     from pegaprox.api.frontend_ai import bp as frontend_ai_bp  # MAKUS: 앞단(MOAVI 화면)의 AI 도우미 설정
     from pegaprox.api.flows import bp as flows_bp  # MAKUS: sFlow 네트워크 흐름
+    from pegaprox.api.microseg import bp as microseg_bp  # MAKUS: 마이크로 세그멘테이션
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -102,6 +103,7 @@ def register_blueprints(app):
     app.register_blueprint(frontend_audit_bp)
     app.register_blueprint(frontend_ai_bp)
     app.register_blueprint(flows_bp)
+    app.register_blueprint(microseg_bp)
 
     # Initialize WebSocket support for realtime blueprint
     from pegaprox.api.realtime import sock
