@@ -14,7 +14,7 @@
         하드웨어(BMC) 상태 이력 (운영 현황 보고서, pegaprox/core/hw_history.py — 5분 수집이 기록)
   권한: 노드 조회(node.view) + 사용자가 볼 수 있는 클러스터만, 가상서버는 VM 조회 권한(ACL)이 있는 것만
 
-원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. AGPL-3.0 (LICENSE·NOTICE)
+원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. AGPL-3.0 (LICENSE·NOTICE)
 """
 
 import logging

@@ -11,7 +11,7 @@ report_hardware() 가 보고 기간 [from, to) 의 서버별 이상(발생·복�
 지금 상태를 한국형 보고서(api/korean_reports.py) 형식으로 돌려준다.
 지난 기간 보고서에는 그 기간에 있었던 이상만, 기간에 지금이 들어 있으면 현재 상태도.
 
-원본: MOAVI 하드웨어 감시(lib/moavi/bmc/monitor.ts — incidentsInPeriod) 설계를 Makus Virt 로 이식. AGPL-3.0
+원본: MOAVI 하드웨어 감시(lib/moavi/bmc/monitor.ts — incidentsInPeriod) 설계를 MOAVI 로 이식. AGPL-3.0
 """
 
 import json

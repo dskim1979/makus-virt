@@ -80,7 +80,7 @@ jobs:
               const requiredFields = [
                 { name: 'Describe the bug', check: /describe the bug\s*\n+\s*\S+/i },
                 { name: 'Steps to Reproduce', check: /steps to reproduce\s*\n+\s*\S+/i },
-                { name: 'Makus Virt Version', check: /makus virt version:\s*\S+/i }
+                { name: 'MOAVI Version', check: /moavi version:\s*\S+/i }
               ];
               
               const missing = requiredFields.filter(f => !f.check.test(body));

@@ -1,7 +1,7 @@
 // HWPX(한글 문서, KS X 6101 OWPML) 빈 문서 뼈대 — 한글에서 저장된 검증 파일 기반
-// 출처: airmang/python-hwpx src/hwpx/data/Skeleton.hwpx (Apache License 2.0) — 본문(section)만 Makus Virt 가 생성
+// 출처: airmang/python-hwpx src/hwpx/data/Skeleton.hwpx (Apache License 2.0) — 본문(section)만 MOAVI 가 생성
 /* eslint-disable */
-// 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
+// 원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
 // 빌드: web/reports-src/build.sh → static/js/makus-reports.js
 
 export const MIMETYPE = `application/hwp+zip`

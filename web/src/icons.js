@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // Makus Virt - Icons
+        // MOAVI - Icons
         // SVG icon components (Heroicons)
         // ═══════════════════════════════════════════════
         // Icons - mostly from Heroicons, some custom ones -- MK

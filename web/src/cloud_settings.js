@@ -79,7 +79,7 @@
                     fd.append('acme_allow_private_ca', settings.acme_allow_private_ca ? 'true' : 'false');
                     fd.append('audit_retention_days', String(settings.audit_retention_days || 90));
                     fd.append('air_gap_mode', settings.air_gap_mode ? 'true' : 'false');
-                    fd.append('app_name', settings.app_name || 'Makus Virt');
+                    fd.append('app_name', settings.app_name || 'MOAVI');
                     fd.append('app_tagline', settings.app_tagline || '');
                     fd.append('alert_email_recipients', JSON.stringify(settings.alert_email_recipients || []));
                     fd.append('alert_update_available', settings.alert_update_available ? 'true' : 'false');
@@ -140,7 +140,7 @@
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                             <CloudField label="앱 이름">
                                 <input className="cloud-input" value={settings.app_name || ''} maxLength={80}
-                                    onChange={e => setSettings({ ...settings, app_name: e.target.value })} placeholder="Makus Virt" />
+                                    onChange={e => setSettings({ ...settings, app_name: e.target.value })} placeholder="MOAVI" />
                             </CloudField>
                             <CloudField label="태그라인">
                                 <input className="cloud-input" value={settings.app_tagline || ''} maxLength={120}
@@ -192,7 +192,7 @@
                         <h3 style={{ margin: '0 0 16px', fontSize: '1rem', color: 'var(--color-text)' }}>도메인 & 포트</h3>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                             <CloudField label="도메인">
-                                <input className="cloud-input" value={settings.domain || ''} placeholder="makusvirt.example.com"
+                                <input className="cloud-input" value={settings.domain || ''} placeholder="moavi.example.com"
                                     onChange={e => setSettings({ ...settings, domain: e.target.value })} />
                             </CloudField>
                             <CloudField label="포트">

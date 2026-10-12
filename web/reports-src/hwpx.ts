@@ -1,10 +1,10 @@
-// Makus Virt 한국형 보고서 → HWPX(한글 문서, KS X 6101 OWPML)
+// MOAVI 한국형 보고서 → HWPX(한글 문서, KS X 6101 OWPML)
 //
 //  PDF 와 같은 보고서 HTML(html.js)을 읽어 한글 문단·표로 옮김 → 양식 수정은 html.js 한 곳에서
 //  뼈대(header·설정 등)는 한글에서 저장된 검증 파일(hwpxSkeleton.ts)을 쓰고, 글자·문단·테두리 모양을 덧붙인 뒤 본문(section0)만 생성
 //  한글 2014 이후(HWPX 지원)에서 열리며, 필요하면 한글에서 'HWP 로 저장'
 //
-// 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
+// 원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
 // 빌드: web/reports-src/build.sh → static/js/makus-reports.js
 
 import { clean, has, parse, textOf, zip, type Node, enc } from "./htmlDoc"
@@ -343,7 +343,7 @@ export function reportHtmlToHwpx(html: string, opts: { title: string; landscape?
   const iso = new Date().toISOString().replace(/\.\d+Z$/, "Z")
   const hpf = CONTENT_HPF
     .replace("<opf:title/>", `<opf:title>${x(opts.title)}</opf:title>`)
-    .replace(/synthetic-fixture-author/g, x(opts.author || "Makus Virt"))
+    .replace(/synthetic-fixture-author/g, x(opts.author || "MOAVI"))
     .replace(/(name="CreatedDate" content="text">)[^<]*/, `$1${iso}`)
     .replace(/(name="ModifiedDate" content="text">)[^<]*/, `$1${iso}`)
     .replace(/(name="date" content="text">)[^<]*/, `$1${iso}`)

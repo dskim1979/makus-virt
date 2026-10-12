@@ -64,7 +64,7 @@ def load_server_settings():
         'acme_allow_private_ca': False,  # #685 — opt-in to reach a private/internal ACME CA (mirrors oidc_allow_private_ip)
         'logo_url': '',
         'favicon_url': '',
-        'app_name': 'Makus Virt',
+        'app_name': 'MOAVI',
         'app_tagline': 'for Proxmox Virtual Environment',
         # HTTP redirect port - NS Jan 2026
         # Now that we have protocol detection on the main port, this is only needed
@@ -96,7 +96,7 @@ def load_server_settings():
         'smtp_user': '',
         'smtp_password': '',  # stored encrypted ideally
         'smtp_from_email': '',
-        'smtp_from_name': 'Makus Virt Alerts',
+        'smtp_from_name': 'MOAVI Alerts',
         'smtp_tls': True,
         'smtp_ssl': False,
         # Alert notification settings

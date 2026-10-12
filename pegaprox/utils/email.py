@@ -34,7 +34,7 @@ def get_email_logo_html(settings: dict = None) -> str:
         port = settings.get('port', 5000)
         base = f"https://{domain}" if port in (443, '443') else f"https://{domain}:{port}"
         logo_path = settings.get('logo_url') or '/images/pegaprox-logo-dark.png'
-        app_name = settings.get('app_name') or 'Makus Virt'
+        app_name = settings.get('app_name') or 'MOAVI'
         import html as _html_lib
         return (
             f'<div style="text-align:center;margin-bottom:16px;">'
@@ -75,7 +75,7 @@ def send_email(to_addresses: list, subject: str, body: str, html_body: str = Non
         except Exception:
             smtp_password = raw_smtp_password  # Fallback for unencrypted legacy values
     from_email = settings.get('smtp_from_email', '')
-    from_name = settings.get('smtp_from_name', '') or settings.get('app_name', '') or 'Makus Virt'
+    from_name = settings.get('smtp_from_name', '') or settings.get('app_name', '') or 'MOAVI'
     use_tls = settings.get('smtp_tls', True)
     use_ssl = settings.get('smtp_ssl', False)
     

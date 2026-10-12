@@ -566,10 +566,10 @@
         }
 
         // ═══════════════════════════════════════════════
-        // Makus Virt - Settings Modal
+        // MOAVI - Settings Modal
         // PegaProxSettingsModal (Server, SSL, SMTP, RBAC, Audit, Tenants)
         // ═══════════════════════════════════════════════
-        // Makus Virt Settings Modal with User Management and Audit Log
+        // MOAVI Settings Modal with User Management and Audit Log
         function PegaProxSettingsModal({ isOpen, onClose, addToast, onGroupsChanged }) {
             const { t } = useTranslation();
             const { getAuthHeaders, user: currentUser } = useAuth();
@@ -733,7 +733,7 @@
                 proxy_bind_address: '',
                 logo_url: '',
                 favicon_url: '',
-                app_name: 'Makus Virt',
+                app_name: 'MOAVI',
                 app_tagline: 'for Proxmox Virtual Environment',
                 default_theme: 'proxmoxDark',  // NS: Default theme for new users - Jan 2026
                 login_background: '',
@@ -744,7 +744,7 @@
                 smtp_user: '',
                 smtp_password: '',
                 smtp_from_email: '',
-                smtp_from_name: 'Makus Virt Alerts',
+                smtp_from_name: 'MOAVI Alerts',
                 smtp_tls: true,
                 smtp_ssl: false,
                 alert_email_recipients: [],
@@ -1015,7 +1015,7 @@
             
             // NS: Perform rollback - Jan 2026
             const performRollback = async (backupName) => {
-                if (!confirm(t('confirmRollback') || `This will restore Makus Virt from backup "${backupName}". The server will restart. Continue?`)) return;
+                if (!confirm(t('confirmRollback') || `This will restore MOAVI from backup "${backupName}". The server will restart. Continue?`)) return;
                 setUpdateLoading(true);
                 setUpdateProgress({ status: 'restoring', message: t('restoringBackup') || 'Restoring from backup...' });
                 try {
@@ -1564,7 +1564,7 @@
                             login_background: data.login_background || '',
                             logo_url: data.logo_url || '',
                             favicon_url: data.favicon_url || '',
-                            app_name: data.app_name || 'Makus Virt',
+                            app_name: data.app_name || 'MOAVI',
                             app_tagline: data.app_tagline || 'for Proxmox Virtual Environment',
                             // SMTP settings
                             smtp_enabled: data.smtp_enabled || false,
@@ -1573,7 +1573,7 @@
                             smtp_user: data.smtp_user || '',
                             smtp_password: data.smtp_password || '',
                             smtp_from_email: data.smtp_from_email || '',
-                            smtp_from_name: data.smtp_from_name || 'Makus Virt Alerts',
+                            smtp_from_name: data.smtp_from_name || 'MOAVI Alerts',
                             smtp_tls: data.smtp_tls !== false,
                             smtp_ssl: data.smtp_ssl || false,
                             // Alert settings
@@ -1803,7 +1803,7 @@
                     formData.append('trusted_proxies', serverSettings.trusted_proxies || '');
                     formData.append('proxy_bind_address', serverSettings.proxy_bind_address || '');
                     formData.append('default_theme', serverSettings.default_theme || 'proxmoxDark');
-                    formData.append('app_name', serverSettings.app_name || 'Makus Virt');
+                    formData.append('app_name', serverSettings.app_name || 'MOAVI');
                     formData.append('app_tagline', serverSettings.app_tagline || '');
                     // NS: alert recipients live in the same tab - must send them too (#131)
                     formData.append('alert_email_recipients', JSON.stringify(serverSettings.alert_email_recipients || []));
@@ -2022,7 +2022,7 @@
                             smtp_user: serverSettings.smtp_user || '',
                             smtp_password: serverSettings.smtp_password || '',
                             smtp_from_email: serverSettings.smtp_from_email,
-                            smtp_from_name: serverSettings.smtp_from_name || 'Makus Virt Alerts',
+                            smtp_from_name: serverSettings.smtp_from_name || 'MOAVI Alerts',
                             smtp_tls: serverSettings.smtp_tls !== false,
                             smtp_ssl: serverSettings.smtp_ssl || false
                         })
@@ -5195,7 +5195,7 @@
                                                 <Icons.Plus className="w-3 h-3" /> Add Mapping
                                             </button>
                                         </div>
-                                        <p className="text-xs text-gray-500">Map AD/LDAP groups to Makus Virt roles (including custom roles). Use full Distinguished Name (DN).</p>
+                                        <p className="text-xs text-gray-500">Map AD/LDAP groups to MOAVI roles (including custom roles). Use full Distinguished Name (DN).</p>
                                         
                                         {ldapConfig.ldap_group_mappings.length === 0 ? (
                                             <p className="text-gray-600 text-sm text-center py-4 border border-dashed border-proxmox-border rounded-lg">No group mappings configured. Click "Add Mapping" to map an AD group to a role.</p>
@@ -5492,7 +5492,7 @@
                                         <input type="text"
                                             value={oidcConfig.oidc_audiences || ''}
                                             onChange={e => setOidcConfig(prev => ({...prev, oidc_audiences: e.target.value}))}
-                                            placeholder="comma-separated, e.g. makusvirt-prod, makusvirt-staging"
+                                            placeholder="comma-separated, e.g. moavi-prod, moavi-staging"
                                             className="w-full bg-proxmox-darker border border-proxmox-border rounded p-2 text-sm font-mono text-white" />
                                         <p className="text-[11px] text-gray-500 leading-snug">
                                             {t('oidcAudiencesHint') || 'Additional audience values accepted on the JWT verify alongside the client_id. Useful when one logical audience is shared across multiple deployments.'}
@@ -5508,7 +5508,7 @@
                                                 <Icons.Plus className="w-3 h-3" /> Add Mapping
                                             </button>
                                         </div>
-                                        <p className="text-xs text-gray-500">{oidcConfig.oidc_provider === 'entra' ? 'Map Entra groups to Makus Virt roles. Use group Object IDs (Azure Portal ↑ Groups ↑ Overview).' : 'Map provider groups to Makus Virt roles (including custom roles).'}</p>
+                                        <p className="text-xs text-gray-500">{oidcConfig.oidc_provider === 'entra' ? 'Map Entra groups to MOAVI roles. Use group Object IDs (Azure Portal ↑ Groups ↑ Overview).' : 'Map provider groups to MOAVI roles (including custom roles).'}</p>
                                         
                                         {oidcConfig.oidc_group_mappings.length === 0 ? (
                                             <p className="text-gray-600 text-sm text-center py-4 border border-dashed border-proxmox-border rounded-lg">No group mappings configured. Click "Add Mapping" to map a group to a role.</p>
@@ -5628,7 +5628,7 @@
                                                     {t('syslogEnabled') || 'Syslog receiver'}
                                                 </h4>
                                                 <p className="text-sm text-gray-400 mt-1">
-                                                    {t('syslogEnabledDesc') || 'Listen for syslog messages on UDP/TCP port 1514. Disable to close the port if Makus Virt does not ingest syslog from your nodes.'}
+                                                    {t('syslogEnabledDesc') || 'Listen for syslog messages on UDP/TCP port 1514. Disable to close the port if MOAVI does not ingest syslog from your nodes.'}
                                                 </p>
                                             </div>
                                             <label className="flex items-center gap-2 cursor-pointer shrink-0">
@@ -5763,7 +5763,7 @@
                                         </p>
                                     </div>
 
-                                    {/* White-label branding - Makus Virt */}
+                                    {/* White-label branding - MOAVI */}
                                     <div className="bg-proxmox-dark border border-proxmox-border rounded-xl p-4 space-y-4">
                                         <h4 className="font-medium text-white flex items-center gap-2">
                                             <Icons.Image />
@@ -5780,7 +5780,7 @@
                                                     type="text"
                                                     value={serverSettings.app_name}
                                                     onChange={e => setServerSettings({...serverSettings, app_name: e.target.value})}
-                                                    placeholder="Makus Virt"
+                                                    placeholder="MOAVI"
                                                     maxLength={80}
                                                     className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm focus:outline-none focus:border-proxmox-orange"
                                                 />
@@ -5949,7 +5949,7 @@
                                                     type="text"
                                                     value={serverSettings.domain}
                                                     onChange={e => setServerSettings({...serverSettings, domain: e.target.value})}
-                                                    placeholder="makusvirt.example.com"
+                                                    placeholder="moavi.example.com"
                                                     className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm focus:outline-none focus:border-proxmox-orange"
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">{t('domainHint')}</p>
@@ -6530,7 +6530,7 @@
                                                             type="text"
                                                             value={serverSettings.smtp_from_name}
                                                             onChange={e => setServerSettings({...serverSettings, smtp_from_name: e.target.value})}
-                                                            placeholder="Makus Virt Alerts"
+                                                            placeholder="MOAVI Alerts"
                                                             className="w-full px-3 py-2 bg-proxmox-darker border border-proxmox-border rounded-lg text-white text-sm"
                                                         />
                                                     </div>
@@ -6681,7 +6681,7 @@
                                                     onChange={e => setServerSettings({...serverSettings, alert_update_available: e.target.checked})}
                                                     className="w-4 h-4"
                                                 />
-                                                <span className="text-sm text-white">{t('alertUpdateAvailable') || 'Email me when a Makus Virt update is available'}</span>
+                                                <span className="text-sm text-white">{t('alertUpdateAvailable') || 'Email me when a MOAVI update is available'}</span>
                                             </label>
                                             <p className="text-xs text-gray-500 mt-1 ml-6">{t('alertUpdateAvailableDesc') || 'Polled once a day. Notifies once per new version to the recipients listed above.'}</p>
                                         </div>
@@ -6710,7 +6710,7 @@
                                         </div>
                                         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
                                             <p className="text-xs text-yellow-400">
-                                                {t('pluginDisclaimer') || 'Makus Virt takes no responsibility or liability for community plugins. Administrators should always review and scan plugin code before enabling. Only install plugins from trusted sources.'}
+                                                {t('pluginDisclaimer') || 'MOAVI takes no responsibility or liability for community plugins. Administrators should always review and scan plugin code before enabling. Only install plugins from trusted sources.'}
                                             </p>
                                         </div>
                                         {discoveredPlugins.length === 0 ? (
@@ -7143,7 +7143,7 @@
                                                 </h3>
                                                 <div className="mt-2 space-y-1">
                                                     <p className="text-2xl font-bold text-proxmox-orange">
-                                                        Makus Virt {updateInfo?.current_version || PEGAPROX_VERSION}
+                                                        MOAVI {updateInfo?.current_version || PEGAPROX_VERSION}
                                                     </p>
                                                     <p className="text-sm text-gray-400">
                                                         Build: {updateInfo?.current_build || '2026.01'}
@@ -7295,7 +7295,7 @@
                                             <Icons.CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                             <h3 className="text-lg font-semibold text-white">You're up to date!</h3>
                                             <p className="text-gray-400 mt-1">
-                                                Makus Virt {updateInfo.current_version} is the latest version.
+                                                MOAVI {updateInfo.current_version} is the latest version.
                                             </p>
                                         </div>
                                     )}
@@ -7545,9 +7545,9 @@
                                     {/* Version Info */}
                                     <div className="bg-proxmox-dark border border-proxmox-border rounded-xl p-6 text-center">
                                         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4">
-                                            <img src={getLogoSrc()} alt="Makus Virt" className="w-20 h-20 object-contain" />
+                                            <img src={getLogoSrc()} alt="MOAVI" className="w-20 h-20 object-contain" />
                                         </div>
-                                        <h2 className="text-3xl font-bold text-white">Makus Virt</h2>
+                                        <h2 className="text-3xl font-bold text-white">MOAVI</h2>
                                         <p className="text-xl text-proxmox-orange mt-1">{PEGAPROX_VERSION}</p>
                                         <p className="text-sm text-gray-400 mt-2">Multi-Cluster Proxmox Management</p>
                                         <p className="text-xs text-gray-500 mt-1">Build 2026.02 • © 2025-2026 PegaProx Team · Portions © 2026 Makus Systems</p>
@@ -7576,7 +7576,7 @@
 
                                     {/* License */}
                                     <div className="text-center text-sm text-gray-500 space-y-1">
-                                        <p>Makus Virt is open source software licensed under the AGPL-3.0 License.</p>
+                                        <p>MOAVI is open source software licensed under the AGPL-3.0 License.</p>
                                         <p>Forked from PegaProx, originally made with ❤️ in Austria and Germany</p>
                                         <p>© 2025-2026 PegaProx Team · Portions © 2026 Makus Systems</p>
                                     </div>

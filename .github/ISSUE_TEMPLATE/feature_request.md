@@ -1,12 +1,12 @@
 ---
 name: ✨ Feature Request
-about: Suggest a new feature or improvement for Makus Virt
+about: Suggest a new feature or improvement for MOAVI
 title: "[Feature] "
 labels: enhancement
 assignees: ''
 ---
 
-> **Got an idea? Nice! 💡** We love hearing what features would make Makus Virt better for you.
+> **Got an idea? Nice! 💡** We love hearing what features would make MOAVI better for you.
 >
 > **A friendly reminder:** PegaProx is built by **volunteers in our spare time**. We can't promise timelines or guarantee every feature will be implemented — but every suggestion helps shape the roadmap!
 >
@@ -18,7 +18,7 @@ assignees: ''
 ---
 
 ## Describe the feature
-<!-- What would you like Makus Virt to do? -->
+<!-- What would you like MOAVI to do? -->
 
 
 ## Use Case

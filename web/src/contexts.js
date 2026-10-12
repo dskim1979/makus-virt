@@ -1,15 +1,15 @@
         // ═══════════════════════════════════════════════
-        // Makus Virt - Contexts
+        // MOAVI - Contexts
         // LanguageContext + AuthContext providers
         // ═══════════════════════════════════════════════
         // ═══════════════════════════════════════════════
-        // Branding Context — white-label support (Makus Virt)
+        // Branding Context — white-label support (MOAVI)
         // Fetches /api/branding (public, no auth) once on boot and applies it
         // to <title>, favicon, and exposes it to any component that wants a
         // custom logo instead of the bundled default.
         // ═══════════════════════════════════════════════
         const BrandingContext = createContext({
-            appName: 'Makus Virt',
+            appName: 'MOAVI',
             appTagline: 'for Proxmox Virtual Environment',
             logoUrl: '',
             faviconUrl: '',
@@ -18,7 +18,7 @@
 
         function BrandingProvider({ children }) {
             const [branding, setBranding] = useState({
-                appName: 'Makus Virt',
+                appName: 'MOAVI',
                 appTagline: 'for Proxmox Virtual Environment',
                 logoUrl: '',
                 faviconUrl: '',
@@ -32,7 +32,7 @@
                     .then(data => {
                         if (cancelled || !data) return;
                         const next = {
-                            appName: data.app_name || 'Makus Virt',
+                            appName: data.app_name || 'MOAVI',
                             appTagline: data.app_tagline || '',
                             logoUrl: data.logo_url || '',
                             faviconUrl: data.favicon_url || '',

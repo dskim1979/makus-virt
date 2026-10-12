@@ -1,4 +1,4 @@
-// Makus Virt 한국형 보고서 → XLSX(엑셀 통합 문서, Office Open XML)
+// MOAVI 한국형 보고서 → XLSX(엑셀 통합 문서, Office Open XML)
 //
 //  PDF·한글·워드와 같은 보고서 HTML(html.js)을 읽어 옮김 → 양식 수정은 html.js 한 곳에서
 //  시트 구성: 첫 시트 '개요'(제목·작성 정보·핵심 지표·요약·본문 문장, 표 자리에는 해당 시트로 가는 링크)
@@ -6,7 +6,7 @@
 //  숫자·비율(1,234 · 12.5%)은 숫자 칸으로 넣어 합계·정렬·그래프에 바로 쓸 수 있게, 판정(정상·주의·위험)은 글자색
 //  Microsoft Excel 2010 이후·한컴오피스 한셀·LibreOffice 에서 열림
 //
-// 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
+// 원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
 // 빌드: web/reports-src/build.sh → static/js/makus-reports.js
 
 import { clean, displayWidth, gradeOf, has, parse, textOf, xmlEsc as x, zip, type Node, enc } from "./htmlDoc"
@@ -356,10 +356,10 @@ export function reportHtmlToXlsx(html: string, opts: { title: string; classifica
   const iso = new Date().toISOString().replace(/\.\d+Z$/, "Z")
   const core = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`
-    + `<dc:title>${x(opts.title)}</dc:title><dc:creator>${x(opts.author || "Makus Virt")}</dc:creator><cp:lastModifiedBy>${x(opts.author || "Makus Virt")}</cp:lastModifiedBy>`
+    + `<dc:title>${x(opts.title)}</dc:title><dc:creator>${x(opts.author || "MOAVI")}</dc:creator><cp:lastModifiedBy>${x(opts.author || "MOAVI")}</cp:lastModifiedBy>`
     + `<dcterms:created xsi:type="dcterms:W3CDTF">${iso}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${iso}</dcterms:modified></cp:coreProperties>`
   const app = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Makus Virt</Application></Properties>`
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>MOAVI</Application></Properties>`
 
   return zip([
     { name: "[Content_Types].xml", data: enc(types) },

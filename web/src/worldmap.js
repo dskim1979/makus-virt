@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // Makus Virt Worldmap — offline cluster geo-view
+        // MOAVI Worldmap — offline cluster geo-view
         // MK May 2026 — bundled country SVG (Natural Earth public domain),
         // equirectangular projection, theme-aware fills via CSS variables.
         // Air-gap safe: never fetches map tiles from a CDN.

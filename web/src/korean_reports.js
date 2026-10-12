@@ -4,7 +4,7 @@
         //  자료: POST /api/korean-reports/data (pegaprox/api/korean_reports.py)
         //  문서: static/js/makus-reports.js (web/reports-src, 필요할 때 불러옴) — 미리보기·인쇄(PDF)·한글(HWPX)·워드(DOCX)·엑셀(XLSX)
         //  작성 정보(기관·부서·작성자)는 이 브라우저에 기억 (localStorage)
-        //  원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식
+        //  원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식
         // ═══════════════════════════════════════════════════════════════════════
 
         const KR_META_KEY = 'makus-report-meta';

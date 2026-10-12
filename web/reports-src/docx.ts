@@ -1,11 +1,11 @@
-// Makus Virt 한국형 보고서 → DOCX(워드 문서, Office Open XML)
+// MOAVI 한국형 보고서 → DOCX(워드 문서, Office Open XML)
 //
 //  PDF·한글과 같은 보고서 HTML(html.js)을 읽어 워드 문단·표로 옮김 → 양식 수정은 html.js 한 곳에서
 //  모양은 한글 문서(hwpx.ts)와 같게: A4 세로·여백 17mm, 제목·개조식 들여쓰기, 머리글 색 표, 판정 색, 붙임 새 쪽,
 //  머리말 오른쪽 보안 등급, 꼬리말 가운데 쪽 번호 "- 1 -". 글꼴은 맑은 고딕 (Windows·Office 기본)
 //  Microsoft Word 2010 이후·한컴오피스·LibreOffice 에서 열림
 //
-// 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
+// 원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
 // 빌드: web/reports-src/build.sh → static/js/makus-reports.js
 
 import { clean, displayWidth, has, parse, textOf, xmlEsc as x, zip, type Node, enc } from "./htmlDoc"
@@ -342,10 +342,10 @@ export function reportHtmlToDocx(html: string, opts: { title: string; landscape?
   const iso = new Date().toISOString().replace(/\.\d+Z$/, "Z")
   const core = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`
-    + `<dc:title>${x(opts.title)}</dc:title><dc:creator>${x(opts.author || "Makus Virt")}</dc:creator><cp:lastModifiedBy>${x(opts.author || "Makus Virt")}</cp:lastModifiedBy>`
+    + `<dc:title>${x(opts.title)}</dc:title><dc:creator>${x(opts.author || "MOAVI")}</dc:creator><cp:lastModifiedBy>${x(opts.author || "MOAVI")}</cp:lastModifiedBy>`
     + `<dcterms:created xsi:type="dcterms:W3CDTF">${iso}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${iso}</dcterms:modified></cp:coreProperties>`
   const app = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Makus Virt</Application></Properties>`
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>MOAVI</Application></Properties>`
 
   return zip([
     { name: "[Content_Types].xml", data: enc(CONTENT_TYPES) },

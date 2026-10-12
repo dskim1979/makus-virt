@@ -1,4 +1,4 @@
-<h1 align="center">Makus Virt</h1>
+<h1 align="center">MOAVI</h1>
 
 <p align="center">
   <strong>Proxmox VE · XCP-ng 멀티 클러스터 통합 관리 — 한국 운영 환경에 맞춘 오픈소스 에디션</strong>
@@ -22,7 +22,7 @@
 
 ## 소개
 
-**Makus Virt** 는 여러 Proxmox VE 클러스터와 XCP-ng 풀을 웹 브라우저 한 화면에서 모니터링·운영·관리하는 오픈소스 플랫폼입니다.
+**MOAVI(모아비)** 는 여러 Proxmox VE 클러스터와 XCP-ng 풀을 웹 브라우저 한 화면에서 모니터링·운영·관리하는 오픈소스 플랫폼입니다.
 오픈소스 프로젝트 [PegaProx](https://github.com/PegaProx/project-pegaprox)(AGPL-3.0)를 바탕으로, **(주)매커스시스템즈(Makus Systems)** 가
 한국 공공·기업 운영 환경에 맞게 기능을 더하고 한국어로 다듬어 유지보수합니다.
 
@@ -30,7 +30,7 @@
 - 인터넷이 없는 격리망에서도 동작 (화면에 필요한 라이브러리를 모두 내장)
 - 소스 전체 공개 — AGPL-3.0
 
-## Makus Virt 가 더한 기능
+## MOAVI 가 더한 기능
 
 | 기능 | 내용 |
 |---|---|
@@ -106,7 +106,7 @@
 ## ⚡ 설치
 
 > ⚠️ 원본 PegaProx 의 APT 저장소(`apt install pegaprox`)·Docker 이미지(`ghcr.io/pegaprox/pegaprox`)·설치 주소를 쓰면
-> Makus Virt 가 아니라 **원본 PegaProx** 가 설치됩니다. 아래 방법으로 설치하세요.
+> MOAVI 가 아니라 **원본 PegaProx** 가 설치됩니다. 아래 방법으로 설치하세요.
 
 ### 자동 설치 (권장)
 ```bash
@@ -199,18 +199,19 @@ sudo dpkg -i ../pegaprox_*.deb
 
 ## 💬 문의
 
-- Makus Virt: support@makussystems.co.kr · [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
+- MOAVI: support@makussystems.co.kr · [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
 - 원본 PegaProx 의 공통 기능 문의: [PegaProx 커뮤니티](https://github.com/PegaProx/project-pegaprox/issues)
 
 ## 📜 기반 프로젝트와 라이선스
 
-Makus Virt 는 **[PegaProx](https://pegaprox.com)** (Copyright © 2025-2026 PegaProx Team and contributors) 를 포크한 프로젝트입니다.
-멀티 클러스터 관리의 핵심 기능은 PegaProx 팀의 작업이며, Makus Virt 가 더한 기능은 위 표에 정리했습니다.
+MOAVI 는 **[PegaProx](https://pegaprox.com)** (Copyright © 2025-2026 PegaProx Team and contributors) 를 포크한 프로젝트입니다.
+멀티 클러스터 관리의 핵심 기능은 PegaProx 팀의 작업이며, MOAVI 가 더한 기능은 위 표에 정리했습니다.
 PegaProx 가 유용하셨다면 [원 개발팀을 후원](https://github.com/PegaProx/project-pegaprox)해 주세요.
 
 - 라이선스: **GNU AGPL-3.0** — [LICENSE](LICENSE)
 - **표시 의무 (AGPL 7조 b항)**: 고객 포털 화면에 표시되는 **"Powered by PegaProx"** 와 그에 딸린 저작권·소스·라이선스 안내는
   모든 복사본과 수정본에서 지우거나 숨길 수 없습니다 — [NOTICE](NOTICE)
 - **소스 공개 (AGPL 13조)**: 수정한 버전을 네트워크로 다른 사람에게 제공하면 그 버전의 전체 소스를 제공해야 합니다.
-  Makus Virt 는 수정한 소스 전체를 이 저장소에 공개합니다.
+  MOAVI 는 수정한 소스 전체를 이 저장소에 공개합니다.
+- "MOAVI", "모아비" 및 관련 로고는 (주)매커스시스템즈의 상표입니다. PegaProx 는 PegaProx Team 의 프로젝트이며, Proxmox 는 Proxmox Server Solutions GmbH 의 상표입니다 (제휴 관계 아님).
 - 한국형 보고서의 한글(HWPX) 기본 골격은 [python-hwpx](https://github.com/airmang/python-hwpx)(Apache-2.0)에서 가져왔습니다.

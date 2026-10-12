@@ -1,11 +1,11 @@
-// Makus Virt 한국형 보고서 — 수집 데이터(collect.ts) → 공문서 형식 HTML (브라우저 인쇄로 PDF)
+// MOAVI 한국형 보고서 — 수집 데이터(collect.ts) → 공문서 형식 HTML (브라우저 인쇄로 PDF)
 //
 //  형식: A4 세로, 머리부·핵심 지표·보고 요지, Ⅰ/□/○/- 개조식, (단위: …) 표, 붙임, '끝.' 표시
 //  글꼴: 나눔명조(본문)·나눔고딕(제목·표) — 설치돼 있으면 사용, 없으면 브라우저 기본 글꼴
 //  브라우저 미리보기에서는 PC 글꼴(맑은 고딕·바탕)로 대체됨
 //
 // 외부 자원(이미지·URL)을 쓰지 않음: weasyprint 사이드카가 data: 외의 주소를 막음
-// 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
+// 원본: MOAVI 한국형 보고서 (Makus Systems) — MOAVI 로 이식. 이 저장소는 AGPL-3.0 (LICENSE·NOTICE)
 // 빌드: web/reports-src/build.sh → static/js/makus-reports.js
 
 //  언어: d.locale 이 'en' 이면 영문 보고서 (같은 양식, 영문 문구·날짜·숫자), 그 밖에는 한국어
@@ -317,7 +317,7 @@ function header(d, title) {
   const org = [m.org, m.dept].filter(Boolean).map(esc).join(' ')
   const writer = [m.author ? esc(m.author) : '', m.contact ? `☎ ${esc(m.contact)}` : ''].filter(Boolean).join(' · ')
   return `<div class="head">
-<div class="kicker">${tt(`${org || 'Makus Virt 가상화 인프라'} 보고`, org ? `${org} Report` : 'Makus Virt Virtualization Infrastructure')}</div>
+<div class="kicker">${tt(`${org || 'MOAVI 가상화 인프라'} 보고`, org ? `${org} Report` : 'MOAVI Virtualization Infrastructure')}</div>
 <h1>${esc(title)}</h1>
 <div class="info"><span><b>${tt('보고 기간', 'Period')}</b>${krDate(d.period.from, false)} ~ ${krDate(d.period.to, false)}</span><span><b>${tt('작성일', 'Date')}</b>${krDate(d.generatedAt)}</span>${writer ? `<span><b>${tt('작성', 'Prepared by')}</b>${writer}</span>` : ''}</div>
 </div>`
@@ -360,7 +360,7 @@ function doc(d, title, body, landscape = false) {
 <style>${css(landscape, d.meta?.classification)}</style></head><body>
 ${header(d, title)}
 ${body}
-<div class="footer-note">${tt(`본 보고서는 Makus Virt 가상화 통합 관리 플랫폼에서 ${krDateTime(d.generatedAt)}에 자동 생성되었습니다.`, `This report was generated automatically by the Makus Virt virtualization management platform on ${krDateTime(d.generatedAt)} (KST).`)}</div>
+<div class="footer-note">${tt(`본 보고서는 MOAVI 가상화 통합 관리 플랫폼에서 ${krDateTime(d.generatedAt)}에 자동 생성되었습니다.`, `This report was generated automatically by the MOAVI virtualization management platform on ${krDateTime(d.generatedAt)} (KST).`)}</div>
 </body></html>`
 }
 

@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // Makus Virt - Create Modals
+        // MOAVI - Create Modals
         // CreateVM, AddCluster, UserProfile
         // ═══════════════════════════════════════════════
         // Create VM/CT Modal Component
@@ -2248,7 +2248,7 @@
                                 {showPbsSshSettings && (
                                     <div className="mt-4 space-y-3 p-4 bg-proxmox-dark/50 rounded-lg">
                                         <p className="text-xs text-gray-400">
-                                            {t('pbsSshHint') || 'SSH is only used for the Update Manager (apt dist-upgrade). If left blank, Makus Virt falls back to the PBS web password. Use a dedicated key if your PBS has password-login disabled.'}
+                                            {t('pbsSshHint') || 'SSH is only used for the Update Manager (apt dist-upgrade). If left blank, MOAVI falls back to the PBS web password. Use a dedicated key if your PBS has password-login disabled.'}
                                         </p>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
@@ -3629,7 +3629,7 @@
                             <div className="text-xs text-yellow-300">
                                 <div className="font-medium">{t('webauthnIpHostTitle') || 'WebAuthn cannot be used with IP addresses'}</div>
                                 <div className="text-gray-400 mt-0.5">
-                                    {t('webauthnIpHostDesc') || 'Open Makus Virt via its hostname (e.g. https://localhost:5000 or https://your-server.local:5000) to register a security key. IP addresses like 127.0.0.1 are not allowed by the WebAuthn spec.'}
+                                    {t('webauthnIpHostDesc') || 'Open MOAVI via its hostname (e.g. https://localhost:5000 or https://your-server.local:5000) to register a security key. IP addresses like 127.0.0.1 are not allowed by the WebAuthn spec.'}
                                 </div>
                             </div>
                         </div>

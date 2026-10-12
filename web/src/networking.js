@@ -1,5 +1,5 @@
         // ═══════════════════════════════════════════════
-        // Makus Virt - Networking
+        // MOAVI - Networking
         // Cluster-wide network overview with VM mapping
         // ═══════════════════════════════════════════════
         // NS: Mar 2026 - Corporate layout network tab
