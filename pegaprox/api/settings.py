@@ -1352,6 +1352,8 @@ def get_server_settings():
     except Exception:
         settings['cert_info'] = None
     # Don't return actual cert/key content or sensitive passwords
+    # MAKUS - the front-end AI settings (encrypted model keys) have their own route
+    settings.pop('frontend_ai', None)
     # Mask SMTP password if set
     if settings.get('smtp_password'):
         settings['smtp_password'] = '********'

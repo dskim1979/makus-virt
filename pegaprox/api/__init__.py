@@ -52,6 +52,7 @@ def register_blueprints(app):
     from pegaprox.api.directory_verify import bp as directory_verify_bp  # MAKUS: 앞단(MOAVI 화면)의 LDAP 확인
     from pegaprox.api.frontend_branding import bp as frontend_branding_bp  # MAKUS: 앞단(MOAVI 화면)의 화이트라벨
     from pegaprox.api.frontend_audit import bp as frontend_audit_bp  # MAKUS: 앞단(MOAVI 화면)의 감사 기록
+    from pegaprox.api.frontend_ai import bp as frontend_ai_bp  # MAKUS: 앞단(MOAVI 화면)의 AI 도우미 설정
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -98,6 +99,7 @@ def register_blueprints(app):
     app.register_blueprint(directory_verify_bp)
     app.register_blueprint(frontend_branding_bp)
     app.register_blueprint(frontend_audit_bp)
+    app.register_blueprint(frontend_ai_bp)
 
     # Initialize WebSocket support for realtime blueprint
     from pegaprox.api.realtime import sock

@@ -262,7 +262,8 @@ def save_server_settings(settings):
         from pegaprox.api.banners import BANNERS_KEY
         # MAKUS - nor the front-end white label, which api/frontend_branding.py writes on its own
         from pegaprox.api.frontend_branding import FRONTEND_BRANDING_KEY
-        settings = {k: v for k, v in settings.items() if k not in (STAMPS_ZONE_SETTING, BANNERS_KEY, FRONTEND_BRANDING_KEY)}
+        from pegaprox.api.frontend_ai import FRONTEND_AI_KEY
+        settings = {k: v for k, v in settings.items() if k not in (STAMPS_ZONE_SETTING, BANNERS_KEY, FRONTEND_BRANDING_KEY, FRONTEND_AI_KEY)}
         db = get_db()
         db.save_server_settings(settings)
         return True
