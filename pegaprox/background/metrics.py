@@ -368,6 +368,12 @@ def collect_metrics_snapshot():
                             if hcache is not None and hlock is not None:
                                 with hlock:
                                     hcache[nm] = {'summary': summ, 'ts': now_ts}
+                            # 하드웨어 상태 이력 (한국형 보고서의 기간 중 하드웨어 이상) — 바뀐 것만 기록, 실패해도 수집은 계속
+                            try:
+                                from pegaprox.core import hw_history
+                                hw_history.record(cluster_id, nm, summ, now_ts * 1000)
+                            except Exception as _he:
+                                logging.debug(f"[metrics] {cluster_id}/{nm}: hw history record failed: {_he}")
                         known = set(mgr.nodes or {})
                         if known and hcache is not None and hlock is not None:
                             with hlock:

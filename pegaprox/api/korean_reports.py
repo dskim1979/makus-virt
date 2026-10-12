@@ -11,6 +11,7 @@
 
   보고서 3종: 가상화 인프라 운영 현황 보고(ops) · 자원 사용 현황 및 증설 검토(resource) · 가상서버 자원 현황 대장(asset)
   자료: Proxmox VE /cluster/resources·/cluster/status, 노드 /rrddata(AVERAGE·MAX) 중 보고 기간 값, 노드 /tasks (vzdump, 보고 기간)
+        하드웨어(BMC) 상태 이력 (운영 현황 보고서, pegaprox/core/hw_history.py — 5분 수집이 기록)
   권한: 노드 조회(node.view) + 사용자가 볼 수 있는 클러스터만, 가상서버는 VM 조회 권한(ACL)이 있는 것만
 
 원본: MOAVI 한국형 보고서 (Makus Systems) — Makus Virt 로 이식. AGPL-3.0 (LICENSE·NOTICE)
@@ -277,6 +278,18 @@ def korean_report_data():
             lst = ', '.join(f"{e['connection']} ({e['error']})" for e in errors)
             return jsonify({'error': f'Could not collect data: {lst}' if en else f'정보를 수집하지 못했습니다: {lst}'}), 502
 
+        # 하드웨어(BMC) 상태 이력 — 운영 현황 보고서만, 볼 수 있는 노드만 (pegaprox/core/hw_history.py)
+        hardware = None
+        if rtype == 'ops':
+            try:
+                from pegaprox.core import hw_history
+                visible = {}
+                for n in nodes:
+                    visible.setdefault(n['connId'], set()).add(n['node'])
+                hardware = hw_history.report_hardware(visible, from_ms, to_ms)
+            except Exception as e:
+                logging.warning(f'[korean-reports] hardware history: {e}')
+
         th = body.get('thresholds') or {}
         try:
             warn = min(99, max(1, int(th.get('warn') or 80)))
@@ -309,7 +322,7 @@ def korean_report_data():
                 'failures': failures,
             } if rtype == 'ops' else None,
             'externalChecks': None,  # 외부 시스템 AI 점검 — 이식 예정
-            'hardware': None,        # 하드웨어(BMC) 감시 기록 — 이식 예정
+            'hardware': hardware,
             'errors': errors,
         })
     except ReportError as e:

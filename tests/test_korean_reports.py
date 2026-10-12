@@ -182,3 +182,24 @@ def test_failing_cluster_reported_not_500(api, seed):
     _fake_pve(api, 'cluster_1', 'good', fail=True)
     r = api.as_user(admin).post(DATA, json=_body(type='resource', **{'to': '2026-09-29'}))
     assert r.status_code == 502
+
+
+def test_ops_report_includes_hardware_history_for_visible_nodes(api, seed):
+    import pegaprox.core.hw_history as hw
+    hw._ensured = False
+    admin = seed.user('root', role='admin', tenant_id='default')
+    _fake_pve(api)
+    s = lambda h, bad=(): {'available': True, 'health': h, 'bad': list(bad), 'source': 'inband'}
+    hw.record('cluster_1', 'pve01', s('ok'), _ms('2026-08-20'))
+    hw.record('cluster_1', 'pve01', s('critical', ['PSU2']), _ms('2026-09-10', 9))
+    hw.record('cluster_1', 'pve01', s('ok'), _ms('2026-09-11', 9))
+    hw.record('cluster_9', 'ghost', s('critical', ['Fan']), _ms('2026-09-10'))  # not a visible cluster
+    c = api.as_user(admin)
+    d = c.post(DATA, json=_body()).get_json()
+    x = d['hardware']
+    assert x and x['covered'] and x['live'] is False
+    assert [k['name'] for k in x['servers']] == ['pve01']
+    inc = x['servers'][0]['incidents']
+    assert inc[0]['key'] == 'PSU2' and inc[0]['recoveredAt'] == _ms('2026-09-11', 9)
+    # only the operations report carries it
+    assert c.post(DATA, json=_body(type='resource')).get_json()['hardware'] is None
