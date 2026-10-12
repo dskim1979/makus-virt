@@ -4,7 +4,7 @@ LABEL org.label-schema.name="PegaProx"
 LABEL org.label-schema.description="Modern Multi-Cluster Management for Proxmox VE"
 LABEL org.label-schema.vendor="PegaProx"
 LABEL org.label-schema.url="https://pegaprox.com"
-LABEL org.label-schema.vcs-url="https://github.com/PegaProx/project-pegaprox"
+LABEL org.label-schema.vcs-url="https://github.com/dskim1979/makus-virt"
 LABEL maintainer="support@pegaprox.com"
 
 # Install system dependencies

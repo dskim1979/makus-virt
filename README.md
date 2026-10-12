@@ -1,313 +1,131 @@
-<p align="center">
-  <picture>
-    <!-- GitHub dark mode → swap to light variant so it stays readable -->
-    <source media="(prefers-color-scheme: dark)" srcset="images/pegaprox-logo-light.png">
-    <img src="images/pegaprox-logo-dark.png" alt="Makus Virt Logo" width="220"/>
-  </picture>
-</p>
-
 <h1 align="center">Makus Virt</h1>
 
 <p align="center">
-  <strong>Proxmox VE &amp; XCP-ng 멀티 클러스터 통합관리 — 한국 실정에 맞춘 오픈소스 에디션</strong>
+  <strong>Proxmox VE · XCP-ng 멀티 클러스터 통합 관리 — 한국 운영 환경에 맞춘 오픈소스 에디션</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dskim1979/makus-virt/releases">Releases</a> •
-  <a href="https://github.com/dskim1979/makus-virt/issues">Issues</a> •
-  <a href="#-이-포크에-대해">이 포크에 대해</a> •
-  <a href="https://pegaprox.com">원본 프로젝트 (PegaProx)</a>
+  <a href="https://github.com/dskim1979/makus-virt/releases">릴리스</a> •
+  <a href="https://github.com/dskim1979/makus-virt/issues">문의·버그</a> •
+  <a href="#-설치">설치</a> •
+  <a href="#-기반-프로젝트와-라이선스">기반 프로젝트와 라이선스</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.8+-green" alt="Python"/>
-  <img src="https://img.shields.io/badge/license-AGPL--3.0--License-orange" alt="License"/>
-  <img src="https://img.shields.io/badge/기반-PegaProx-lightgrey" alt="Based on PegaProx"/>
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-orange" alt="License"/>
+  <img src="https://img.shields.io/badge/based%20on-PegaProx-lightgrey" alt="Based on PegaProx"/>
 </p>
 
-<p align="center">
-  <a href="https://app.aikido.dev/audit-report/external/aklfeBsCvIheXnWMwFRveeH5/request" target="_blank">
-    <img src="https://app.aikido.dev/assets/badges/full-light-theme.svg" alt="Aikido Security Audit Report" height="40" />
-  </a>
-</p>
 ---
 
-## 🇰🇷 이 포크에 대해
+## 소개
 
-**Makus Virt**는 오픈소스 프로젝트 [PegaProx](https://github.com/PegaProx/project-pegaprox)(AGPL-3.0)를 포크하여, **Makus Systems**가 한국 시장에 맞게 로컬라이즈·유지보수하는 에디션입니다.
+**Makus Virt** 는 여러 Proxmox VE 클러스터와 XCP-ng 풀을 웹 브라우저 한 화면에서 모니터링·운영·관리하는 오픈소스 플랫폼입니다.
+오픈소스 프로젝트 [PegaProx](https://github.com/PegaProx/project-pegaprox)(AGPL-3.0)를 바탕으로, **(주)매커스시스템즈(Makus Systems)** 가
+한국 공공·기업 운영 환경에 맞게 기능을 더하고 한국어로 다듬어 유지보수합니다.
 
-- 🇰🇷 **한국어 전용 UI** — 다국어 지원 대신 한국어에 완전히 집중
-- 💰 **원화(KRW) 기반 비용 대시보드** — 국내 전기요금·컴퓨트 비용 산정 기준 반영
-- 🎨 **화이트라벨 지원** — 로고·파비콘·앱 이름을 배포 환경에 맞게 커스터마이징 가능
-- 📑 **한국형 보고서** — 공공기관 보고 양식(운영 현황 보고·자원 사용 현황 및 증설 검토·가상서버 대장)을 실시간 미리보기와 함께 PDF·한글(HWPX)·워드·엑셀로. 기관·부서·작성자·보안 등급 표시, 보고 기간 사용률(평균·최대)·백업 결과 ([문서](docs/korean-reports.md))
-- 🩺 **하드웨어(BMC) 상태 이력** — 5분마다 읽는 서버 하드웨어 상태(노드 안 ipmitool 우선, Redfish 보조)에서 이상 발생·등급 상승·복구를 기록해 운영 현황 보고서에 보고 기간 중 하드웨어 이상과 복구 시각을 표시
-- 🎮 **GPU / vGPU 관리** — 클러스터 GPU 현황·사용률, 패스스루·vGPU(NVIDIA mdev) 할당
-- 📜 **AGPL-3.0 그대로 유지** — 원저작자(PegaProx Team) 표시 및 라이선스 의무를 그대로 준수
+- 별도 에이전트 없이 Proxmox VE API(일부 기능은 노드 SSH)로 동작
+- 인터넷이 없는 격리망에서도 동작 (화면에 필요한 라이브러리를 모두 내장)
+- 소스 전체 공개 — AGPL-3.0
 
-이 포크 자체는 별도로 후원을 받지 않습니다. Makus Virt가 유용하셨다면, 아래 **PegaProx 원 개발팀을 후원**해주세요 — 이 프로젝트가 존재할 수 있는 건 전적으로 그분들 덕분입니다.
+## Makus Virt 가 더한 기능
 
-기업용 상용 지원이 필요하시면 별도 파트너십 제품을 통해 제공되며, 이 저장소와는 무관합니다.
+| 기능 | 내용 |
+|---|---|
+| 📑 **한국형 보고서** | 공공기관 보고 양식 3종 — **가상화 인프라 운영 현황 보고**, **자원 사용 현황 및 증설 검토**, **가상서버 자원 현황 대장**. 보고 기간·대상 클러스터·작성 정보(기관·부서·작성자·보안 등급 표시)를 고르면 실시간 미리보기, **PDF·한글(HWPX)·워드(DOCX)·엑셀(XLSX)** 로 내려받기. 기간 중 CPU·메모리 사용률(평균·최대), 스토리지 사용률, 백업 결과, 하드웨어 이상 포함 → [문서](docs/korean-reports.md) |
+| 🩺 **하드웨어(BMC) 상태 이력** | 5분마다 읽는 서버 하드웨어 상태(노드 안 ipmitool 우선, Redfish 보조)에서 이상 **발생·등급 상승·복구**를 기록 → 운영 현황 보고서에 보고 기간 중 하드웨어 이상과 복구 시각 표시 |
+| 🎮 **GPU / vGPU 관리** | 클러스터 GPU 현황·사용률, GPU 통째 패스스루 또는 NVIDIA vGPU(mdev) 할당 |
+| 💰 **원화(KRW) 비용 대시보드** | 국내 전기요금·장비 비용 기준으로 VM 별 월 비용 산정 |
+| 🇰🇷 **한국어 화면** | 다국어 대신 한국어에 집중한 화면·문구 |
+| 🎨 **화이트라벨** | 로고·파비콘·앱 이름을 배포 환경에 맞게 변경 |
 
-## 🚀 What is PegaProx?
+## 주요 기능
 
-PegaProx is a powerful web-based management interface for Proxmox VE and XCP-ng clusters. Manage multiple clusters from a single dashboard with features like live monitoring, VM management, automated tasks, and more.
+### 멀티 클러스터 관리
+- 여러 Proxmox VE 클러스터를 한 화면에서 — 실시간 CPU·메모리·스토리지 현황(SSE)
+- 노드 간 실시간 이전(라이브 마이그레이션), 클러스터 간 부하 분산
+- ESXi · Proxmox VE · XCP-ng 사이 VM 이전
 
-<p align="center">
-  <img src="https://pegaprox.com/pictures/pegaprox.png" alt="Dashboard Screenshot (upstream PegaProx UI shown — Makus Virt's Korean UI differs)" width="800"/>
-</p>
+### 가상머신·컨테이너
+- 시작·정지·재시작, CPU·메모리·디스크·네트워크·EFI·Secure Boot 설정
+- 스냅숏(공유 스토리지용 공간 절약 LVM 스냅숏 포함), ZFS 가 없는 클러스터용 스냅숏 복제
+- 백업 일정·관리, 백업 복원 검증(실험 기능: 복원 → 부팅 → 상태 확인 → 정리)
+- 브라우저 콘솔(noVNC · xterm.js, SPICE 파일 내려받기)
+- 노드 간 자동 분산, 고가용성(HA) 자동 재시작, 함께/떨어뜨려 두기 규칙(Affinity)
 
-### 🪽 What's in the name?
+### XCP-ng (기술 미리보기)
+- XCP-ng / Xen 풀 연결, 전원 동작, VNC 콘솔, 디스크·NIC 관리, 유지 보수 모드
 
-The name **PegaProx** is inspired by *Pegasus*, the winged horse of Greek mythology, combined with *Prox* as a reference to Proxmox VE. Pegasus symbolises speed, freedom and elegant flight — qualities we aspire to bring to multi-cluster hypervisor management.
+### ESXi 이전
+- ESXi 가져오기 마법사 — 실행 중 VM 의 최소 중단 이전 또는 중지 후 이전 (ESXi SSH 필요)
 
-## ❤️ Sponsors
+### 보안·접근 제어
+- 역할 기반 권한(관리자·운영자·조회자 + 사용자 정의 역할), VM 단위 권한, 멀티 테넌트
+- 2단계 인증(TOTP), WebAuthn / FIDO2 보안 키, LDAP / OIDC(AD, Entra ID, Keycloak 등)
+- API 토큰, IP 허용·차단
+- 데이터베이스 전체 암호화(SQLCipher, Linux x86_64), 민감 정보 필드 암호화
+- 노드 패키지 취약점(CVE) 점검, CIS 기준 보안 점검·강화, 위변조 확인이 되는 감사 로그
 
-> PegaProx is a community-driven open source project that **lives entirely from sponsorships and donations**. Server costs, domains, code-signing certificates and the developer hours behind every release come straight out of our own pockets — and out of the contributions of the wonderful companies and individuals below. If PegaProx saves you time at work, please consider [becoming a sponsor](mailto:sponsor@pegaprox.com) or chipping in on [Open Collective](https://opencollective.com/pegaprox). Every euro keeps the lights on. 💛
->
-> **Makus Virt 안내**: 이 포크는 별도로 후원을 받지 않습니다. 아래 후원 정보는 전부 원본 **PegaProx** 프로젝트로 연결됩니다 — Makus Virt가 존재할 수 있는 건 이분들의 작업 덕분입니다.
+### 자동화·모니터링
+- 예약 작업(시작·정지·스냅숏·백업), 태그·VM 목록 기준 스냅숏 정책과 보존 정리
+- 노드 순차 업데이트(VM 자동 대피)
+- 알림 규칙(CPU·메모리·디스크·온도·**하드웨어 상태**), 감사 로그 검색·CSV 내보내기
+- 서버 하드웨어 상태(BMC) — 센서·전원공급장치·섀시·이벤트 로그(SEL), 클러스터 하드웨어 이상 요약
+- SIEM 전송(Syslog, Splunk HEC, Elasticsearch, Loki, 웹훅), 내장 Syslog 서버
+- Ceph 관리·RBD 미러링, ACME / Let's Encrypt 인증서 자동 갱신
+- 구성 변경 감지(기준 대비 무단 변경 알림)
 
-### 💎 Platinum
+### 보고·분석
+- **한국형 보고서** (위 표)
+- 비용 대시보드(과금), 전력·탄소 추정, 자원 적정 크기·용량 예측(Insights)
+- 네트워크 구성도(클러스터 → 노드 → 브리지·본드·SDN → VM)
+- 규정 준수 현황판, CVE 보고
 
-<p align="center">
-  <a href="https://www.netwolk.ch">
-    <img src="images/sponsors/sponsor2.png" alt="netwolk GmbH" width="200"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://expertize.nl/">
-    <img src="images/sponsors/sponsor3.png" alt="Banner Oranje" width="200"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://netzware.at/">
-    <img src="images/sponsors/netzware.png" alt="Netzware" width="440"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://www.occentus.net/">
-    <img src="images/sponsors/occentus.png" alt="Occentus Network" width="500"/>
-  </a>
-</p>
+### 운영·배포
+- Cloud-Init 템플릿 목록(Ubuntu·Debian·AlmaLinux·Rocky·Fedora·Alpine) 한 번에 배포
+- 사이트 복구(DR) 계획과 통제된 장애 전환, 백업 SLA(RPO) 현황
+- ZFS·클러스터 간 복제, VMware 이전(VirtIO 드라이버 사전 설치)
 
-### 🥇 Gold
+### 알림 채널·플러그인
+- Slack · Discord · Microsoft Teams · ntfy · 웹훅, 브라우저 푸시, 설치형 웹 앱(PWA)
+- 고객 셀프 서비스 포털, 공개 상태 페이지, 알림 플러그인, 플러그인 설정 편집
 
-<p align="center">
-  <a href="https://socialfurr.com">
-    <img src="images/sponsors/sponsor1.png" alt="SocialFurr" width="120"/>
-  </a>
-</p>
+### 그 밖에
+- 격리망(오프라인) 모드, 다크·라이트 등 테마, 트리형 사이드바 레이아웃
+- Proxmox Backup Server 관리, Prometheus 지표(`/api/metrics`)
 
-### 🥈 Silver
+## 📋 요구 사항
 
-<p align="center">
-  <a href="https://uvensys.de/">
-    <img src="images/sponsors/uvensys.png" alt="uvensys GmbH" width="160"/>
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://www.datimo.ch/">
-    <img src="images/sponsors/datimo.png" alt="Datimo" width="180"/>
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://www.technidata.de/">
-    <img src="images/sponsors/technidata.png" alt="TechniData AG Limited" width="130"/>
-  </a>
-</p>
+- Python 3.8 이상, Linux 서버
+- Proxmox VE 8.0 이상 또는 9.0 이상, 그리고/또는 XCP-ng 8.2 이상
+- Chrome · Edge · Firefox · Safari 최신 버전
+- 포트: **5000**(웹), 5001(VNC 콘솔), 5002(노드 셸)
 
-### 🥉 Bronze
+## ⚡ 설치
 
-<p align="center">
-  <a href="https://idkmanager.com/">
-    <img src="images/sponsors/idkmanager.png" alt="IDK Manager" width="120"/>
-  </a>
-  <a href="https://www.linet-services.de/">
-    <img src="images/sponsors/linet.png" alt="LINET Services GmbH" width="120"/>
-  </a>
-</p>
+> ⚠️ 원본 PegaProx 의 APT 저장소(`apt install pegaprox`)·Docker 이미지(`ghcr.io/pegaprox/pegaprox`)·설치 주소를 쓰면
+> Makus Virt 가 아니라 **원본 PegaProx** 가 설치됩니다. 아래 방법으로 설치하세요.
 
-<p align="center">
-  <sub><b>Individual supporters:</b>&nbsp; Andreas Huemmer</sub>
-</p>
-
-<p align="center">
-  <a href="mailto:sponsor@pegaprox.com">Become a Sponsor</a> •
-  <a href="https://opencollective.com/pegaprox">Open Collective</a> •
-  <a href="https://pegaprox.com/sponsors.html">Commercial Support</a>
-</p>
-
-## ✨ Features
-
-### Multi-Cluster Management
-- 🖥️ **Unified Dashboard** - Manage all your Proxmox clusters from one place
-- 📊 **Live Metrics** - Real-time CPU, RAM, and storage monitoring via SSE
-- 🔄 **Live Migration** - Migrate VMs between nodes with one click
-- ⚖️ **Cross-Cluster Load Balancing** - Distribute workloads across clusters
-- 🔄 **Cross-Hypervisor Migration** - Migrate VMs between ESXi, Proxmox VE, and XCP-ng 
-
-### VM & Container Management
-- ▶️ **Quick Actions** - Start, stop, restart VMs and containers
-- ⚙️ **VM Configuration** - Edit CPU, RAM, disks, network, EFI, Secure Boot & more
-- 📸 **Snapshots** - Standard and space-efficient LVM snapshots for shared storage
-- 🔁 **Snapshot Replication** - Storage-agnostic replication for clusters without ZFS
-- 💾 **Backups** - Schedule and manage backups
-- ✅ **Backup Verification** *(Experimental)* - Automated restore → boot → health check → cleanup (ISO 27001, SOC 2, HIPAA compliance)
-- 🖱️ **noVNC / xterm.js Console** - Browser-based console for QEMU and LXC
-- ⚖️ **Load Balancing** - Automatic VM distribution across nodes
-- 🔁 **High Availability** - Auto-restart VMs on node failure with configurable timing
-- 📍 **Affinity Rules** - Keep VMs together or apart on hosts (QEMU + LXC)
-
-### XCP-ng Integration (Tech Preview)
-- 🟢 **XCP-ng Pool Support** - Connect XCP-ng / Xen hypervisor pools alongside Proxmox clusters
-- ▶️ **VM Power Actions** - Start, stop, shutdown, reboot, suspend/resume
-- 🖥️ **VNC Console** - Browser-based remote console via XAPI
-- 💽 **Disk & Network Management** - Add, resize, remove disks and NICs
-- 🔧 **Maintenance Mode** - Enter/exit with automatic VM evacuation
-
-### ESXi Migration
-- 🔀 **ESXi Import Wizard** - Migrate VMs from ESXi hosts to Proxmox
-- ⚡ **Near-Zero Downtime** - Transfer running VMs with minimal interruption (max. 1 VM recommended)
-- 🔌 **Offline Migration** - Shut down and transfer for maximum reliability
-- 🔑 **SSH Required** - ESXi host must have SSH enabled
-
-### Security & Access Control
-- 👥 **Multi-User Support** - Role-based access control (Admin, Operator, Viewer) + custom roles
-- 🛠️ **API Token Management** - Create, list, and revoke Bearer tokens (scoped per role)
-- 🔐 **2FA Authentication** - TOTP-based two-factor authentication (with force option)
-- 🔑 **WebAuthn / FIDO2** - Hardware-key login (YubiKey, Nitrokey, Touch ID, Windows Hello) — passwordless or as 2FA factor
-- 🏛️ **LDAP / OIDC** - Active Directory, OpenLDAP, Entra ID, Keycloak, Google Workspace, Authentik (with PKCE)
-- 🛡️ **VM-Level ACLs** - Fine-grained permissions per VM
-- 🏢 **Multi-Tenancy** - Isolate clusters for different customers
-- 🚫 **IP Whitelisting / Blacklisting** - Restrict access by IP or CIDR range
-- 🔒 **Full-DB Encryption** - SQLCipher (AES-256-CBC + HMAC-SHA512, format v4) wraps the entire database at rest on Linux x86_64; sensitive fields stay individually Fernet-encrypted everywhere else. Multi-tier master-key loader resolves from env / systemd LoadCredentialEncrypted / `/etc/pegaprox/secret.key`, so a `config/` backup never carries the key alongside the data. Auto-migrates plain DBs on first boot post-update.
-- 🔍 **CVE Scanner** - Per-node package vulnerability scanning via debsecan
-- 🛡️ **CIS Hardening** - One-click security audit and hardening against CIS benchmarks
-- 🧾 **HMAC-Signed Audit Log** - Tamper-evident integrity verification on every entry
-
-### Automation & Monitoring
-- ⏰ **Scheduled Tasks** - Automate VM actions (start, stop, snapshot, backup)
-- 📸 **Snapshot Schedules** - Tag-based or VMID-list snapshot policies with retention pruning (hourly / daily / weekly + “keep last N” + “keep N days”)
-- 🔄 **Rolling Node Updates** - Update cluster nodes one by one with automatic evacuation
-- 🚨 **Alerts** - Get notified on high CPU, memory, or disk usage
-- 🩺 **Hardware Health (BMC)** - Per-node sensors, PSU, chassis and SEL via in-band ipmitool, with out-of-band Redfish as fallback; cluster degraded-hardware rollup, `hardware_health` alert metric, and *(Makus Virt)* a change history (new / escalated / recovered) for period reports
-- 🎮 **GPU / vGPU** *(Makus Virt)* - Cluster GPU inventory and utilization, whole-device passthrough or NVIDIA vGPU (mdev) assignment
-- 📜 **Audit Logging** - Track all user actions with IP addresses
-- 🔎 **Audit Search** - Full-text + date-range + severity + IP filter, paginated, CSV export
-- 🛰️ **SIEM Forwarder** - Stream audit events to Syslog (UDP/TCP RFC 5424), Splunk HEC, Elasticsearch, Loki, or generic webhooks. VAPID-style per-target TLS verification.
-- 🔧 **Custom Scripts** - Run scripts across nodes
-- 💿 **Ceph Management** - Monitor and manage Ceph storage pools, RBD mirroring
-- 🔐 **ACME / Let's Encrypt** - Automatic SSL certificate renewal with HTTP-01 challenge (+ custom ACME CAs)
-- 📋 **Integrated Syslog Server** - Receive and view syslog messages (UDP/TCP) with filtering, search, and severity-based coloring
-- 🧬 **Config Drift Detection** - Nightly snapshot of cluster config (VM configs, storage.cfg, network, datacenter options) — alerts on any unauthorized change vs the admin-set baseline. Pairs with the Compliance Dashboard.
-
-### Reports & Analytics
-- 🇰🇷 **Korean Public-Sector Reports** *(Makus Virt)* - Operations report, resource usage & capacity review, and VM register in the Korean public-sector format, with live preview and PDF / Hangul (HWPX) / Word / Excel export. Period-based CPU & memory usage (avg/peak), backup results and hardware (BMC) incidents. See [docs/korean-reports.md](docs/korean-reports.md).
-- 💰 **Cost Dashboard / Chargeback** - €/VM/Month from real metrics (CPU-h × node tariff + RAM-GB-h + Storage-GB-month). Currency-configurable, per-cluster rates, top-spender table, by-node breakdown. CSV + PDF export.
-- ⚡ **Power & Carbon Tracking** - Estimated kWh + €/Month + kg CO₂/Month per VM, based on metrics history × node-power profile × PUE × grid CO₂ intensity. Defaults for DE/EU; admin-tunable for any hardware/grid. CSV + PDF export.
-- 🧠 **Insights** - Right-sizing recommendations (oversized / undersized CPU + RAM, idle VMs) and capacity forecasts (linear regression + ETA to threshold) over 30 days of history. PDF export.
-- 🌐 **Network Topology Visualization** - Interactive SVG graph: Cluster → Nodes → Bridges/Bonds/SDN VNets → VMs. Click to highlight connections.
-- 📊 **Compliance Dashboard** - Read-only BSI Grundschutz / ISO 27001 / NIS2 / SOC 2 mapping per cluster, hardening score, exportable PDF. Visible to ops/auditors without admin rights.
-- 🛡️ **CVE Reporting** - Per-cluster severity counts + per-package detail + historical view of when each CVE first appeared.
-
-### Operations & Deployment
-- ☁️ **Cloud-Init Template Library** - Curated catalog (Ubuntu 22.04/24.04, Debian 11/12, AlmaLinux 9, Rocky 9, Fedora 40, Alpine 3.19) plus admin-defined custom templates. One-click deploy to any cluster (download → import → cloudinit drive → convert to template).
-- 🚑 **Site Recovery** - Configure DR plans (boot order, dependencies, replication mappings) and execute controlled failover with audit trail.
-- 📦 **Backup SLA Tracking** - SLA dashboard per cluster + datastore: last-backup age vs configured RPO, integrated with the Alert pipeline.
-- 🔁 **ZFS / Cross-Cluster Replication** - Native PVE replication monitor + cross-cluster replication for clusters without shared storage.
-- 🛠️ **V2P / ESXi Migration** - Pyvmomi + SSHFS-based, with VirtIO driver pre-staging via MSI bulk-install (Windows guests).
-
-### Notifications
-- 📢 **Webhook Channels** - Slack, Discord, Microsoft Teams, ntfy, generic JSON webhooks (multi-channel, per-alert routing)
-- 🔔 **Web Push Notifications** - Browser push via VAPID, “wake-up” pattern (no payload leaks to push provider). Inbox view in the topbar bell with unread badge.
-- 📲 **PWA / Installable App** - Service Worker shell-cache, offline boot, install prompt, theme-color matching layout.
-
-### Plugins
-- 🌐 **Client Portal** - Self-service portal for hosting customers with VM power actions, noVNC console, snapshots, ISO mount, snapshot policies (read-only), 2FA, and password management
-- 📊 **Public Status Page** - Cluster health dashboard for monitoring screens with URL-based auth key (no login required)
-- 🔔 **Notifications Plugin** - ntfy + Apprise integration for unified channel routing
-- 🐳 **Docker Swarm Manager** *(Community)* - Manage Swarm services from the same UI
-- 🗄️ **TrueNAS SCALE Manager** *(Community)* - Monitor and administer TrueNAS SCALE (pools, datasets, snapshots, SMB/NFS shares, replication, apps/VMs, services, data-protection posture, telemetry) over JSON-RPC 2.0
-- 🔌 **Plugin Config Editor** - Edit plugin configuration directly from the UI
-
-### Advanced Features
-- 🌐 **Offline Mode** - Works without internet (local assets, air-gap mode disables external CVE/sponsor lookups for VS-NfD / classified networks)
-- 🎨 **Themes** - 17 themes including Dark/Light, Proxmox, Corporate (light/dark), Dracula, Nord, Monokai, Solarized, Cyberpunk, etc.
-- 🏢 **Corporate Layout** - Tree-based sidebar with dense tables
-- 🌍 **Multi-Language** - English, German, French, Spanish, Portuguese, Korean, Italian, Simplified Chinese
-- 📱 **Responsive + PWA** - Works on desktop and mobile, installable as native-feeling app
-- 📦 **PBS Integration** - Proxmox Backup Server management with backup verification
-- 🔭 **Prometheus Exporter** - Scrape `/api/metrics` with bearer auth for cluster + VM metrics
-
-## 📋 Requirements
-
-- Python 3.8+
-- Proxmox VE 8.0+ or 9.0+ and/or XCP-ng 8.2+
-- Modern web browser (Chrome, Firefox, Edge, Safari)
-
-## ⚡ Quick Start / Installation
-
-### Automated Installation
-This installation method pulls the deployment script directly from the current HEAD of the main branch. This means you will always receive the latest available version, including the most recent features and improvements. However, because it is not tied to a specific release, it may also contain unreleased changes or bugs that have not yet been fully tested. If you prefer a stable and tested version, consider installing PegaProx from a tagged release instead.
-
+### 자동 설치 (권장)
 ```bash
-curl -O https://raw.githubusercontent.com/PegaProx/project-pegaprox/refs/heads/main/deploy.sh
+curl -O https://raw.githubusercontent.com/dskim1979/makus-virt/main/deploy.sh
 chmod +x deploy.sh
 sudo ./deploy.sh
 ```
+main 브랜치 최신 코드를 `/opt/PegaProx` 에 설치하고 서비스로 등록합니다.
 
-### Debian Repository
-> ⚠️ **Makus Virt 사용 시 참고**: 아래 APT 저장소·Docker 이미지는 **원본 PegaProx**의 공식 배포 채널입니다. Makus Virt는 아직 별도 패키지 저장소/Docker 이미지를 운영하지 않으므로, `apt-get install pegaprox`나 `ghcr.io/pegaprox/pegaprox`를 그대로 쓰면 Makus Virt가 아닌 **원본 PegaProx가 설치됩니다.** Makus Virt를 쓰시려면 아래 [Manual Installation](#manual-installation) 섹션에서 이 저장소(`dskim1979/makus-virt`)를 clone하세요.
-
-This installation method uses the official APT repository provided by gyptazy. The repository and its associated build and packaging pipeline are fully hosted and maintained by <a href="https://github.com/gyptazy">gyptazy</a>, where PegaProx releases are automatically built and published as Debian packages. Unlike the automated installation script, which pulls the latest code directly from the repository branch, the APT repository distributes packaged and versioned releases. This generally provides a more stable and predictable installation, making it the recommended approach for production environments.
-```bash
-curl https://git.gyptazy.com/api/packages/gyptazy/debian/repository.key -o /etc/apt/keyrings/gyptazy.asc
-echo "deb [signed-by=/etc/apt/keyrings/gyptazy.asc] https://packages.gyptazy.com/api/packages/gyptazy/debian trixie main" | sudo tee -a /etc/apt/sources.list.d/gyptazy.list
-apt-get update
-
-apt-get -y install pegaprox
-```
-
-## Installation from Source
-This installation methods run PegaProx directly from the source code repository. It is primarily intended for development, testing, or advanced users who want full control over the codebase or want to modify and extend the project.
-
-By default, cloning the repository will pull the latest state of the main branch, which contains the most recent changes and features. While this ensures you always have the newest code available, it may also include in-progress changes that are not part of an official release yet.
-If you prefer a more stable version, you can optionally checkout a specific release tag from the repository before installing dependencies and starting the application. This allows you to run the exact code corresponding to an official release while still using the source-based installation method.
-
-Running PegaProx from source can be useful for debugging, contributing to the project, or integrating custom functionality, since you have direct access to the entire codebase and can easily update it using standard Git workflows.
-
-### Manual Installation
-
-**Makus Virt (이 저장소):**
+### 소스에서 설치
 ```bash
 git clone https://github.com/dskim1979/makus-virt.git
 cd makus-virt
 pip install -r requirements.txt
-bash web/Dev/build.sh   # 프론트엔드 빌드 (최초 1회 + 소스 수정 시마다)
 python3 pegaprox_multi_cluster.py
 ```
+화면 소스(`web/src/`)를 고쳤다면 `bash web/Dev/build.sh` 로 `web/index.html` 을 다시 만듭니다 (Node.js 16 이상).
 
-**원본 PegaProx:**
-```bash
-git clone https://github.com/PegaProx/project-pegaprox.git
-cd project-pegaprox
-pip install -r requirements.txt
-python3 pegaprox_multi_cluster.py
-```
-
-### Docker
-> ⚠️ 아래 Docker 예시는 원본 PegaProx 이미지(`ghcr.io/pegaprox/pegaprox`) 기준입니다. Makus Virt는 아직 자체 Docker 이미지가 없으니, "For local builds" 항목처럼 이 저장소를 직접 clone해서 빌드하는 방식을 이용하세요.
-
-```bash
-docker compose up -d
-```
-
-Or without Compose:
-```bash
-docker run -d --name pegaprox \
-  -p 5000:5000 -p 5001:5001 -p 5002:5002 \
-  -v pegaprox-config:/app/config \
-  -v pegaprox-logs:/app/logs \
-  --restart unless-stopped \
-  ghcr.io/pegaprox/pegaprox:latest
-```
-
-For local builds (Makus Virt):
+### Docker (직접 빌드)
 ```bash
 git clone https://github.com/dskim1979/makus-virt.git
 cd makus-virt
@@ -320,120 +138,79 @@ docker run -d --name makus-virt \
   makus-virt
 ```
 
-### Debian Package (.deb build)
+### Debian 패키지 (직접 빌드)
 ```bash
-git clone https://github.com/PegaProx/project-pegaprox.git
-cd project-pegaprox
-
+git clone https://github.com/dskim1979/makus-virt.git
+cd makus-virt
 dpkg-buildpackage -us -uc
 sudo dpkg -i ../pegaprox_*.deb
 ```
 
-## 🔄 Updating
+## 🔄 업데이트
 
-**Option 1: Update Script (Recommended)**
-```bash
-cd /opt/PegaProx
-curl -O https://raw.githubusercontent.com/PegaProx/project-pegaprox/refs/heads/main/update.sh
-chmod +x update.sh
-sudo ./update.sh
-```
+- **화면에서**: 설정 → 업데이트 → 업데이트 확인 (이 저장소에서 받음)
+- **스크립트**:
+  ```bash
+  cd /opt/PegaProx
+  sudo ./update.sh
+  ```
 
-**Option 2: Web UI**
+## 🔧 처음 설정
 
-Go to Settings → Updates and click "Check for Updates".
+1. 브라우저에서 `https://<서버 주소>:5000` 접속 (처음에는 자체 서명 인증서 경고를 허용 — 5001·5002 포트도 한 번씩)
+2. **설정 마법사**에서 첫 관리자 계정을 만듭니다 (기본 계정·비밀번호는 없습니다)
+3. 설정 → 클러스터 → Proxmox VE 주소와 계정(또는 API 토큰) 등록
+4. 하드웨어 상태를 보려면 설정에서 하드웨어 모니터링 동의를 켭니다
 
-## 🔧 Configuration
-
-After starting PegaProx, open your browser and navigate to:
-
-```
-https://your-server-ip:5000
-```
-
-Default credentials:
-
-```
-Username: pegaprox
-Password: admin
-```
-
-1. **First Login**: Create your admin account on the setup page
-2. **Add Cluster**: Go to Settings → Clusters → Add your Proxmox credentials
-3. **Done!** Start managing your VMs
-
-## 📁 Directory Structure
+## 📁 폴더 구조
 
 ```
 /opt/PegaProx/
-├── pegaprox_multi_cluster.py   # Entry point
-├── pegaprox/                   # Application package
-│   ├── app.py                  # Flask app factory
-│   ├── constants.py            # Configuration constants
-│   ├── globals.py              # Shared state
-│   ├── api/                    # REST API blueprints
-│   ├── core/                   # Business logic (manager, db, cache)
-│   ├── background/             # Background tasks (scheduler, alerts)
-│   ├── utils/                  # Utilities (auth, RBAC, LDAP, OIDC)
-│   └── models/                 # Data models
+├── pegaprox_multi_cluster.py   # 실행 진입점
+├── pegaprox/
+│   ├── api/                    # REST API (korean_reports.py — 한국형 보고서)
+│   ├── core/                   # 클러스터 관리·DB·캐시 (hw_history.py — 하드웨어 상태 이력)
+│   ├── background/             # 수집·알림·예약 작업
+│   ├── utils/                  # 인증·권한·LDAP·OIDC
+│   └── models/
 ├── web/
-│   ├── index.html              # Compiled frontend
-│   └── src/                    # Frontend source (JSX)
-├── config/
-│   └── pegaprox.db             # SQLite database — fully encrypted at rest via SQLCipher (Linux x86_64); plain SQLite + Fernet-encrypted fields elsewhere
-├── static/                     # JS/CSS libraries (offline mode)
-├── logs/                       # Application logs
-└── update.sh                   # Update script
+│   ├── index.html              # 빌드된 화면
+│   ├── src/                    # 화면 소스 (JSX)
+│   └── reports-src/            # 한국형 보고서 양식·문서 변환 소스
+├── static/                     # 내장 라이브러리 (격리망용), makus-reports.js
+├── config/                     # 데이터베이스 (Linux x86_64 에서는 전체 암호화)
+├── logs/
+└── update.sh
 ```
 
-## 🔒 Security
+## 🔒 보안
 
-- **Database at rest** → SQLCipher (AES-256-CBC + HMAC-SHA512, SQLCipher format v4) on Linux x86_64. Plain SQLite + per-field Fernet on other platforms (ARM / macOS / Windows). See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model and recovery story.
-- **Master key custody** → Multi-tier loader: `PEGAPROX_DB_KEY` env / systemd `LoadCredentialEncrypted` (TPM2-bound) / `/etc/pegaprox/secret.key` / `~/.config/pegaprox/secret.key` / legacy `config/`. Default chmod 0600, files with loose permissions are skipped rather than used silently.
-- **Sensitive fields** (Cluster PW, SSH keys, TOTP secrets, OIDC client secrets, LDAP bind) → Fernet (AES-256-GCM equivalent), works even when full-DB encryption isn't available.
-- **API Tokens** → SHA-256 hash (constant-time compare).
-- **Passwords** → Argon2id (3 iter, 64 MB memory cost).
-- HTTPS required for production.
-- Session tokens expire after inactivity; optional strict-IP binding.
-- Per-IP rate limiting on login + every authenticated endpoint.
-- Input sanitization, CSRF Origin matching, RBAC enforced server-side on every route.
-- Auto-encryption on first boot — operators can opt out with `PEGAPROX_DISABLE_AUTO_ENCRYPT=1` if they want to take their own pre-encryption backup first.
+- 데이터베이스: SQLCipher(AES-256) 전체 암호화 (Linux x86_64), 그 밖의 환경은 민감 필드 암호화 — 자세한 내용 [docs/SECURITY.md](docs/SECURITY.md)
+- 마스터 키: 환경 변수 / systemd 자격 증명(TPM2) / `/etc/pegaprox/secret.key` 순으로 읽고, 권한이 느슨한 파일은 쓰지 않음
+- 비밀번호 Argon2id, API 토큰 SHA-256 해시
+- 로그인·API 요청 횟수 제한, CSRF 출처 확인, 모든 API 에서 서버 측 권한 검사
+- 운영 환경에서는 HTTPS 필수
 
-## 📖 Documentation
+## 🛠 개발
 
-Full documentation is available at **[docs.pegaprox.com](https://docs.pegaprox.com)** (원본 PegaProx 문서 — Makus Virt 전용 한국어 문서는 준비 중입니다)
+- 테스트: `pytest tests` (Linux)
+- 화면 빌드: `bash web/Dev/build.sh`
+- 한국형 보고서 양식·문서 변환 빌드: `bash web/reports-src/build.sh` (결과 `static/js/makus-reports.js` 도 함께 커밋)
 
-## 📜 License
+## 💬 문의
 
-This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+- Makus Virt: support@makussystems.co.kr · [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
+- 원본 PegaProx 의 공통 기능 문의: [PegaProx 커뮤니티](https://github.com/PegaProx/project-pegaprox/issues)
 
-**Attribution (AGPL §7b):** Under Section 7(b) of the AGPL, the **"Powered by PegaProx"** attribution shown in the client portal is a *required* author attribution and must be preserved in every copy and modified/derivative version — see the [NOTICE](NOTICE) file. Note also that AGPL §13 requires anyone hosting a **modified** version for network users to publish that version's complete source to those users. PegaProx is AGPL-3.0 only — the attribution applies to everyone, without exception.
+## 📜 기반 프로젝트와 라이선스
 
-Makus Virt는 이 요건을 그대로 준수하며, 수정된 소스 전체를 이 저장소를 통해 공개하고 있습니다.
+Makus Virt 는 **[PegaProx](https://pegaprox.com)** (Copyright © 2025-2026 PegaProx Team and contributors) 를 포크한 프로젝트입니다.
+멀티 클러스터 관리의 핵심 기능은 PegaProx 팀의 작업이며, Makus Virt 가 더한 기능은 위 표에 정리했습니다.
+PegaProx 가 유용하셨다면 [원 개발팀을 후원](https://github.com/PegaProx/project-pegaprox)해 주세요.
 
-## 💬 Support
-
-**Makus Virt (이 포크) 관련 문의:**
-- 📧 Email: support@makussystems.co.kr
-- 🐛 Issues: [GitHub Issues](https://github.com/dskim1979/makus-virt/issues)
-
-**원본 PegaProx 커뮤니티/코어 기능 문의:**
-- 💬 Discord: [Community Server](https://discord.gg/AJPf3H62QW)
-- 📧 Email: support@pegaprox.com
-- 🐛 Issues: [GitHub Issues](https://github.com/PegaProx/project-pegaprox/issues)
-
-## 🤖 Development Tools
-
-Like most modern dev teams, we use AI-assisted tooling (code completion, docs generation, review automation, security audits). All architecture decisions, implementation, and testing are handled by our three-person team. — see [IBM](https://www.ibm.com/solutions/ai-coding) , [IBM Case Studies](https://www.ibm.com/case-studies/ibm-software-team) , [MIT Tech Review](https://www.technologyreview.com/2025/12/15/1128352/rise-of-ai-coding-developers-2026/)
-
-AI-driven security auditing is an industry-standard practice — see [Hacker News](https://thehackernews.com/2026/02/claude-opus-46-finds-500-high-severity.html), [IBM Research](https://www.ibm.com/think/insights/chatgpt-4-exploits-87-percent-one-day-vulnerabilities).
-
-## ⭐ Star History
-
-If you find PegaProx useful, please consider giving it a star! ⭐
-
----
-
-<p align="center">
-  Made with ❤️ by the PegaProx Team
-</p>
+- 라이선스: **GNU AGPL-3.0** — [LICENSE](LICENSE)
+- **표시 의무 (AGPL 7조 b항)**: 고객 포털 화면에 표시되는 **"Powered by PegaProx"** 와 그에 딸린 저작권·소스·라이선스 안내는
+  모든 복사본과 수정본에서 지우거나 숨길 수 없습니다 — [NOTICE](NOTICE)
+- **소스 공개 (AGPL 13조)**: 수정한 버전을 네트워크로 다른 사람에게 제공하면 그 버전의 전체 소스를 제공해야 합니다.
+  Makus Virt 는 수정한 소스 전체를 이 저장소에 공개합니다.
+- 한국형 보고서의 한글(HWPX) 기본 골격은 [python-hwpx](https://github.com/airmang/python-hwpx)(Apache-2.0)에서 가져왔습니다.
