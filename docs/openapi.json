@@ -47533,6 +47533,40 @@
         ]
       }
     },
+    "/api/directory/oidc/config": {
+      "get": {
+        "operationId": "directory_verify.directory_oidc_config_get",
+        "tags": [
+          "directory_verify"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          }
+        },
+        "x-pegaprox-auth": "decorator",
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "sessionId": []
+          }
+        ],
+        "x-pegaprox-permissions": [
+          "admin.settings"
+        ]
+      }
+    },
     "/api/frontend/branding": {
       "get": {
         "operationId": "frontend_branding.get_frontend_branding_get",

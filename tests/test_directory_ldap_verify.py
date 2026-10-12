@@ -82,3 +82,39 @@ def test_status_says_whether_ldap_is_configured(api, seed, directory, monkeypatc
     assert c.get('/api/directory/ldap/status', headers=_bearer(tok)).get_json() == {'enabled': True}
     monkeypatch.setattr(dv, 'get_ldap_settings', lambda: {'enabled': True, 'server': '', 'base_dn': ''})
     assert c.get('/api/directory/ldap/status', headers=_bearer(tok)).get_json() == {'enabled': False}
+
+
+# --- OIDC configuration handed to the front end -------------------------------------------
+
+def _oidc(monkeypatch, **cfg):
+    base = {'enabled': True, 'provider': 'entra', 'cloud_environment': 'commercial', 'client_id': 'cid',
+            'client_secret': 'CSECRET', 'tenant_id': 'tid', 'authority': '', 'scopes': 'openid profile email',
+            'button_text': 'Sign in', 'auto_create_users': True, 'default_role': 'viewer',
+            'admin_group_id': 'g-admins', 'user_group_id': '', 'viewer_group_id': '', 'group_mappings': []}
+    base.update(cfg)
+    monkeypatch.setattr(dv, 'get_oidc_settings', lambda: base)
+
+
+def test_oidc_config_builds_the_issuer_and_carries_the_secret_to_an_admin_token(api, seed, monkeypatch):
+    seed.user('root', role='admin')
+    h = _bearer(create_api_token('root', 'front', role='admin'))
+    _oidc(monkeypatch)
+    b = api.anon().get('/api/directory/oidc/config', headers=h).get_json()
+    assert b['enabled'] is True and b['issuer'] == 'https://login.microsoftonline.com/tid/v2.0'
+    assert b['client_secret'] == 'CSECRET' and b['admin_group_id'] == 'g-admins'
+    _oidc(monkeypatch, cloud_environment='gcc_high')
+    assert api.anon().get('/api/directory/oidc/config', headers=h).get_json()['issuer'].startswith('https://login.microsoftonline.us/')
+    _oidc(monkeypatch, provider='keycloak', authority='https://kc.example/realms/ops/')
+    assert api.anon().get('/api/directory/oidc/config', headers=h).get_json()['issuer'] == 'https://kc.example/realms/ops'
+
+
+def test_oidc_config_is_disabled_when_incomplete_and_never_for_a_session_or_viewer(api, seed, monkeypatch):
+    seed.user('root', role='admin')
+    h = _bearer(create_api_token('root', 'front', role='admin'))
+    _oidc(monkeypatch, tenant_id='')
+    assert api.anon().get('/api/directory/oidc/config', headers=h).get_json() == {'enabled': False}
+    _oidc(monkeypatch)
+    assert api.as_user({'username': 'root', 'role': 'admin'}).get('/api/directory/oidc/config').status_code == 403
+    viewer = _bearer(create_api_token('root', 'ro', role='viewer'))
+    r = api.anon().get('/api/directory/oidc/config', headers=viewer)
+    assert r.status_code == 403 and b'CSECRET' not in r.data
