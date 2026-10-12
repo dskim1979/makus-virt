@@ -40,7 +40,9 @@
 - 🇰🇷 **한국어 전용 UI** — 다국어 지원 대신 한국어에 완전히 집중
 - 💰 **원화(KRW) 기반 비용 대시보드** — 국내 전기요금·컴퓨트 비용 산정 기준 반영
 - 🎨 **화이트라벨 지원** — 로고·파비콘·앱 이름을 배포 환경에 맞게 커스터마이징 가능
-- 📑 **한국형 보고서** — 공공기관 보고 양식(운영 현황 보고·자원 사용 현황 및 증설 검토·가상서버 대장)을 PDF·한글(HWPX)·워드·엑셀로 ([문서](docs/korean-reports.md))
+- 📑 **한국형 보고서** — 공공기관 보고 양식(운영 현황 보고·자원 사용 현황 및 증설 검토·가상서버 대장)을 실시간 미리보기와 함께 PDF·한글(HWPX)·워드·엑셀로. 기관·부서·작성자·보안 등급 표시, 보고 기간 사용률(평균·최대)·백업 결과 ([문서](docs/korean-reports.md))
+- 🩺 **하드웨어(BMC) 상태 이력** — 5분마다 읽는 서버 하드웨어 상태(노드 안 ipmitool 우선, Redfish 보조)에서 이상 발생·등급 상승·복구를 기록해 운영 현황 보고서에 보고 기간 중 하드웨어 이상과 복구 시각을 표시
+- 🎮 **GPU / vGPU 관리** — 클러스터 GPU 현황·사용률, 패스스루·vGPU(NVIDIA mdev) 할당
 - 📜 **AGPL-3.0 그대로 유지** — 원저작자(PegaProx Team) 표시 및 라이선스 의무를 그대로 준수
 
 이 포크 자체는 별도로 후원을 받지 않습니다. Makus Virt가 유용하셨다면, 아래 **PegaProx 원 개발팀을 후원**해주세요 — 이 프로젝트가 존재할 수 있는 건 전적으로 그분들 덕분입니다.
@@ -183,6 +185,8 @@ The name **PegaProx** is inspired by *Pegasus*, the winged horse of Greek mythol
 - 📸 **Snapshot Schedules** - Tag-based or VMID-list snapshot policies with retention pruning (hourly / daily / weekly + “keep last N” + “keep N days”)
 - 🔄 **Rolling Node Updates** - Update cluster nodes one by one with automatic evacuation
 - 🚨 **Alerts** - Get notified on high CPU, memory, or disk usage
+- 🩺 **Hardware Health (BMC)** - Per-node sensors, PSU, chassis and SEL via in-band ipmitool, with out-of-band Redfish as fallback; cluster degraded-hardware rollup, `hardware_health` alert metric, and *(Makus Virt)* a change history (new / escalated / recovered) for period reports
+- 🎮 **GPU / vGPU** *(Makus Virt)* - Cluster GPU inventory and utilization, whole-device passthrough or NVIDIA vGPU (mdev) assignment
 - 📜 **Audit Logging** - Track all user actions with IP addresses
 - 🔎 **Audit Search** - Full-text + date-range + severity + IP filter, paginated, CSV export
 - 🛰️ **SIEM Forwarder** - Stream audit events to Syslog (UDP/TCP RFC 5424), Splunk HEC, Elasticsearch, Loki, or generic webhooks. VAPID-style per-target TLS verification.
@@ -193,6 +197,7 @@ The name **PegaProx** is inspired by *Pegasus*, the winged horse of Greek mythol
 - 🧬 **Config Drift Detection** - Nightly snapshot of cluster config (VM configs, storage.cfg, network, datacenter options) — alerts on any unauthorized change vs the admin-set baseline. Pairs with the Compliance Dashboard.
 
 ### Reports & Analytics
+- 🇰🇷 **Korean Public-Sector Reports** *(Makus Virt)* - Operations report, resource usage & capacity review, and VM register in the Korean public-sector format, with live preview and PDF / Hangul (HWPX) / Word / Excel export. Period-based CPU & memory usage (avg/peak), backup results and hardware (BMC) incidents. See [docs/korean-reports.md](docs/korean-reports.md).
 - 💰 **Cost Dashboard / Chargeback** - €/VM/Month from real metrics (CPU-h × node tariff + RAM-GB-h + Storage-GB-month). Currency-configurable, per-cluster rates, top-spender table, by-node breakdown. CSV + PDF export.
 - ⚡ **Power & Carbon Tracking** - Estimated kWh + €/Month + kg CO₂/Month per VM, based on metrics history × node-power profile × PUE × grid CO₂ intensity. Defaults for DE/EU; admin-tunable for any hardware/grid. CSV + PDF export.
 - 🧠 **Insights** - Right-sizing recommendations (oversized / undersized CPU + RAM, idle VMs) and capacity forecasts (linear regression + ETA to threshold) over 30 days of history. PDF export.
