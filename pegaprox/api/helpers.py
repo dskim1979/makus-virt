@@ -260,7 +260,9 @@ def save_server_settings(settings):
         # the ACME request saves back what it read 30 s earlier, and a banner added in
         # between would be gone again
         from pegaprox.api.banners import BANNERS_KEY
-        settings = {k: v for k, v in settings.items() if k not in (STAMPS_ZONE_SETTING, BANNERS_KEY)}
+        # MAKUS - nor the front-end white label, which api/frontend_branding.py writes on its own
+        from pegaprox.api.frontend_branding import FRONTEND_BRANDING_KEY
+        settings = {k: v for k, v in settings.items() if k not in (STAMPS_ZONE_SETTING, BANNERS_KEY, FRONTEND_BRANDING_KEY)}
         db = get_db()
         db.save_server_settings(settings)
         return True
