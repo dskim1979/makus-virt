@@ -65,6 +65,7 @@ SRC_FILES=(
     cloud.js
     cloud_users.js
     cloud_settings.js
+    korean_reports.js
     dashboard.js
 )
 

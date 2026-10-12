@@ -17365,6 +17365,7 @@
                                                 <div className={isCorporate ? 'corp-tab-strip' : 'flex gap-2 border-b border-proxmox-border pb-2'}>
                                                     {[
                                                         { id: 'summary', label: t('summary') || 'Summary', icon: Icons.BarChart },
+                                                        { id: 'korean', label: '공공 보고서', icon: Icons.FileText },  // 한국형 보고서 (MOAVI 이식, web/src/korean_reports.js)
                                                         { id: 'cve', label: t('cveScanner') || 'CVE Scanner', icon: Icons.Shield },
                                                         { id: 'insights', label: t('insights') || 'Insights', icon: Icons.Zap },
                                                         { id: 'costs', label: t('costDashboard') || 'Costs', icon: Icons.DollarSign },
@@ -18079,6 +18080,15 @@
                                                         addToast={addToast}
                                                         t={t}
                                                         isAdmin={isAdmin}
+                                                    />
+                                                )}
+
+                                                {/* 한국형 보고서 (공공기관 보고 양식) — web/src/korean_reports.js */}
+                                                {reportSubTab === 'korean' && (
+                                                    <KoreanReportsTab
+                                                        clusterId={selectedCluster?.id}
+                                                        authFetch={authFetch}
+                                                        addToast={addToast}
                                                     />
                                                 )}
 

@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.8+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/license-AGPL--3.0--License-orange" alt="License"/>
   <img src="https://img.shields.io/badge/기반-PegaProx-lightgrey" alt="Based on PegaProx"/>
@@ -40,6 +40,7 @@
 - 🇰🇷 **한국어 전용 UI** — 다국어 지원 대신 한국어에 완전히 집중
 - 💰 **원화(KRW) 기반 비용 대시보드** — 국내 전기요금·컴퓨트 비용 산정 기준 반영
 - 🎨 **화이트라벨 지원** — 로고·파비콘·앱 이름을 배포 환경에 맞게 커스터마이징 가능
+- 📑 **한국형 보고서** — 공공기관 보고 양식(운영 현황 보고·자원 사용 현황 및 증설 검토·가상서버 대장)을 PDF·한글(HWPX)·워드·엑셀로 ([문서](docs/korean-reports.md))
 - 📜 **AGPL-3.0 그대로 유지** — 원저작자(PegaProx Team) 표시 및 라이선스 의무를 그대로 준수
 
 이 포크 자체는 별도로 후원을 받지 않습니다. Makus Virt가 유용하셨다면, 아래 **PegaProx 원 개발팀을 후원**해주세요 — 이 프로젝트가 존재할 수 있는 건 전적으로 그분들 덕분입니다.

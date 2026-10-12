@@ -42,6 +42,7 @@ def register_blueprints(app):
     from pegaprox.api.topology import bp as topology_bp
     from pegaprox.api.power import bp as power_bp
     from pegaprox.api.gpu import bp as gpu_bp
+    from pegaprox.api.korean_reports import bp as korean_reports_bp  # 한국형 보고서 (MOAVI 이식)
     from pegaprox.api.dr_drill import bp as dr_drill_bp
     from pegaprox.api.multi_sdn import bp as multi_sdn_bp, start_scanner as start_multi_sdn_scanner
 
@@ -80,6 +81,7 @@ def register_blueprints(app):
     app.register_blueprint(topology_bp)
     app.register_blueprint(power_bp)
     app.register_blueprint(gpu_bp)
+    app.register_blueprint(korean_reports_bp)
     app.register_blueprint(dr_drill_bp)
     app.register_blueprint(multi_sdn_bp)
 
