@@ -33,7 +33,7 @@ def get_email_logo_html(settings: dict = None) -> str:
             return ''
         port = settings.get('port', 5000)
         base = f"https://{domain}" if port in (443, '443') else f"https://{domain}:{port}"
-        logo_path = settings.get('logo_url') or '/images/pegaprox-logo-dark.png'
+        logo_path = settings.get('logo_url') or '/images/moavi-symbol-512.png'  # MOAVI 심볼 (메일은 PNG)
         app_name = settings.get('app_name') or 'MOAVI'
         import html as _html_lib
         return (

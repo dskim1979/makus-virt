@@ -274,7 +274,13 @@
     "docs/korean-reports.md",
     "web/src/cloud_users.js",
     "web/src/cloud_settings.js",
-    "pegaprox/core/hw_history.py"
+    "pegaprox/core/hw_history.py",
+    "images/moavi-symbol.svg",
+    "images/moavi-symbol-192.png",
+    "images/moavi-symbol-512.png",
+    "images/moavi-logo.svg",
+    "images/moavi-logo-white.svg",
+    "images/favicon.svg"
   ],
   "prev_changelog": [
     "v0.9.15 — a large security-hardening pass (per-VM ACL enforcement, tenant-isolation IDOR/BOLA gates, SSRF guards, RCE-hardening of ISO/template + ESXi-VMDK paths, CSRF/CSP tightening, dependency CVE bumps + AGPL §7(b) attribution), full Cloud-layout parity with Corporate, per-host temperature monitoring with history + alert metric (#601), and scale/perf work (sidebar windowing for 1000+ VMs, TTL caches). Adds a full-stack integration + authz test harness. Community PR #617 snapshot-name validation (thanks @MatrixNeoKozak); welcome TechniData AG Limited (Silver).",

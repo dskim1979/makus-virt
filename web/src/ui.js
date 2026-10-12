@@ -10,11 +10,10 @@
         function getLogoSrc() {
             try {
                 if (window.__NEXUS_CUSTOM_LOGO__) return window.__NEXUS_CUSTOM_LOGO__;
-                return document.body?.dataset?.corpTheme === 'light'
-                    ? '/images/pegaprox-logo-light.png'
-                    : '/images/pegaprox-logo-dark.png';
+                // MOAVI 심볼 — 자체 파란 배경이라 어두운·밝은 테마 모두 그대로 (화이트라벨 로고가 있으면 그것)
+                return '/images/moavi-symbol.svg';
             } catch (_) {
-                return '/images/pegaprox-logo-dark.png';
+                return '/images/moavi-symbol.svg';
             }
         }
 
@@ -27,7 +26,7 @@
         async function _loadPdfLogo() {
             if (_pdfLogoCache) return _pdfLogoCache;
             try {
-                const resp = await fetch('/images/pegaprox-logo-light.png');
+                const resp = await fetch('/images/moavi-symbol-512.png');  // MOAVI 심볼 (jsPDF 는 PNG)
                 const blob = await resp.blob();
                 return new Promise((resolve) => {
                     const reader = new FileReader();

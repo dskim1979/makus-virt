@@ -3,11 +3,11 @@
 // Live data is NEVER cached — only static shell + images.
 // On push event we fetch /api/push/inbox to show the freshest notification.
 
-const CACHE_NAME = 'pegaprox-shell-v3';
+const CACHE_NAME = 'pegaprox-shell-v4';  // v4: MOAVI 아이콘
 const SHELL_ASSETS = [
   '/',
   '/manifest.webmanifest',
-  '/images/pegaprox.png',
+  '/images/moavi-symbol-192.png',
   '/favicon.ico',
 ];
 
@@ -62,8 +62,8 @@ self.addEventListener('push', (e) => {
           // wake-up arrived but nothing in inbox (could be a test or already-cleared)
           return self.registration.showNotification('PegaProx', {
             body: 'You have a new alert',
-            icon: '/images/pegaprox.png',
-            badge: '/images/pegaprox.png',
+            icon: '/images/moavi-symbol-192.png',
+            badge: '/images/moavi-symbol-192.png',
             tag: 'pegaprox-generic',
           });
         }
@@ -72,8 +72,8 @@ self.addEventListener('push', (e) => {
         const sev = (item.severity || 'info').toLowerCase();
         const opts = {
           body: item.body || '',
-          icon: '/images/pegaprox.png',
-          badge: '/images/pegaprox.png',
+          icon: '/images/moavi-symbol-192.png',
+          badge: '/images/moavi-symbol-192.png',
           tag: item.tag || `pegaprox-${item.id}`,
           renotify: true,
           requireInteraction: sev === 'critical',
@@ -85,7 +85,7 @@ self.addEventListener('push', (e) => {
         // network down or session expired — best-effort generic notification
         return self.registration.showNotification('PegaProx', {
           body: 'New activity (open the app to view)',
-          icon: '/images/pegaprox.png',
+          icon: '/images/moavi-symbol-192.png',
           tag: 'pegaprox-fallback',
         });
       })
