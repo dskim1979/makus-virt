@@ -470,7 +470,29 @@ def update_target(tid):
     if 'enabled' in body:
         fields.append('enabled = ?'); params.append(1 if body['enabled'] else 0)
     if 'settings' in body:
-        fields.append('settings = ?'); params.append(json.dumps(body['settings']))
+        new_settings = body['settings'] if isinstance(body['settings'], dict) else {}
+        # MAKUS - the list hands secrets back masked ('********'); a form that saves what it
+        # was shown must keep the stored secret, not overwrite it with the mask
+        try:
+            c0 = get_db().conn.cursor()
+            c0.execute('SELECT settings FROM siem_targets WHERE id = ?', (tid,))
+            r0 = c0.fetchone()
+            old_settings = json.loads(r0['settings'] or '{}') if r0 else {}
+        except Exception:
+            old_settings = {}
+
+        def _keep(new, old):
+            out = {}
+            for k, v in new.items():
+                if isinstance(v, dict):
+                    out[k] = _keep(v, old.get(k) if isinstance(old.get(k), dict) else {})
+                elif v == '********' and k in old:
+                    out[k] = old[k]
+                else:
+                    out[k] = v
+            return out
+
+        fields.append('settings = ?'); params.append(json.dumps(_keep(new_settings, old_settings if isinstance(old_settings, dict) else {})))
     if not fields:
         return jsonify({'error': 'no fields to update'}), 400
     params.append(tid)
