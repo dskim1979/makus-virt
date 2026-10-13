@@ -58,6 +58,16 @@ COPY --chown=pegaprox:pegaprox systemd/pegaprox-witness.service systemd/pegaprox
 ARG PEGAPROX_BRANCH=main
 ENV PEGAPROX_BRANCH=${PEGAPROX_BRANCH}
 
+# MAKUS - WEB_UI=0 builds an API-only image: the bundled admin UI (web/) is dropped and "/" answers
+# with a one-line notice. For a deployment whose users work in another front end (the MOAVI open
+# edition) and never sign in here. images/ and static/ stay - branding and API routes serve from them.
+ARG WEB_UI=1
+RUN if [ "$WEB_UI" = "0" ]; then \
+        rm -rf /app/web && mkdir -p /app/web \
+        && echo '<!doctype html><meta charset="utf-8"><title>makus-virt API</title><p>This server is API-only. It is managed from the MOAVI console.</p>' > /app/web/index.html \
+        && chown -R pegaprox:pegaprox /app/web; \
+    fi
+
 # Create runtime directories
 # /app/witness: the state of the witness, for the command `witness` (#625)
 RUN mkdir -p /app/config /app/logs /app/backups /app/witness \
